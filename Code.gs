@@ -17,7 +17,8 @@ const EMPLOYEE_ID_PATTERN = /^\d{7}$/;
 const EMPLOYEE_ID_INVALID_MESSAGE = "사번은 숫자 7자리입니다. 7자리보다 짧거나 길면 올바른 사번이 아닙니다.";
 
 // 이 사번으로 로그인한 사람만 관리자 API(계정 목록/삭제/비밀번호 초기화)를 쓸 수 있음.
-// 프론트엔드(index.html)의 ADMIN_EMPLOYEE_ID와 반드시 같은 값이어야 함
+// 저장소가 공개돼 있어서 프론트엔드(script.js)에는 이 값을 더 이상 상수로 두지 않음 - 프론트는
+// 로그인/불러오기 응답의 isAdmin 플래그로 화면 표시만 하고, 실제 권한 검증은 항상 여기 서버에서만 함
 const ADMIN_EMPLOYEE_ID = "9999999";
 
 // 휴지통에 있는 계정을 이 기간(일) 넘게 두면 다음 관리자 목록 조회 때 완전히 삭제됨
@@ -354,7 +355,10 @@ function handleLogin(employeeId, passwordHash) {
     return jsonResponse({ status: "error", message: denialMessage });
   }
 
-  return jsonResponse({ status: "success", isNewUser: false });
+  // 프론트엔드는 더 이상 관리자 사번을 직접 알지 못하므로(공개 저장소 노출 방지), 이 계정이
+  // 관리자인지를 서버가 판단해서 내려줌 - 화면 표시(관리자 화면 진입 등)에만 쓰고, 실제 권한
+  // 검증은 여전히 서버의 verifyAdmin(ADMIN_EMPLOYEE_ID 대조)이 함
+  return jsonResponse({ status: "success", isNewUser: false, isAdmin: employeeId === ADMIN_EMPLOYEE_ID });
 }
 
 function handleLoad(employeeId, passwordHash) {
@@ -383,6 +387,8 @@ function handleLoad(employeeId, passwordHash) {
   }
 
   parsedData.records = loadMergedRecords(employeeId, parsedData);
+  // handleLogin과 동일한 이유로, 프론트가 화면 표시에만 쓸 수 있도록 관리자 여부를 함께 내려줌
+  parsedData.isAdmin = (employeeId === ADMIN_EMPLOYEE_ID);
 
   return ContentService
     .createTextOutput(JSON.stringify(parsedData))
@@ -688,6 +694,9 @@ function handleAdminListUsers(data) {
       disabledFeatures: Array.isArray(parsed.disabledFeatures) ? parsed.disabledFeatures : [],
       disabled: !!parsed.disabled,
       isTeamLead: !!parsed.isTeamLead,
+      // 관리자 목록 표에서 관리자 자신의 행을 구분해야 하는데, 프론트는 더 이상 ADMIN_EMPLOYEE_ID를
+      // 모르므로(공개 저장소 노출 방지) 서버가 판별한 결과를 실어서 내려줌
+      isAdmin: employeeId === ADMIN_EMPLOYEE_ID,
       aiApiKey: (typeof parsed.aiApiKey === "string") ? parsed.aiApiKey : "",
       passwordResetRequestedAt: parsed.passwordResetRequestedAt || ""
     });

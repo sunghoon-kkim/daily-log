@@ -1,7 +1,7 @@
 const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fhS_6p7ioSysh9rCSw0LxRCMtRNuhCdTUyG8vR451yW1aptfrlrURqO-Y1kQ/exec";
-        // 이 사번으로 로그인하면 일반 탭 대신 관리자 전용 화면(계정 관리)만 보여줌. Code.gs의
-        // ADMIN_EMPLOYEE_ID와 반드시 같은 값이어야 함
-        const ADMIN_EMPLOYEE_ID = "9999999";
+        // 이 저장소는 공개돼 있어서, 관리자 사번을 프론트에 상수로 박아두면 그대로 노출됨.
+        // 그래서 관리자 여부는 로그인/불러오기 응답에 실려오는 isAdmin 플래그(아래 전역 변수)로만
+        // 판단하고, 실제 관리자 API 권한 검증은 여전히 서버(Code.gs의 verifyAdmin)가 함
 
         const COLOR_PALETTE = [
             '#ff6b6b', '#ff9f43', '#feca57', '#1dd1a1',
@@ -209,6 +209,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 이 계정이 관리자가 지정한 팀장인지 (서버에서 로그인 시 받아옴). true면 [팀 보고] 탭에서
         // 팀원들의 제출 현황을 모아볼 수 있음. 관리자 계정은 이 값과 무관하게 항상 볼 수 있음
         let isTeamLead = false;
+        // 이 계정이 관리자인지 (로그인/불러오기 응답의 isAdmin 필드로 채워짐). 화면 표시(관리자
+        // 전용 화면 진입 등)에만 쓰고, 실제 관리자 권한 검증은 서버가 매 요청마다 다시 함
+        let isAdmin = false;
 
         const DEFAULT_AI_TEMPLATE = `[월간 업무 피드백]
 
@@ -888,7 +891,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (overviewDateInput && !overviewDateInput.value) overviewDateInput.value = today;
             // 관리자가 이 계정의 "팀 보고" 기능 자체를 꺼뒀다면, 팀장이라도 팀원 제출 현황은 볼 수 없음
             // (applyFeatureRestrictions는 탭 전환 시 다시 실행되지 않아서 여기서도 같이 확인해야 함)
-            const canSeeOverview = (isTeamLead || currentEmployeeId === ADMIN_EMPLOYEE_ID) && !disabledFeatures.includes('teamReport');
+            const canSeeOverview = (isTeamLead || isAdmin) && !disabledFeatures.includes('teamReport');
             if (overviewSection) {
                 overviewSection.style.display = canSeeOverview ? '' : 'none';
             }
@@ -4538,11 +4541,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     currentEmployeeId = employeeId;
                     currentPasswordHash = passwordHash;
                     editUnlocked = true;
+                    isAdmin = !!result.isAdmin; // 서버(action=load)가 판별해서 내려준 값. 프론트는 더 이상 사번으로 직접 판단하지 않음
 
                     closeLoginModal();
                     applyEditLockUI();
 
-                    if (employeeId === ADMIN_EMPLOYEE_ID) {
+                    if (isAdmin) {
                         enterAdminMode();
                     } else {
                         // 로그인에 성공한 지금에서야 처음으로 홈페이지 내용을 그림(아직 안 그려졌다면).
@@ -4718,17 +4722,14 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     localStorage.setItem('accountName', name);
                     localStorage.setItem('accountDepartment', department);
                     editUnlocked = true;
+                    isAdmin = false; // 관리자 계정은 이미 시트에 만들어져 있어 회원가입으로는 절대 생성되지 않음(중복 사번으로 거부됨)
 
                     closeSignupModal(); // editUnlocked가 이미 true라 로그인 모달로 되돌아가지 않음
                     applyEditLockUI();
 
-                    if (employeeId === ADMIN_EMPLOYEE_ID) {
-                        enterAdminMode();
-                    } else {
-                        await initAppUI();
-                        await loadAllFromServer();
-                        showStatus('👋 회원가입이 완료되었습니다. 환영합니다!', 'success');
-                    }
+                    await initAppUI();
+                    await loadAllFromServer();
+                    showStatus('👋 회원가입이 완료되었습니다. 환영합니다!', 'success');
                 } else {
                     errEl.textContent = result.message || '회원가입에 실패했습니다';
                     errEl.style.display = 'block';
@@ -4881,8 +4882,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             // 관리자 계정은 정렬 기준과 무관하게 항상 맨 위에 고정 (Array.sort는 안정 정렬이라 나머지 순서는 그대로 유지됨)
             list.sort((a, b) => {
-                if (a.employeeId === ADMIN_EMPLOYEE_ID) return -1;
-                if (b.employeeId === ADMIN_EMPLOYEE_ID) return 1;
+                if (a.isAdmin) return -1;
+                if (b.isAdmin) return 1;
                 return 0;
             });
 
@@ -4908,7 +4909,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         ${u.duplicateApiKey ? '<div class="admin-apikey-dup">⚠️ 다른 계정과 중복</div>' : ''}
                     ` : '<span style="color:#999;">미입력</span>'}</td>
                     <td>${escapeHtml(u.lastSaved)}</td>
-                    <td class="admin-actions-cell">${u.employeeId === ADMIN_EMPLOYEE_ID ? '<span style="color:#999;">관리자 계정</span>' : `
+                    <td class="admin-actions-cell">${u.isAdmin ? '<span style="color:#999;">관리자 계정</span>' : `
                         <button class="admin-action-btn" onclick="openAdminEditUserModal('${u.employeeId}')">✏️ 정보수정</button>
                         <button class="admin-action-btn" onclick="openAdminFeatureModal('${u.employeeId}')">🔧 기능 설정</button>
                         <button class="admin-action-btn${u.isTeamLead ? ' danger' : ''}" onclick="adminToggleTeamLead('${u.employeeId}', ${u.isTeamLead ? 'false' : 'true'})">${u.isTeamLead ? '👔 팀장 해제' : '👔 팀장 지정'}</button>
@@ -4959,11 +4960,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         function adminDeleteUser(targetEmployeeId) {
-            if (targetEmployeeId === ADMIN_EMPLOYEE_ID) {
+            const target = adminUserList.find(u => u.employeeId === targetEmployeeId);
+            if (target && target.isAdmin) {
                 alert('관리자 계정 자신은 삭제할 수 없습니다.');
                 return;
             }
-            const target = adminUserList.find(u => u.employeeId === targetEmployeeId);
             const targetName = target ? target.name : '';
             confirmModal(`${targetName || targetEmployeeId}(${targetEmployeeId}) 계정을 삭제할까요?\n휴지통으로 이동되며, 7일 안에는 복구할 수 있고 그 이후 자동으로 완전히 삭제됩니다.`, async () => {
                 const statusEl = document.getElementById('adminStatus');
