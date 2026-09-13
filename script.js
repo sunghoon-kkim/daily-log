@@ -632,9 +632,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
         }
 
-        // preloadedData가 있으면(예: 로그인 직후 이미 action=load 응답을 받아둔 경우) 네트워크
-        // 요청을 또 보내지 않고 그 데이터를 그대로 씀. GAS 요청 자체가 느려서, 로그인 때 이미 받은
-        // 데이터를 여기서 또 요청하면 로그인마다 똑같은 왕복을 두 번 하게 되어 체감 지연이 두 배가 됨.
+        // preloadedData가 있으면(예: 로그인 직후 이미 action=login 응답으로 프로필+records를
+        // 함께 받아둔 경우) 네트워크 요청을 또 보내지 않고 그 데이터를 그대로 씀. GAS 요청 자체가
+        // 느려서, 로그인 때 이미 받은 데이터를 여기서 또 요청하면 로그인마다 똑같은 왕복을 두 번
+        // 하게 되어 체감 지연이 두 배가 됨.
         async function loadAllFromServer(preloadedData) {
             if (!currentEmployeeId || !currentPasswordHash) return; // 로그인 전에는 불러올 대상이 없음
 
