@@ -4745,6 +4745,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // ===== 관리자 전용 화면 (계정 관리) =====
         let adminUserList = [];
         let adminTrashList = [];
+        let adminPendingList = [];
         let adminDefaultDisabledFeatures = [];
         let adminSortKey = 'employeeId';
         let adminSortDir = 'desc';
@@ -4773,11 +4774,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (data.status === 'success') {
                     adminUserList = Array.isArray(data.users) ? data.users : [];
                     adminTrashList = Array.isArray(data.trash) ? data.trash : [];
+                    adminPendingList = Array.isArray(data.pendingApproval) ? data.pendingApproval : [];
                     adminDefaultDisabledFeatures = Array.isArray(data.defaultDisabledFeatures) ? data.defaultDisabledFeatures : [];
                     renderAdminUserTable();
                     renderAdminTrashTable();
+                    renderAdminPendingTable();
                     renderAdminDefaultFeatureChecklist();
-                    statusEl.textContent = `✅ 총 ${adminUserList.length}개 계정 (휴지통 ${adminTrashList.length}개)`;
+                    statusEl.textContent = `✅ 총 ${adminUserList.length}개 계정 (휴지통 ${adminTrashList.length}개, 승인 대기 ${adminPendingList.length}개)`;
                     statusEl.className = 'ai-status success';
                 } else {
                     statusEl.textContent = '⚠️ ' + (data.message || '목록을 불러오지 못했습니다');
@@ -5019,6 +5022,69 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     </td>
                 </tr>
             `).join('');
+        }
+
+        // 승인 대기: 회원가입만 하고 관리자 승인을 아직 못 받은 계정 목록. 승인 전까지는
+        // getAccountAccessDenialMessage가 로그인/저장 등 모든 접근을 막아둠(Code.gs)
+        function renderAdminPendingTable() {
+            const tbody = document.getElementById('adminPendingTableBody');
+            if (!tbody) return;
+
+            if (adminPendingList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999; padding:20px;">승인 대기 중인 계정이 없습니다</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = adminPendingList.map(u => `
+                <tr>
+                    <td>${escapeHtml(u.employeeId)}</td>
+                    <td>${escapeHtml(u.name)}</td>
+                    <td>${escapeHtml(u.department)}</td>
+                    <td>${escapeHtml(formatDateTimeKo(u.requestedAt))}</td>
+                    <td class="admin-actions-cell">
+                        <button class="admin-action-btn" onclick="adminApproveUser('${u.employeeId}')">✅ 승인</button>
+                        <button class="admin-action-btn danger" onclick="adminDeleteUser('${u.employeeId}')">🗑️ 거절</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 거절은 별도 액션 없이 adminDeleteUser(휴지통 이동)를 그대로 재사용함 - 실수로 거절해도
+        // 7일 안에는 휴지통에서 복구할 수 있음
+        function adminApproveUser(targetEmployeeId) {
+            const target = adminPendingList.find(u => u.employeeId === targetEmployeeId);
+            const targetName = target ? target.name : '';
+            confirmModal(`${targetName || targetEmployeeId}(${targetEmployeeId}) 가입을 승인할까요?`, async () => {
+                const statusEl = document.getElementById('adminStatus');
+                statusEl.textContent = '☁️ 승인하는 중...';
+                statusEl.className = 'ai-status';
+
+                try {
+                    const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: 'adminApproveUser',
+                            employeeId: currentEmployeeId,
+                            passwordHash: currentPasswordHash,
+                            targetEmployeeId: targetEmployeeId
+                        })
+                    });
+                    const data = await res.json();
+
+                    if (data.status === 'success') {
+                        statusEl.textContent = '✅ 승인되었습니다';
+                        statusEl.className = 'ai-status success';
+                        await loadAdminUserList();
+                    } else {
+                        statusEl.textContent = '⚠️ ' + (data.message || '승인에 실패했습니다');
+                        statusEl.className = 'ai-status error';
+                    }
+                } catch (err) {
+                    console.error('관리자 가입 승인 오류:', err);
+                    statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                    statusEl.className = 'ai-status error';
+                }
+            });
         }
 
         // [팀 보고] 내 제출 내역에서 제출시각 하나로 날짜+시간을 함께 보여주기 위한 전용 포맷 (yyyy.mm.dd. PM HH:MM)

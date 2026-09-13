@@ -582,6 +582,21 @@
             </div>
 
             <div class="category-manager" style="margin-top:25px;">
+                <h3>🆕 가입 승인 대기</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">회원가입만 하고 아직 승인받지 못한 계정입니다. 승인 전까지는 로그인을 포함한 모든 기능이 막혀 있습니다. 승인하면 즉시 이용할 수 있고, 거절하면 휴지통으로 이동합니다(7일 안에는 복구 가능).</p>
+                <div class="admin-table-scroll">
+                    <table class="admin-user-table" id="adminPendingTable">
+                        <thead>
+                            <tr>
+                                <th>사번</th><th>이름</th><th>소속</th><th>신청일</th><th>관리</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminPendingTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="category-manager" style="margin-top:25px;">
                 <h3>🗑️ 휴지통</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">삭제한 계정이 여기 보관됩니다. 보관기한(7일) 안에는 언제든 복구할 수 있고, 지나면 목록을 새로고침할 때 자동으로 완전히 삭제됩니다.</p>
                 <div class="admin-table-scroll">

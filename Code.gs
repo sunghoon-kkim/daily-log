@@ -302,6 +302,11 @@ function doGet(e) {
 // 휴지통(소프트 삭제)에 있거나 관리자가 비활성화해둔 계정이면 로그인/데이터 접근을 막고
 // 그 이유를 문자열로 돌려줌. 정상 계정이면 null
 function getAccountAccessDenialMessage(parsedData) {
+  // 관리자 승인을 아직 못 받은 신규 가입 계정은 그 어떤 동작(로그인/불러오기/저장/팀보고 제출)도
+  // 할 수 없어야 하므로 deletedAt/disabled 검사보다 먼저 확인함
+  if (parsedData && parsedData.pending) {
+    return "가입 신청이 접수되었습니다.\n관리자 승인 후 이용하실 수 있습니다.";
+  }
   if (parsedData && parsedData.deletedAt) {
     const purgeDate = new Date(new Date(parsedData.deletedAt).getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     const formatted = Utilities.formatDate(purgeDate, "Asia/Seoul", "MM월 dd일 HH시 mm분");
@@ -411,6 +416,7 @@ function doPost(e) {
     if (data.action === "adminUpdateUserFeatures") return handleAdminUpdateUserFeatures(data);
     if (data.action === "adminSetDefaultFeatures") return handleAdminSetDefaultFeatures(data);
     if (data.action === "adminRestoreUser") return handleAdminRestoreUser(data);
+    if (data.action === "adminApproveUser") return handleAdminApproveUser(data);
     if (data.action === "adminPurgeUser") return handleAdminPurgeUser(data);
     if (data.action === "adminSetUserDisabled") return handleAdminSetUserDisabled(data);
     if (data.action === "adminSetTeamLead") return handleAdminSetTeamLead(data);
@@ -464,7 +470,15 @@ function handleSignup(data) {
       return jsonResponse({ status: "error", message: "이미 존재하는 사번입니다. 다른 사번을 사용해주세요." });
     }
 
-    const initialData = { name: name, department: department, disabledFeatures: getDefaultDisabledFeatures() };
+    // 신규 계정은 곧바로 쓸 수 있게 하지 않고 관리자 승인 대기 상태로 만듦.
+    // pending이 있는 동안은 getAccountAccessDenialMessage가 로그인/저장 등 모든 접근을 막음
+    const initialData = {
+      name: name,
+      department: department,
+      disabledFeatures: getDefaultDisabledFeatures(),
+      pending: true,
+      requestedAt: new Date().toISOString()
+    };
     sheet.appendRow([employeeId, passwordHash, JSON.stringify(initialData), "", new Date().toLocaleString('ko-KR')]);
   } finally {
     lock.releaseLock();
@@ -613,12 +627,13 @@ function handleAdminListUsers(data) {
 
   const sheet = getUsersSheet();
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return jsonResponse({ status: "success", users: [], trash: [], defaultDisabledFeatures: getDefaultDisabledFeatures() });
+  if (lastRow < 2) return jsonResponse({ status: "success", users: [], trash: [], pendingApproval: [], defaultDisabledFeatures: getDefaultDisabledFeatures() });
 
   const rows = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
   const now = new Date();
   const users = [];
   const trash = [];
+  const pendingApproval = [];
   const purgeTargets = []; // 보관기한이 지나 이번에 완전히 삭제할 대상 { row, employeeId }
   const recordCounts = buildRecordCountsByUser(); // Records 시트로 이미 옮겨진 기록 개수 (사번별)
 
@@ -629,6 +644,8 @@ function handleAdminListUsers(data) {
     const legacyCount = parsed.records ? Object.keys(parsed.records).length : 0;
     const recordCount = legacyCount + (recordCounts[employeeId] || 0);
 
+    // deletedAt이 있으면(가입 승인 거절도 이 필드를 씀) pending 여부와 무관하게 휴지통으로 분류함 -
+    // 거절된 계정도 7일 보관기한 동안은 실수로 거절했을 때 복구할 수 있어야 하기 때문
     if (parsed.deletedAt) {
       const ageDays = (now.getTime() - new Date(parsed.deletedAt).getTime()) / (24 * 60 * 60 * 1000);
 
@@ -645,6 +662,18 @@ function handleAdminListUsers(data) {
         deletedAt: parsed.deletedAt,
         daysRemaining: Math.max(0, Math.ceil(TRASH_RETENTION_DAYS - ageDays)),
         disabledFeatures: Array.isArray(parsed.disabledFeatures) ? parsed.disabledFeatures : []
+      });
+      return;
+    }
+
+    // 아직 관리자 승인을 받지 못한 신규 가입 계정. 일반 계정 목록(users)이 아니라 별도 목록으로
+    // 분리해서 관리자가 "승인 대기 중인 신규 가입자"를 바로 알아볼 수 있게 함
+    if (parsed.pending) {
+      pendingApproval.push({
+        employeeId: employeeId,
+        name: parsed.name || "",
+        department: parsed.department || "",
+        requestedAt: parsed.requestedAt || ""
       });
       return;
     }
@@ -706,7 +735,7 @@ function handleAdminListUsers(data) {
     }
   }
 
-  return jsonResponse({ status: "success", users: users, trash: trash, defaultDisabledFeatures: getDefaultDisabledFeatures() });
+  return jsonResponse({ status: "success", users: users, trash: trash, pendingApproval: pendingApproval, defaultDisabledFeatures: getDefaultDisabledFeatures() });
 }
 
 // Users 시트의 특정 행(계정)과 그 계정의 부속 데이터(읽기용 시트, Records 시트 기록)를 전부 완전히 삭제함.
@@ -809,6 +838,31 @@ function handleAdminRestoreUser(data) {
 
   const existingData = parseUserJson(sheet.getRange(row, 3).getValue());
   delete existingData.deletedAt;
+  sheet.getRange(row, 3).setValue(JSON.stringify(existingData));
+
+  return jsonResponse({ status: "success" });
+}
+
+// 관리자 화면: 승인 대기 중인 신규 가입 계정을 승인. pending/requestedAt 표시만 지우면
+// 그 순간부터 getAccountAccessDenialMessage가 더 이상 막지 않아 일반 계정과 동일하게 동작함.
+// 거절은 별도 액션 없이 handleAdminDeleteUser(휴지통 이동)를 그대로 재사용함
+function handleAdminApproveUser(data) {
+  if (!verifyAdmin(data)) return adminAuthFailedResponse();
+
+  const targetEmployeeId = normalizeEmployeeId(data.targetEmployeeId);
+  if (!targetEmployeeId) {
+    return jsonResponse({ status: "error", message: "승인할 사번이 없습니다." });
+  }
+
+  const sheet = getUsersSheet();
+  const row = findUserRow(sheet, targetEmployeeId);
+  if (row === -1) {
+    return jsonResponse({ status: "error", message: "존재하지 않는 사번입니다." });
+  }
+
+  const existingData = parseUserJson(sheet.getRange(row, 3).getValue());
+  delete existingData.pending;
+  delete existingData.requestedAt;
   sheet.getRange(row, 3).setValue(JSON.stringify(existingData));
 
   return jsonResponse({ status: "success" });
@@ -1085,6 +1139,8 @@ function handleSaveState(data, rawBody) {
     if (existingProfile.deletedAt) dataToSave.deletedAt = existingProfile.deletedAt;
     if (existingProfile.disabled) dataToSave.disabled = existingProfile.disabled;
     if (existingProfile.isTeamLead) dataToSave.isTeamLead = existingProfile.isTeamLead;
+    if (existingProfile.pending) dataToSave.pending = existingProfile.pending;
+    if (existingProfile.requestedAt) dataToSave.requestedAt = existingProfile.requestedAt;
     if (existingProfile.disabledFeatures) dataToSave.disabledFeatures = existingProfile.disabledFeatures;
     // records는 더 이상 프로필 셀에 저장하지 않음 - Records 시트로 따로 저장함 (아래 saveRecordsForUser)
     const jsonToSave = JSON.stringify(dataToSave);
