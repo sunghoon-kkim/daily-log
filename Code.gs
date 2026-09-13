@@ -24,6 +24,12 @@ const ADMIN_EMPLOYEE_ID = "9999999";
 // 휴지통에 있는 계정을 이 기간(일) 넘게 두면 다음 관리자 목록 조회 때 완전히 삭제됨
 const TRASH_RETENTION_DAYS = 7;
 
+// 로그인 실패가 이 횟수에 도달하면 계정을 잠금. 사번이 숫자 7자리 규칙이라 동료 사번을 알아내기
+// 쉬운 편이라, 영구 잠금이 아니라 일정 시간이 지나면 자동으로 풀리게 해서 장난 삼아 남의 계정을
+// 잠가버리는 것과 그로 인한 관리자 문의 폭증을 막음
+const LOGIN_FAIL_LIMIT = 5;
+const LOGIN_LOCK_MINUTES = 15;
+
 // ===== SHA-256 해시 생성 함수 (웹 프론트엔드의 sha256Hex와 100% 호환) =====
 function computeSha256(text) {
   const rawHash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
@@ -300,14 +306,27 @@ function doGet(e) {
   }
 }
 
-// 휴지통(소프트 삭제)에 있거나 관리자가 비활성화해둔 계정이면 로그인/데이터 접근을 막고
-// 그 이유를 문자열로 돌려줌. 정상 계정이면 null
+// 로그인 실패 누적으로 잠긴 계정이면 안내 문구를, 잠금 기간(LOGIN_LOCK_MINUTES)이 이미 지나
+// 자동 해제된 상태면 null을 돌려줌. lockedAt만 보고 판단하며 실제로 필드를 지우지는 않음 -
+// 지우는 건 다음 로그인 성공 시(handleLogin) 또는 관리자의 비밀번호 초기화 때만 함
+function getLockDenialMessage(parsedData) {
+  if (!parsedData || !parsedData.lockedAt) return null;
+  const elapsedMinutes = (Date.now() - new Date(parsedData.lockedAt).getTime()) / (60 * 1000);
+  if (elapsedMinutes >= LOGIN_LOCK_MINUTES) return null;
+  const remainingMinutes = Math.max(1, Math.ceil(LOGIN_LOCK_MINUTES - elapsedMinutes));
+  return "로그인 실패 횟수를 초과해 계정이 잠겼습니다. 약 " + remainingMinutes + "분 후 다시 시도해주세요.";
+}
+
+// 휴지통(소프트 삭제)에 있거나 관리자가 비활성화해둔 계정, 승인 대기 중이거나 로그인 실패로
+// 잠긴 계정이면 로그인/데이터 접근을 막고 그 이유를 문자열로 돌려줌. 정상 계정이면 null
 function getAccountAccessDenialMessage(parsedData) {
   // 관리자 승인을 아직 못 받은 신규 가입 계정은 그 어떤 동작(로그인/불러오기/저장/팀보고 제출)도
-  // 할 수 없어야 하므로 deletedAt/disabled 검사보다 먼저 확인함
+  // 할 수 없어야 하므로 나머지 검사보다 먼저 확인함
   if (parsedData && parsedData.pending) {
     return "가입 신청이 접수되었습니다.\n관리자 승인 후 이용하실 수 있습니다.";
   }
+  const lockMessage = getLockDenialMessage(parsedData);
+  if (lockMessage) return lockMessage;
   if (parsedData && parsedData.deletedAt) {
     const purgeDate = new Date(new Date(parsedData.deletedAt).getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     const formatted = Utilities.formatDate(purgeDate, "Asia/Seoul", "MM월 dd일 HH시 mm분");
@@ -327,8 +346,13 @@ function parseUserJson(json) {
   }
 }
 
-// 로그인 전용. 이제 회원가입(action=signup)이 따로 있으므로, 등록되지 않은 사번은
-// 더 이상 여기서 자동으로 계정을 만들지 않고 회원가입을 먼저 하라고 안내함
+// 로그인 전용 경로 (action=login). 실패가 쌓이면 LOGIN_FAIL_LIMIT회에서 계정을 잠그므로,
+// 로그인 실패 카운트는 반드시 여기서만 다룸 - action=load(자동 새로고침)나 저장/팀보고 요청은
+// 로그인 후 매 요청마다 같은 passwordHash를 반복해서 실어 보내는데, 그 경로에도 카운트를 붙이면
+// 예를 들어 관리자가 비밀번호를 초기화한 직후 그 사람 브라우저의 자동저장(queueSync)이 옛
+// 해시로 계속 요청을 보내면서 몇 초 만에 계정이 다시 잠기는 사고가 날 수 있음.
+// 성공 시에는 handleLoad와 동일하게 프로필+records를 함께 반환해서, 로그인 확인과 데이터
+// 조회를 위해 GAS를 두 번 왕복하지 않고 한 번만 왕복하도록 함(느린 GAS 응답 특성상 중요함)
 function handleLogin(employeeId, passwordHash) {
   if (!employeeId) {
     return jsonResponse({ status: "error", message: "사번을 입력해주세요." });
@@ -346,19 +370,68 @@ function handleLogin(employeeId, passwordHash) {
 
   // 비밀번호 해시(2열)와 프로필 JSON(3열)을 각각 따로 읽지 않고 한 번에 묶어서 읽음
   const rowValues = sheet.getRange(row, 2, 1, 2).getValues()[0];
-  if (String(rowValues[0]) !== passwordHash) {
-    return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
+  const storedHash = rowValues[0];
+  const parsedData = parseUserJson(rowValues[1]);
+
+  // 관리자 계정은 잠금 대상에서 제외함 - 잠기면 풀어줄 사람이 없기 때문
+  const isAdminAccount = (employeeId === ADMIN_EMPLOYEE_ID);
+
+  // 비밀번호를 대조하기도 전에 먼저 잠김 여부부터 확인함. 이미 잠긴 상태라면 마침 맞는
+  // 비밀번호를 입력했더라도 잠금 기간이 끝나기 전까지는 통과시키지 않음
+  if (!isAdminAccount) {
+    const lockMessage = getLockDenialMessage(parsedData);
+    if (lockMessage) {
+      return jsonResponse({ status: "error", message: lockMessage });
+    }
   }
 
-  const denialMessage = getAccountAccessDenialMessage(parseUserJson(rowValues[1]));
+  if (String(storedHash) !== passwordHash) {
+    if (isAdminAccount) {
+      return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
+    }
+
+    // 이전 잠금이 있었지만 이미 자동 해제 기간이 지난 상태(위에서 lockMessage가 null이었던 경우)
+    // 라면 지난 잠금 흔적을 지우고 이번 실패부터 새로 셈 - 그렇지 않으면 실패 횟수가 5 이상으로
+    // 계속 남아있어서 해제 직후 단 한 번만 틀려도 곧바로 다시 잠기게 됨(15분 자동 해제를 무력화함)
+    if (parsedData.lockedAt) {
+      delete parsedData.lockedAt;
+      parsedData.failedLoginCount = 0;
+    }
+
+    const failedCount = (parsedData.failedLoginCount || 0) + 1;
+    parsedData.failedLoginCount = failedCount;
+
+    let message = "비밀번호가 일치하지 않습니다. (" + failedCount + "/" + LOGIN_FAIL_LIMIT + ")";
+    if (failedCount >= LOGIN_FAIL_LIMIT) {
+      parsedData.lockedAt = new Date().toISOString();
+      message += "\n로그인 실패 횟수를 초과해 " + LOGIN_LOCK_MINUTES + "분간 계정이 잠깁니다.";
+    }
+
+    sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
+    return jsonResponse({ status: "error", message: message });
+  }
+
+  // 비밀번호가 맞았으니 실패 기록(있었다면)을 지움
+  if (parsedData.failedLoginCount || parsedData.lockedAt) {
+    delete parsedData.failedLoginCount;
+    delete parsedData.lockedAt;
+    sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
+  }
+
+  const denialMessage = getAccountAccessDenialMessage(parsedData);
   if (denialMessage) {
     return jsonResponse({ status: "error", message: denialMessage });
   }
 
+  parsedData.records = loadMergedRecords(employeeId, parsedData);
   // 프론트엔드는 더 이상 관리자 사번을 직접 알지 못하므로(공개 저장소 노출 방지), 이 계정이
   // 관리자인지를 서버가 판단해서 내려줌 - 화면 표시(관리자 화면 진입 등)에만 쓰고, 실제 권한
   // 검증은 여전히 서버의 verifyAdmin(ADMIN_EMPLOYEE_ID 대조)이 함
-  return jsonResponse({ status: "success", isNewUser: false, isAdmin: employeeId === ADMIN_EMPLOYEE_ID });
+  parsedData.isAdmin = isAdminAccount;
+
+  return ContentService
+    .createTextOutput(JSON.stringify(parsedData))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function handleLoad(employeeId, passwordHash) {
@@ -697,6 +770,8 @@ function handleAdminListUsers(data) {
       // 관리자 목록 표에서 관리자 자신의 행을 구분해야 하는데, 프론트는 더 이상 ADMIN_EMPLOYEE_ID를
       // 모르므로(공개 저장소 노출 방지) 서버가 판별한 결과를 실어서 내려줌
       isAdmin: employeeId === ADMIN_EMPLOYEE_ID,
+      // 로그인 실패 누적으로 지금 실제로 잠겨 있는지(15분이 지나 자동 해제됐으면 false)
+      locked: !!getLockDenialMessage(parsed),
       aiApiKey: (typeof parsed.aiApiKey === "string") ? parsed.aiApiKey : "",
       passwordResetRequestedAt: parsed.passwordResetRequestedAt || ""
     });
@@ -999,10 +1074,24 @@ function handleAdminResetPassword(data) {
 
   sheet.getRange(row, 2).setValue(newPasswordHash);
 
-  // 이 초기화가 자가 재설정 요청에 대한 응답이었다면, 처리됐으니 요청 표시를 지움
+  // 이 초기화가 자가 재설정 요청에 대한 응답이었다면, 처리됐으니 요청 표시를 지움.
+  // 비밀번호 초기화는 곧 잠금 해제이기도 해야 하므로(그렇지 않으면 관리자가 방금 알려준
+  // 새 비밀번호로도 잠금이 풀릴 때까지 기다려야 하는 모순이 생김) 실패 기록도 함께 지움
   const existingData = parseUserJson(sheet.getRange(row, 3).getValue());
+  let changed = false;
   if (existingData.passwordResetRequestedAt) {
     delete existingData.passwordResetRequestedAt;
+    changed = true;
+  }
+  if (existingData.failedLoginCount) {
+    delete existingData.failedLoginCount;
+    changed = true;
+  }
+  if (existingData.lockedAt) {
+    delete existingData.lockedAt;
+    changed = true;
+  }
+  if (changed) {
     sheet.getRange(row, 3).setValue(JSON.stringify(existingData));
   }
 

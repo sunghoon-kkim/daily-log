@@ -4527,10 +4527,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             try {
                 const passwordHash = await sha256Hex(password + ':' + employeeId);
-                // action=login이 아니라 action=load로 인증함: 등록된 사번+비밀번호가 정확히
-                // 일치할 때만 통과되고, 없는 사번을 입력하면 그 자리에서 계정이 만들어지지
-                // 않고 "등록되지 않은 사번입니다"로 거부됨 (회원가입을 먼저 해야만 로그인 가능)
-                const url = GOOGLE_APPS_SCRIPT_URL + '?action=load'
+                // 로그인 전용 경로(action=login)로 인증함: 등록된 사번+비밀번호가 정확히 일치할
+                // 때만 통과되고, 없는 사번을 입력하면 "등록되지 않은 사번입니다"로 거부됨(회원가입을
+                // 먼저 해야만 로그인 가능). 로그인 실패 5회 시 계정이 잠기는 카운트도 이 경로에서만
+                // 셈 - 로그인 이후 자동저장 등에서 반복 전송되는 요청(action=load 등)에는 이 카운트가
+                // 붙지 않으므로, 관리자가 비밀번호를 초기화해도 옛 해시로 인한 자동 재잠김이 없음
+                const url = GOOGLE_APPS_SCRIPT_URL + '?action=login'
                     + '&employeeId=' + encodeURIComponent(employeeId)
                     + '&passwordHash=' + encodeURIComponent(passwordHash)
                     + '&_=' + Date.now(); // 브라우저가 동일한 GET 요청 결과를 캐시해 예전 응답(예: "등록되지 않은 사번")을 계속 보여주는 걸 막기 위한 캐시버스터
@@ -4541,7 +4543,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     currentEmployeeId = employeeId;
                     currentPasswordHash = passwordHash;
                     editUnlocked = true;
-                    isAdmin = !!result.isAdmin; // 서버(action=load)가 판별해서 내려준 값. 프론트는 더 이상 사번으로 직접 판단하지 않음
+                    isAdmin = !!result.isAdmin; // 서버(action=login)가 판별해서 내려준 값. 프론트는 더 이상 사번으로 직접 판단하지 않음
 
                     closeLoginModal();
                     applyEditLockUI();
@@ -4551,7 +4553,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     } else {
                         // 로그인에 성공한 지금에서야 처음으로 홈페이지 내용을 그림(아직 안 그려졌다면).
                         // 로그인 전에 화면/캐시에 있던 데이터는 이 계정 것이 아닐 수 있으므로,
-                        // 방금 로그인 확인(action=load)에서 이미 받아온 이 계정의 데이터로 덮어씀
+                        // 방금 로그인 확인(action=login)에서 이미 받아온 이 계정의 데이터로 덮어씀
                         // (여기서 서버를 또 호출하면 느린 GAS 왕복을 로그인마다 불필요하게 두 번 하게 됨)
                         await initAppUI();
                         await loadAllFromServer(result);
@@ -4898,7 +4900,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             tbody.innerHTML = list.map(u => `
                 <tr>
-                    <td>${u.disabled ? '🚫 ' : ''}${escapeHtml(u.employeeId)}</td>
+                    <td>${u.disabled ? '🚫 ' : ''}${u.locked ? '🔒 ' : ''}${escapeHtml(u.employeeId)}</td>
                     <td>${u.isTeamLead ? '👔 ' : ''}${escapeHtml(u.name)}</td>
                     <td>${escapeHtml(u.department)}</td>
                     <td>${u.recordCount}</td>
