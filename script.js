@@ -4968,7 +4968,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 alert('관리자 계정 자신은 삭제할 수 없습니다.');
                 return;
             }
-            const targetName = target ? target.name : '';
+            // 승인 대기 목록의 "거절" 버튼도 이 함수를 그대로 재사용하는데, 그 계정은
+            // adminUserList가 아니라 adminPendingList에 있으므로 거기서도 이름을 찾아봄
+            const pendingTarget = adminPendingList.find(u => u.employeeId === targetEmployeeId);
+            const targetName = target ? target.name : (pendingTarget ? pendingTarget.name : '');
             confirmModal(`${targetName || targetEmployeeId}(${targetEmployeeId}) 계정을 삭제할까요?\n휴지통으로 이동되며, 7일 안에는 복구할 수 있고 그 이후 자동으로 완전히 삭제됩니다.`, async () => {
                 const statusEl = document.getElementById('adminStatus');
                 statusEl.textContent = '☁️ 휴지통으로 옮기는 중...';
