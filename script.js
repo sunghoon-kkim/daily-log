@@ -321,6 +321,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             applyThemeButtonLabel(); // <head>의 조기 스크립트가 이미 dark-mode 클래스를 적용해뒀으므로 버튼 표시만 맞춰줌
             setupGlobalEditLockInterceptor();
             setupModalDismissHandlers();
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('.admin-more-wrap')) closeAllAdminMoreMenus();
+            });
             loadTeamReportParts(); // 회원가입 모달의 소속(파트) 선택지를 채우기 위해 로그인 전에도 불러옴
 
             // 홈페이지에 접속하면 항상 로그아웃 상태로 시작: 로그인 모달만 띄워두고 홈페이지
@@ -5080,8 +5083,17 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         function enterAdminMode() {
             document.body.classList.add('admin-mode');
+            switchAdminSubTab('parts'); // 로그인할 때마다 항상 첫 번째 탭(파트&조직도관리)부터 보여줌
             loadAdminUserList();
             loadTeamReportParts();
+        }
+
+        // 관리자 화면 안의 "파트&조직도관리" / "계정관리" 서브탭 전환
+        function switchAdminSubTab(name) {
+            ['parts', 'accounts'].forEach(key => {
+                document.getElementById('adminSubPanel-' + key).style.display = (key === name) ? 'block' : 'none';
+                document.getElementById('adminSubTabBtn-' + key).classList.toggle('active', key === name);
+            });
         }
 
         async function loadAdminUserList() {
@@ -5653,14 +5665,33 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     ` : '<span style="color:#999;">미입력</span>'}</td>
                     <td>${escapeHtml(u.lastSaved)}</td>
                     <td class="admin-actions-cell">${u.isAdmin ? '<span style="color:#999;">관리자 계정</span>' : `
-                        <button class="admin-action-btn" onclick="openAdminEditUserModal('${u.employeeId}')">✏️ 정보수정</button>
-                        <button class="admin-action-btn" onclick="openAdminFeatureModal('${u.employeeId}')">🔧 기능 설정</button>
-                        <button class="admin-action-btn${u.passwordResetRequestedAt ? ' danger' : ''}" onclick="adminResetPassword('${u.employeeId}')">🔑 비밀번호 초기화${u.passwordResetRequestedAt ? ' 🔴요청됨' : ''}</button>
-                        <button class="admin-action-btn${u.disabled ? '' : ' danger'}" onclick="adminToggleUserDisabled('${u.employeeId}', ${u.disabled ? 'false' : 'true'})">${u.disabled ? '✅ 활성화' : '🚫 비활성화'}</button>
-                        <button class="admin-action-btn danger" onclick="adminDeleteUser('${u.employeeId}')">🗑️ 삭제</button>`}
+                        <div class="admin-more-wrap">
+                            <button type="button" class="admin-more-btn" title="관리 메뉴" onclick="toggleAdminMoreMenu(event, '${u.employeeId}')">⋮${u.passwordResetRequestedAt ? '🔴' : ''}</button>
+                            <div class="admin-more-menu" id="adminMoreMenu-${u.employeeId}">
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminEditUserModal('${u.employeeId}')">✏️ 정보수정</button>
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminFeatureModal('${u.employeeId}')">🔧 기능 설정</button>
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminResetPassword('${u.employeeId}')">🔑 비밀번호 초기화${u.passwordResetRequestedAt ? ' 🔴요청됨' : ''}</button>
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminToggleUserDisabled('${u.employeeId}', ${u.disabled ? 'false' : 'true'})">${u.disabled ? '✅ 활성화' : '🚫 비활성화'}</button>
+                                <button type="button" class="admin-menu-item danger" onclick="closeAllAdminMoreMenus(); adminDeleteUser('${u.employeeId}')">🗑️ 삭제</button>
+                            </div>
+                        </div>`}
                     </td>
                 </tr>
             `).join('');
+        }
+
+        // 계정 관리 표의 "⋮" 관리 메뉴를 열고 닫음 (한 번에 하나만 열려있도록 나머지는 먼저 닫음)
+        function toggleAdminMoreMenu(event, employeeId) {
+            event.stopPropagation();
+            const menu = document.getElementById('adminMoreMenu-' + employeeId);
+            if (!menu) return;
+            const willOpen = !menu.classList.contains('open');
+            closeAllAdminMoreMenus();
+            if (willOpen) menu.classList.add('open');
+        }
+
+        function closeAllAdminMoreMenus() {
+            document.querySelectorAll('.admin-more-menu.open').forEach(m => m.classList.remove('open'));
         }
 
         // 관리자 화면 표에서 팀 보고 역할을 이름 앞에 짧게 표시하는 아이콘

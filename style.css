@@ -186,6 +186,35 @@ html {
             min-height: 600px;
         }
 
+        /* 관리자 화면 안에서 "파트&조직도관리" / "계정관리"를 나누는 작은 탭 */
+        .admin-subtabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .admin-subtab {
+            padding: 10px 18px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 14px;
+            color: #888;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .admin-subtab:hover {
+            color: #667eea;
+        }
+
+        .admin-subtab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
         .admin-table-scroll {
             overflow-x: auto;
             margin-top: 15px;
@@ -230,6 +259,77 @@ html {
             gap: 8px;
             justify-content: center;
             flex-wrap: wrap;
+        }
+
+        /* 계정 관리 표의 "관리" 열: 버튼 5개를 나열하면 줄바꿈되어 번잡해 보이므로,
+           점3개(⋮) 버튼 하나로 모으고 눌렀을 때만 메뉴로 펼쳐 보여줌 */
+        .admin-more-wrap {
+            position: relative;
+            display: inline-block;
+        }
+
+        .admin-more-btn {
+            width: 34px;
+            height: 34px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .admin-more-btn:hover {
+            background: #f2f3fb;
+        }
+
+        .admin-more-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(45, 55, 90, 0.18);
+            min-width: 180px;
+            padding: 6px;
+            z-index: 20;
+            text-align: left;
+        }
+
+        .admin-more-menu.open {
+            display: block;
+        }
+
+        .admin-menu-item {
+            display: block;
+            width: 100%;
+            padding: 9px 10px;
+            border: none;
+            background: none;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #444;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .admin-menu-item:hover {
+            background: #f2f3fb;
+            color: #667eea;
+        }
+
+        .admin-menu-item.danger {
+            color: #ee5253;
+        }
+
+        .admin-menu-item.danger:hover {
+            background: #fdeceb;
         }
 
         /* ===== 관리자 조직도 (드래그앤드롭 역할/파트 배정) ===== */
@@ -384,10 +484,9 @@ html {
             color: #999;
         }
 
-        /* 가입일 컬럼을 없앤 만큼, 버튼이 제일 많은 관리 컬럼이 그 너비를 가져가게 함 */
         .admin-user-table td.admin-actions-cell,
         .admin-user-table th.admin-actions-th {
-            min-width: 340px;
+            min-width: 60px;
         }
 
         .admin-action-btn {
@@ -3023,6 +3122,31 @@ html {
 }
 
 .dark-mode .admin-action-btn {
+    background: var(--d-bg2);
+}
+
+.dark-mode .admin-subtabs {
+    border-bottom-color: var(--d-border);
+}
+
+.dark-mode .admin-subtab {
+    color: var(--d-text3);
+}
+
+.dark-mode .admin-more-btn {
+    background: var(--d-bg2);
+}
+
+.dark-mode .admin-more-menu {
+    background: var(--d-bg1);
+    border-color: var(--d-border);
+}
+
+.dark-mode .admin-menu-item {
+    color: var(--d-text1);
+}
+
+.dark-mode .admin-menu-item:hover {
     background: var(--d-bg2);
 }
 
