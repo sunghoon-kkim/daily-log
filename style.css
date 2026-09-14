@@ -1673,12 +1673,19 @@ html {
             align-self: center;
         }
 
-        /* 나의 제출 내역: 평소엔 날짜/제출 대상만 보이는 박스, 클릭하면 상세 내용이 펼쳐짐 */
+        /* 나의 제출 내역: 한 줄에 3개씩 카드로 배치 (좁은 화면에서는 2개→1개로 줄어듦) */
+        .team-report-history-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            align-items: start;
+        }
+
+        /* 평소엔 날짜/제출 대상만 보이는 박스, 클릭하면 상세 내용이 펼쳐짐 */
         .team-report-history-item {
             background: white;
             border: 1px solid #e0e0e0;
             border-radius: 10px;
-            margin-bottom: 10px;
             overflow: hidden;
         }
 
@@ -2816,10 +2823,18 @@ html {
             .main-content {
                 grid-template-columns: 1fr;
             }
+
+            .team-report-history-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
-        
+
         @media (max-width: 768px) {
             .org-chart-parts-row {
+                grid-template-columns: 1fr;
+            }
+
+            .team-report-history-grid {
                 grid-template-columns: 1fr;
             }
 

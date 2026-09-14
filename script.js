@@ -1338,14 +1338,23 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         // 항목이 늘어날수록 내용이 줄줄이 쌓여 보이지 않도록, 평소엔 날짜/제출 대상만 보이는
-        // 박스로 접어두고 클릭했을 때만 상세 내용(한 일/할 일)을 펼쳐서 보여줌
+        // 박스로 접어두고 클릭했을 때만 상세 내용(한 일/할 일)을 펼쳐서 보여줌 (한 줄에 3개씩 카드로 배치됨)
         function renderMyTeamReportHistoryList() {
             const listEl = document.getElementById('myTeamReportHistoryList');
             if (!listEl) return;
 
-            const items = myTeamReportHistoryItems;
-            if (items.length === 0) {
+            if (myTeamReportHistoryItems.length === 0) {
                 listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">아직 제출한 보고가 없습니다.</p>';
+                return;
+            }
+
+            const monthFilter = (document.getElementById('myTeamReportHistoryMonthFilter') || {}).value || '';
+            const items = monthFilter
+                ? myTeamReportHistoryItems.filter(item => (item.weekStart || '').slice(0, 7) === monthFilter)
+                : myTeamReportHistoryItems;
+
+            if (items.length === 0) {
+                listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">이 달에 제출한 보고가 없습니다.</p>';
                 return;
             }
 
@@ -1379,6 +1388,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function toggleTeamReportHistoryItem(weekStart) {
             if (expandedTeamReportHistoryWeeks.has(weekStart)) expandedTeamReportHistoryWeeks.delete(weekStart);
             else expandedTeamReportHistoryWeeks.add(weekStart);
+            renderMyTeamReportHistoryList();
+        }
+
+        function clearMyTeamReportHistoryMonthFilter() {
+            const input = document.getElementById('myTeamReportHistoryMonthFilter');
+            if (input) input.value = '';
             renderMyTeamReportHistoryList();
         }
 
