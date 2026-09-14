@@ -936,20 +936,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (el) el.textContent = getTeamReportWeekLabel(teamReportCurrentWeekStart);
 
             const thisMonday = formatDate(getMondayOfWeek(new Date()));
-            const weekToBtnId = {};
-            weekToBtnId[addDaysToDateStr(thisMonday, -7)] = 'teamReportWeekBtnPrev';
-            weekToBtnId[thisMonday] = 'teamReportWeekBtnCurrent';
-            weekToBtnId[addDaysToDateStr(thisMonday, 7)] = 'teamReportWeekBtnNext';
-
-            ['teamReportWeekBtnPrev', 'teamReportWeekBtnCurrent', 'teamReportWeekBtnNext'].forEach(id => {
-                const btn = document.getElementById(id);
-                if (btn) btn.classList.remove('selected');
-            });
-            const activeBtnId = weekToBtnId[teamReportCurrentWeekStart];
-            if (activeBtnId) {
-                const btn = document.getElementById(activeBtnId);
-                if (btn) btn.classList.add('selected');
-            }
+            const currentBtn = document.getElementById('teamReportWeekBtnCurrent');
+            if (currentBtn) currentBtn.classList.toggle('selected', teamReportCurrentWeekStart === thisMonday);
         }
 
         // skipAutoLoad: fillTeamReportWithDailySummary처럼 호출하는 쪽에서 직접 loadTeamReportForWeek를
@@ -1044,10 +1032,15 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             label.textContent = names.join(', ');
         }
 
-        // 저번주/이번주/다음주 버튼: 지금 보고 있는 주가 아니라 실제 오늘 기준 주에서 ±1주로 이동함
+        // ◀ 이전주 / 다음주 ▶ 버튼: 지금 보고 있는 주 기준으로 한 주씩 계속 이동해서, 몇 주 전이든
+        // 몇 주 후든 자유롭게 오갈 수 있음
         function jumpTeamReportWeek(offsetWeeks) {
-            const thisMonday = formatDate(getMondayOfWeek(new Date()));
-            loadTeamReportForWeek(addDaysToDateStr(thisMonday, offsetWeeks * 7));
+            loadTeamReportForWeek(addDaysToDateStr(teamReportCurrentWeekStart, offsetWeeks * 7));
+        }
+
+        // "이번주로" 버튼: 지금 보고 있는 주와 무관하게 실제 오늘이 속한 주로 바로 돌아감
+        function jumpTeamReportWeekToToday() {
+            loadTeamReportForWeek(formatDate(getMondayOfWeek(new Date())));
         }
 
         // 한 줄(카테고리/날짜/내용)을 이번주 한 일 / 다음주 할 일 목록에 추가하고 화면에 그림
@@ -1305,6 +1298,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         // [팀 보고] 탭에서 "내가 언제, 누구에게, 뭘 제출했는지" 본인 제출 이력을 최신순으로 보여줌
+        let myTeamReportHistoryItems = []; // 마지막으로 불러온 목록 (펼치기/접기 시 재요청 없이 다시 그리기 위해 캐시)
+        let expandedTeamReportHistoryWeeks = new Set(); // 지금 펼쳐져 있는 항목의 weekStart 목록
+
         async function loadMyTeamReportHistory() {
             const statusEl = document.getElementById('myTeamReportHistoryStatus');
             const listEl = document.getElementById('myTeamReportHistoryList');
@@ -1326,28 +1322,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    const items = Array.isArray(data.items) ? data.items : [];
+                    myTeamReportHistoryItems = Array.isArray(data.items) ? data.items : [];
                     statusEl.textContent = '';
                     statusEl.className = 'ai-status';
-
-                    if (items.length === 0) {
-                        listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">아직 제출한 보고가 없습니다.</p>';
-                    } else {
-                        listEl.innerHTML = items.map(item => {
-                            const targetLabel = (item.targetNames && item.targetNames.length) ? item.targetNames.join(', ') : '-';
-                            return `
-                            <div class="result-item" style="margin-bottom:10px;">
-                                <div style="font-weight:600; margin-bottom:6px;">${escapeHtml(getTeamReportWeekLabel(item.weekStart))} → ${escapeHtml(targetLabel)}님</div>
-                                ${renderTeamReportItemsHtml('✅ 이번주 한 일', item.thisWeek)}
-                                ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-                                    <span style="color:#999; font-size:12px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</span>
-                                    <button type="button" class="admin-action-btn danger" onclick="deleteMyTeamReport('${item.weekStart}')">🗑️ 삭제</button>
-                                </div>
-                            </div>
-                        `;
-                        }).join('');
-                    }
+                    renderMyTeamReportHistoryList();
                 } else {
                     statusEl.textContent = '⚠️ ' + (data.message || '불러오기에 실패했습니다');
                     statusEl.className = 'ai-status error';
@@ -1357,6 +1335,51 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
+        }
+
+        // 항목이 늘어날수록 내용이 줄줄이 쌓여 보이지 않도록, 평소엔 날짜/제출 대상만 보이는
+        // 박스로 접어두고 클릭했을 때만 상세 내용(한 일/할 일)을 펼쳐서 보여줌
+        function renderMyTeamReportHistoryList() {
+            const listEl = document.getElementById('myTeamReportHistoryList');
+            if (!listEl) return;
+
+            const items = myTeamReportHistoryItems;
+            if (items.length === 0) {
+                listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">아직 제출한 보고가 없습니다.</p>';
+                return;
+            }
+
+            listEl.innerHTML = items.map(item => {
+                const targetLabel = (item.targetNames && item.targetNames.length) ? item.targetNames.join(', ') : '-';
+                const isOpen = expandedTeamReportHistoryWeeks.has(item.weekStart);
+                return `
+                <div class="team-report-history-item${isOpen ? ' open' : ''}">
+                    <div class="team-report-history-summary" onclick="toggleTeamReportHistoryItem('${item.weekStart}')">
+                        <div>
+                            <span class="team-report-history-week">${escapeHtml(getTeamReportWeekLabel(item.weekStart))}</span>
+                            <span class="team-report-history-target">→ ${escapeHtml(targetLabel)}님</span>
+                        </div>
+                        <span class="team-report-history-caret">${isOpen ? '▲' : '▼'}</span>
+                    </div>
+                    ${isOpen ? `
+                        <div class="team-report-history-details">
+                            ${renderTeamReportItemsHtml('✅ 이번주 한 일', item.thisWeek)}
+                            ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                                <span style="color:#999; font-size:12px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</span>
+                                <button type="button" class="admin-action-btn danger" onclick="event.stopPropagation(); deleteMyTeamReport('${item.weekStart}')">🗑️ 삭제</button>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            }).join('');
+        }
+
+        function toggleTeamReportHistoryItem(weekStart) {
+            if (expandedTeamReportHistoryWeeks.has(weekStart)) expandedTeamReportHistoryWeeks.delete(weekStart);
+            else expandedTeamReportHistoryWeeks.add(weekStart);
+            renderMyTeamReportHistoryList();
         }
 
         // "내 제출 내역"에서 실수로 제출한 건을 본인이 직접 지움 (브라우저 기본 confirm() 대신 앱 모달로 확인받음)

@@ -1673,6 +1673,53 @@ html {
             align-self: center;
         }
 
+        /* 나의 제출 내역: 평소엔 날짜/제출 대상만 보이는 박스, 클릭하면 상세 내용이 펼쳐짐 */
+        .team-report-history-item {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .team-report-history-summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 13px 15px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .team-report-history-summary:hover {
+            background: #f8f9ff;
+        }
+
+        .team-report-history-week {
+            font-weight: 700;
+            color: #333;
+        }
+
+        .team-report-history-target {
+            color: #667eea;
+            font-weight: 600;
+            margin-left: 6px;
+            font-size: 13.5px;
+        }
+
+        .team-report-history-caret {
+            color: #999;
+            font-size: 12px;
+            flex: 0 0 auto;
+        }
+
+        .team-report-history-details {
+            padding: 0 15px 13px;
+            border-top: 1px solid #f0f0f0;
+            padding-top: 10px;
+        }
+
         .result-item.clickable {
             cursor: pointer;
             transition: all 0.2s;
@@ -3104,11 +3151,24 @@ html {
 .dark-mode .category-tag,
 .dark-mode .hidden-category-chip,
 .dark-mode .result-item,
+.dark-mode .team-report-history-item,
 .dark-mode #adminPanel,
 .dark-mode .day {
     background: var(--d-bg1);
     border-color: var(--d-border);
     color: var(--d-text1);
+}
+
+.dark-mode .team-report-history-summary:hover {
+    background: var(--d-bg2);
+}
+
+.dark-mode .team-report-history-week {
+    color: var(--d-text1);
+}
+
+.dark-mode .team-report-history-details {
+    border-top-color: var(--d-border);
 }
 
 .dark-mode .admin-user-table th {
