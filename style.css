@@ -2187,7 +2187,15 @@ html {
         .notes-save-indicator.show {
             opacity: 1;
         }
-        
+
+        /* 팀 보고의 제출완료 표시는 저장 순간에 반짝했다 사라지는 게 아니라, 제출된 주에
+           계속 남아있어야 하는 배지라 .show 클래스를 붙이지 않고 display로만 여닫음 -
+           그래서 공용 클래스의 기본 opacity:0을 여기서만 무시하게 함 */
+        #teamReportSubmittedIndicator {
+            opacity: 1;
+        }
+
+
         .notes-textarea {
             width: 100%;
             min-height: 500px;
@@ -3236,6 +3244,16 @@ html {
     border-top-color: var(--d-border);
 }
 
+.dark-mode .team-report-section h4 {
+    color: var(--d-text1);
+}
+
+/* 정비계획 카드의 "예정월" 중 아직 남은 달은 진하게 강조하려고 어두운 글자색을 쓰는데,
+   다크모드 카드 배경(어두운 남색)에서는 그대로 두면 거의 안 보임 */
+.dark-mode .month-chip.month-future {
+    color: var(--d-text1);
+}
+
 .dark-mode .admin-user-table th {
     background: var(--d-bg2);
     color: var(--d-text1);
@@ -3367,10 +3385,13 @@ html {
 .dark-mode [style*="color: #666"],
 .dark-mode [style*="color:#666"],
 .dark-mode [style*="color: #333"],
+.dark-mode [style*="color:#333"],
 .dark-mode [style*="color: #999"],
 .dark-mode [style*="color:#999"],
 .dark-mode [style*="color: #555"],
-.dark-mode [style*="color: #444"] {
+.dark-mode [style*="color:#555"],
+.dark-mode [style*="color: #444"],
+.dark-mode [style*="color:#444"] {
     color: var(--d-text1) !important;
 }
 
