@@ -446,14 +446,22 @@ function buildTeamReportCandidateList(usersSheet, excludeEmployeeId) {
   return list;
 }
 
-// 후보 목록을 "제출하는 사람의 역할"에 맞게 좁혀줌: 팀원은 파트장에게만, 파트장은 팀장에게만
-// 제출할 수 있음. 팀장이거나 역할이 아직 지정되지 않은 계정은 제한 없이 전체 후보를 그대로 씀.
-// 계층상 맞는 역할의 후보가 한 명도 없으면(관리자가 아직 다 지정하기 전) 기능이 완전히 막히지
-// 않도록 전체 후보로 다시 풀어줌
+// "제출하는 사람의 역할"에서 제출 대상으로 고를 수 있는 역할 목록을 돌려줌. 팀원은 파트장과
+// 팀장 둘 다, 파트장은 팀장만 고를 수 있음. 팀장이거나 역할이 아직 지정되지 않은 계정은 null을
+// 돌려줘서 제한 없음을 나타냄
+function getAllowedTeamReportTargetRoles(myRole) {
+  if (myRole === 'member') return ['partLead', 'teamLead'];
+  if (myRole === 'partLead') return ['teamLead'];
+  return null;
+}
+
+// 후보 목록을 "제출하는 사람의 역할"에 맞게 좁혀줌 (getAllowedTeamReportTargetRoles 참고).
+// 제한이 없으면(팀장/미지정) 전체 후보를 그대로 씀. 제한이 있는데 해당하는 후보가 한 명도
+// 없으면(관리자가 아직 다 지정하기 전) 기능이 완전히 막히지 않도록 전체 후보로 다시 풀어줌
 function filterTeamReportTargetsByRole(candidates, myRole) {
-  const requiredTargetRole = myRole === 'member' ? 'partLead' : (myRole === 'partLead' ? 'teamLead' : '');
-  if (!requiredTargetRole) return candidates;
-  const matched = candidates.filter(function(m) { return m.role === requiredTargetRole; });
+  const allowedRoles = getAllowedTeamReportTargetRoles(myRole);
+  if (!allowedRoles) return candidates;
+  const matched = candidates.filter(function(m) { return allowedRoles.indexOf(m.role) !== -1; });
   return matched.length > 0 ? matched : candidates;
 }
 
@@ -1141,7 +1149,7 @@ function handleAdminSetUserDisabled(data) {
   return jsonResponse({ status: "success" });
 }
 
-// 관리자 화면: 팀 보고 계층에서의 역할(팀원/파트장/팀장) 지정. 팀원이 제출할 때는 파트장 중에서만,
+// 관리자 화면: 팀 보고 계층에서의 역할(팀원/파트장/팀장) 지정. 팀원이 제출할 때는 파트장·팀장 중에서,
 // 파트장이 제출할 때는 팀장 중에서만 제출 대상을 고를 수 있게 되는 기준이 되는 값 (role이 빈 문자열이면 미지정으로 되돌림)
 function handleAdminSetTeamReportRole(data) {
   if (!verifyAdmin(data)) return adminAuthFailedResponse();
@@ -1554,7 +1562,7 @@ function buildUserInfoMap(usersSheet) {
 
 // 팀 보고 제출(주간): 개인 카테고리 기록(records)과는 완전히 별개인 필드라 여기서만 다룸.
 // 같은 주(주시작일=월요일)에 재제출하면 그 주 보고 내용을 덮어씀(갱신). 제출 대상은 여러 명을
-// 고를 수 있고, 팀원은 파트장 중에서만·파트장은 팀장 중에서만 고를 수 있는지 서버에서도 다시 검증함
+// 고를 수 있고, 팀원은 파트장·팀장 중에서·파트장은 팀장 중에서만 고를 수 있는지 서버에서도 다시 검증함
 // (프론트가 대상 목록을 필터링해 보여주더라도, 요청을 직접 조작해 보내는 것까지 막기 위함)
 function handleSubmitTeamWeeklyReport(data) {
   const usersSheet = getUsersSheet();
@@ -1796,16 +1804,17 @@ function handleGetTeamReportMemberList(data) {
 
   const myProfile = parseUserJson(usersSheet.getRange(auth.row, 3).getValue());
   const myRole = getEffectiveTeamReportRole(myProfile);
-  const isRestricted = myRole === 'member' || myRole === 'partLead';
 
   const allCandidates = buildTeamReportCandidateList(usersSheet, auth.employeeId);
   const members = filterTeamReportTargetsByRole(allCandidates, myRole).slice();
 
+  // 후보 목록에 역할이 섞여 있을 수 있으므로(예: 팀원 계정엔 파트장+팀장이 함께 내려옴)
+  // 팀장 -> 파트장 -> 팀원 순으로 먼저 묶고, 같은 역할 안에서는 이름순으로 정렬함
+  const ROLE_SORT_PRIORITY = { teamLead: 0, partLead: 1, member: 2 };
   members.sort(function(a, b) {
-    // 대상이 제한되지 않은 경우(팀장/미지정)엔 팀장이 먼저 보이도록, 그 외엔 이름순
-    if (!isRestricted && (a.role === 'teamLead') !== (b.role === 'teamLead')) {
-      return a.role === 'teamLead' ? -1 : 1;
-    }
+    const pa = ROLE_SORT_PRIORITY[a.role] !== undefined ? ROLE_SORT_PRIORITY[a.role] : 3;
+    const pb = ROLE_SORT_PRIORITY[b.role] !== undefined ? ROLE_SORT_PRIORITY[b.role] : 3;
+    if (pa !== pb) return pa - pb;
     return String(a.name).localeCompare(String(b.name), 'ko');
   });
 

@@ -963,7 +963,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             loadTeamReportPendingStatus();
         }
 
-        // [팀 보고] "제출 대상" 후보 목록을 불러옴. 내가 팀원이면 파트장만, 파트장이면 팀장만 후보로
+        // [팀 보고] "제출 대상" 후보 목록을 불러옴. 내가 팀원이면 파트장+팀장, 파트장이면 팀장만 후보로
         // 내려오고(서버 쪽 규칙, filterTeamReportTargetsByRole 참고), 팀장/미지정이면 전체 인원이 내려옴
         async function loadTeamReportMemberList() {
             try {
