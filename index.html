@@ -142,15 +142,23 @@
             
             <div class="query-container" style="margin-top: 20px;" data-feature="periodQuery">
                 <h3 style="margin-bottom: 20px;">🔍 기간별 카테고리 조회</h3>
-                
+
+                <div class="quick-preset-row" id="periodQueryPresetRow" style="margin-bottom:12px;">
+                    <button type="button" class="quick-preset-btn" data-preset="오늘" onclick="applyPeriodQueryPreset('오늘')">오늘</button>
+                    <button type="button" class="quick-preset-btn" data-preset="이번주" onclick="applyPeriodQueryPreset('이번주')">이번주</button>
+                    <button type="button" class="quick-preset-btn" data-preset="이번달" onclick="applyPeriodQueryPreset('이번달')">이번달</button>
+                    <button type="button" class="quick-preset-btn" data-preset="지난달" onclick="applyPeriodQueryPreset('지난달')">지난달</button>
+                    <button type="button" class="quick-preset-btn" data-preset="올해" onclick="applyPeriodQueryPreset('올해')">올해</button>
+                </div>
+
                 <div class="query-controls">
                     <div class="query-control-group" style="flex: 1;">
                         <label>시작일</label>
-                        <input type="date" id="startDate">
+                        <input type="date" id="startDate" onchange="clearPeriodQueryPresetSelection()">
                     </div>
                     <div class="query-control-group" style="flex: 1;">
                         <label>종료일</label>
-                        <input type="date" id="endDate">
+                        <input type="date" id="endDate" onchange="clearPeriodQueryPresetSelection()">
                     </div>
                     <button class="query-btn" onclick="updateDateRange()">검색</button>
                 </div>
@@ -376,7 +384,22 @@
                     <button class="add-category-btn" onclick="openProjectModal(null)">➕ 새 과제 추가</button>
                 </div>
                 <p style="color: #666; font-size: 14px; margin-bottom: 20px;">에너지 절감, 비용 절감 등 진행 중인 개선 과제를 등록하고 월별로 진행 내용을 기록해두세요. 나중에 월별 피드백이나 종합평가 작성할 때 실제 근거로 바로 활용할 수 있어요.</p>
-                
+
+                <div class="quick-preset-row" id="savingsStatusFilterRow" style="margin-bottom:8px;">
+                    <button type="button" class="quick-preset-btn selected" data-filter="전체" onclick="setSavingsStatusFilter('전체')">전체</button>
+                    <button type="button" class="quick-preset-btn" data-filter="계획중" onclick="setSavingsStatusFilter('계획중')">계획중</button>
+                    <button type="button" class="quick-preset-btn" data-filter="진행중" onclick="setSavingsStatusFilter('진행중')">진행중</button>
+                    <button type="button" class="quick-preset-btn" data-filter="완료" onclick="setSavingsStatusFilter('완료')">완료</button>
+                    <button type="button" class="quick-preset-btn" data-filter="보류" onclick="setSavingsStatusFilter('보류')">보류</button>
+                </div>
+                <div class="quick-preset-row" id="savingsCategoryFilterRow" style="margin-bottom:20px;">
+                    <button type="button" class="quick-preset-btn selected" data-filter="전체" onclick="setSavingsCategoryFilter('전체')">전체</button>
+                    <button type="button" class="quick-preset-btn" data-filter="에너지절감" onclick="setSavingsCategoryFilter('에너지절감')">에너지절감</button>
+                    <button type="button" class="quick-preset-btn" data-filter="비용절감" onclick="setSavingsCategoryFilter('비용절감')">비용절감</button>
+                    <button type="button" class="quick-preset-btn" data-filter="품질개선" onclick="setSavingsCategoryFilter('품질개선')">품질개선</button>
+                    <button type="button" class="quick-preset-btn" data-filter="기타" onclick="setSavingsCategoryFilter('기타')">기타</button>
+                </div>
+
                 <div id="projectsList"></div>
             </div>
         </div>
@@ -522,8 +545,13 @@
                 <h3>📥 나에게 온 보고</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">다른 팀원이 나를 제출 대상으로 지정해 제출한 주간 보고를 최신순으로 보여줍니다.</p>
                 <div id="teamReportPendingStatus" style="margin-bottom:12px;"></div>
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+                    <label style="font-weight:600; font-size:13px; color:#555;">월별 보기</label>
+                    <input type="month" id="teamReportInboxMonthFilter" class="category-input" style="max-width:160px;" onchange="renderTeamReportInboxList()">
+                    <button type="button" class="quick-preset-btn" onclick="clearTeamReportInboxMonthFilter()">전체보기</button>
+                </div>
                 <div class="ai-status" id="teamReportInboxStatus"></div>
-                <div id="teamReportInboxList"></div>
+                <div id="teamReportInboxList" class="team-report-history-grid"></div>
             </div>
         </div>
 
@@ -898,7 +926,20 @@
                 <label>실제 효과 (현재까지 달성한 부분, 없으면 비워두세요)</label>
                 <input type="text" id="projectActualInput" placeholder="실제 달성 수치나 효과">
             </div>
-            
+
+            <div id="projectMonthlySection" style="display:none;">
+                <div class="modal-field">
+                    <label>이번 달 진행 메모 (기록하면 덮어써지지 않고 날짜와 함께 쌓입니다)</label>
+                    <textarea id="projectMonthlyNoteInput" class="team-report-row-content" style="min-height:60px;" placeholder="이번 달 진행 내용을 적고 아래 버튼을 눌러주세요"></textarea>
+                    <button type="button" class="add-category-btn" style="margin-top:8px;" onclick="addProjectMonthlyLog()">📌 이번 달 기록으로 추가</button>
+                </div>
+
+                <div class="modal-field">
+                    <label>월별 진행 기록</label>
+                    <div id="projectMonthlyLogList" style="max-height:180px; overflow-y:auto;"></div>
+                </div>
+            </div>
+
             <div class="modal-buttons">
                 <button class="modal-btn modal-save-btn" onclick="saveProject()">💾 저장</button>
                 <button class="modal-btn modal-delete-btn" id="deleteProjectBtn" onclick="deleteProject()" style="display:none;">🗑️ 삭제</button>
@@ -1078,6 +1119,9 @@
             </div>
         </div>
     </div>
+
+    <!-- 입력값 검증 오류처럼 짧게 알리고 사라지면 되는 메시지용 공용 토스트 (브라우저 기본 alert() 대체) -->
+    <div id="appToast" class="app-toast" role="alert" aria-live="assertive"></div>
 
     <script src="script.js"></script>
 </body>

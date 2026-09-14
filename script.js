@@ -253,6 +253,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let editingMaintenanceId = null;
         let maintenanceStatusFilter = '전체'; // 정비계획 목록 상태 필터 (전체/예정/완료/보류). 화면 상태값이라 저장하지 않음
         let maintenanceViewMode = 'detail'; // 정비계획 목록 보기 모드 (detail: 자세히 보기, simple: 간단히 보기). 화면 상태값이라 저장하지 않음
+        let savingsStatusFilter = '전체'; // 개선/절감 과제 목록 상태 필터. 화면 상태값이라 저장하지 않음
+        let savingsCategoryFilter = '전체'; // 개선/절감 과제 목록 카테고리 필터. 화면 상태값이라 저장하지 않음
         
         // 로그인 성공(자동 로그인 또는 직접 로그인) 후에만 호출됨. 로그인되기 전까지는
         // 이 함수가 아예 실행되지 않으므로, 화면에는 로그인 모달 외에 아무 데이터도 그려지지 않음
@@ -1457,10 +1459,23 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         // [팀 보고] "나에게 온 보고": 내가 제출 대상으로 지정된 모든 팀원의 보고를 최신순으로 보여줌
+        let teamReportInboxItems = []; // 마지막으로 불러온 인박스 목록 (펼치기/필터 시 재요청 없이 다시 그리기 위해 캐시)
+        let expandedTeamReportInboxKeys = new Set(); // 지금 펼쳐져 있는 항목의 "사번_주시작일" 목록
+
+        function teamReportInboxItemKey(item) {
+            return item.employeeId + '_' + item.weekStart;
+        }
+
         async function loadTeamReportInbox() {
             const statusEl = document.getElementById('teamReportInboxStatus');
             const listEl = document.getElementById('teamReportInboxList');
             if (!statusEl || !listEl) return;
+
+            // 월별 필터를 아직 아무것도 고르지 않은 상태라면(=처음 열었을 때) 이번 달로 기본 설정해줌
+            const monthInput = document.getElementById('teamReportInboxMonthFilter');
+            if (monthInput && !monthInput.value) {
+                monthInput.value = formatDate(new Date()).slice(0, 7);
+            }
 
             statusEl.textContent = '☁️ 불러오는 중...';
             statusEl.className = 'ai-status';
@@ -1478,22 +1493,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    const items = Array.isArray(data.items) ? data.items : [];
-                    statusEl.textContent = `✅ 총 ${items.length}건`;
+                    teamReportInboxItems = Array.isArray(data.items) ? data.items : [];
+                    statusEl.textContent = `✅ 총 ${teamReportInboxItems.length}건`;
                     statusEl.className = 'ai-status success';
-
-                    if (items.length === 0) {
-                        listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">나에게 제출된 보고가 없습니다.</p>';
-                    } else {
-                        listEl.innerHTML = items.map(item => `
-                            <div class="result-item" style="margin-bottom:10px;">
-                                <div style="font-weight:600; margin-bottom:6px;">${escapeHtml(item.name || item.employeeId)} <span style="color:#999; font-weight:400; font-size:12px;">(${escapeHtml(item.department || '')} · ${escapeHtml(item.employeeId)})</span> · ${escapeHtml(getTeamReportWeekLabel(item.weekStart))}</div>
-                                ${renderTeamReportItemsHtml('✅ 이번주 한 일', item.thisWeek)}
-                                ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
-                                <div style="color:#999; font-size:12px; margin-top:4px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</div>
-                            </div>
-                        `).join('');
-                    }
+                    renderTeamReportInboxList();
                 } else {
                     statusEl.textContent = '⚠️ ' + (data.message || '불러오기에 실패했습니다');
                     statusEl.className = 'ai-status error';
@@ -1503,6 +1506,64 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
+        }
+
+        // 인원이 많은 팀장일수록 목록이 길어지므로, "나의 제출 내역"과 같은 방식으로 카드를
+        // 접어두고(날짜/제출자만 표시) 클릭했을 때만 상세 내용을 펼쳐서 보여줌
+        function renderTeamReportInboxList() {
+            const listEl = document.getElementById('teamReportInboxList');
+            if (!listEl) return;
+
+            if (teamReportInboxItems.length === 0) {
+                listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">나에게 제출된 보고가 없습니다.</p>';
+                return;
+            }
+
+            const monthFilter = (document.getElementById('teamReportInboxMonthFilter') || {}).value || '';
+            const items = monthFilter
+                ? teamReportInboxItems.filter(item => (item.weekStart || '').slice(0, 7) === monthFilter)
+                : teamReportInboxItems;
+
+            if (items.length === 0) {
+                listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">이 달에 제출된 보고가 없습니다.</p>';
+                return;
+            }
+
+            listEl.innerHTML = items.map(item => {
+                const key = teamReportInboxItemKey(item);
+                const isOpen = expandedTeamReportInboxKeys.has(key);
+                return `
+                <div class="team-report-history-item${isOpen ? ' open' : ''}">
+                    <div class="team-report-history-summary" onclick="toggleTeamReportInboxItem('${key}')">
+                        <div>
+                            <span class="team-report-history-week">${escapeHtml(item.name || item.employeeId)}</span>
+                            <span class="team-report-history-target">${escapeHtml(getTeamReportWeekLabel(item.weekStart))}</span>
+                        </div>
+                        <span class="team-report-history-caret">${isOpen ? '▲' : '▼'}</span>
+                    </div>
+                    ${isOpen ? `
+                        <div class="team-report-history-details">
+                            <div style="color:#999; font-size:12px; margin-bottom:6px;">${escapeHtml(item.department || '')} · ${escapeHtml(item.employeeId)}</div>
+                            ${renderTeamReportItemsHtml('✅ 이번주 한 일', item.thisWeek)}
+                            ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
+                            <div style="color:#999; font-size:12px; margin-top:4px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            }).join('');
+        }
+
+        function toggleTeamReportInboxItem(key) {
+            if (expandedTeamReportInboxKeys.has(key)) expandedTeamReportInboxKeys.delete(key);
+            else expandedTeamReportInboxKeys.add(key);
+            renderTeamReportInboxList();
+        }
+
+        function clearTeamReportInboxMonthFilter() {
+            const input = document.getElementById('teamReportInboxMonthFilter');
+            if (input) input.value = '';
+            renderTeamReportInboxList();
         }
 
         // [팀 보고] 미제출 알림: 나보다 한 단계 아래 역할(팀장→파트장, 파트장→팀원) 사람들 중
@@ -1696,8 +1757,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const input = document.getElementById('newCategoryInput');
             const name = input.value.trim();
             
-            if (!name) { alert('카테고리 이름을 입력해주세요'); return; }
-            if (categories.includes(name)) { alert('이미 존재하는 카테고리입니다'); return; }
+            if (!name) { showAppToast('카테고리 이름을 입력해주세요'); return; }
+            if (categories.includes(name)) { showAppToast('이미 존재하는 카테고리입니다'); return; }
             
             categories.push(name);
             categoryColors[name] = COLOR_PALETTE[categories.length % COLOR_PALETTE.length];
@@ -1763,9 +1824,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (input === null) return; // 취소
 
             const newName = input.trim();
-            if (!newName) { alert('카테고리 이름을 입력해주세요'); return; }
+            if (!newName) { showAppToast('카테고리 이름을 입력해주세요'); return; }
             if (newName === oldName) return;
-            if (categories.includes(newName)) { alert('이미 존재하는 카테고리입니다'); return; }
+            if (categories.includes(newName)) { showAppToast('이미 존재하는 카테고리입니다'); return; }
 
             const idx = categories.indexOf(oldName);
             if (idx === -1) return;
@@ -1871,6 +1932,46 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         
         function updateDateRange() {
             queryRecords();
+        }
+
+        // 기간별 카테고리 조회: 매번 시작일/종료일을 손으로 고르지 않아도 되도록 자주 쓰는
+        // 기간을 버튼 하나로 바로 채워줌
+        function applyPeriodQueryPreset(preset) {
+            const today = new Date();
+            let start, end;
+
+            if (preset === '오늘') {
+                start = end = today;
+            } else if (preset === '이번주') {
+                start = getMondayOfWeek(today);
+                end = new Date(start);
+                end.setDate(end.getDate() + 6);
+            } else if (preset === '이번달') {
+                start = new Date(today.getFullYear(), today.getMonth(), 1);
+                end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            } else if (preset === '지난달') {
+                start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                end = new Date(today.getFullYear(), today.getMonth(), 0);
+            } else if (preset === '올해') {
+                start = new Date(today.getFullYear(), 0, 1);
+                end = new Date(today.getFullYear(), 11, 31);
+            } else {
+                return;
+            }
+
+            document.getElementById('startDate').value = formatDate(start);
+            document.getElementById('endDate').value = formatDate(end);
+            document.querySelectorAll('#periodQueryPresetRow .quick-preset-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.preset === preset);
+            });
+            queryRecords();
+        }
+
+        // 시작일/종료일을 직접 손으로 바꾸면 더 이상 프리셋과 일치하지 않으므로 선택 표시를 지움
+        function clearPeriodQueryPresetSelection() {
+            document.querySelectorAll('#periodQueryPresetRow .quick-preset-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
         }
         
         // ===== 키워드 통합 검색 (전체 기간 × 전체 카테고리 × 예정작업) =====
@@ -2611,7 +2712,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 setupCategoryDragAndDrop(box);
             });
             
-            // 활동 내용 입력 중에도 자동으로 임시 저장 + 박스 높이 자동 조절 (다른 날짜/새로고침 대비)
+            // 활동 내용 입력 중에도 자동으로 임시 저장 + 박스 높이 자동 조절 (다른 날짜/새로고침 대비).
+            // 예전엔 로컬 저장까지만 하고 서버 동기화는 "저장하기" 버튼을 눌러야만 나갔는데, 메모장 탭처럼
+            // 서버로도 자동 동기화되게 해서 저장하기를 깜빡 잊고 나가도 내용이 남게 함
             container.querySelectorAll('.category-record textarea').forEach(textarea => {
                 textarea.addEventListener('input', () => {
                     // 워드 자동 번호 매기기처럼, 줄이 추가/삭제될 때마다 번호를 항상 1부터 순서대로 다시 매김
@@ -2619,7 +2722,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
                     clearTimeout(recordAutosaveTimeout);
                     recordAutosaveTimeout = setTimeout(() => {
-                        captureCurrentFormToRecords();
+                        if (captureCurrentFormToRecords()) queueSync();
                     }, 800);
 
                     autoGrowCategoryBox(textarea.dataset.category || textarea.id.replace('category-', ''));
@@ -3006,9 +3109,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const start = document.getElementById('eventStartInput').value;
             const end = document.getElementById('eventEndInput').value;
             
-            if (!title) { alert('내용을 입력해주세요'); return; }
-            if (!start || !end) { alert('기간을 설정해주세요'); return; }
-            if (start > end) { alert('종료일은 시작일보다 빠를 수 없습니다'); return; }
+            if (!title) { showAppToast('내용을 입력해주세요'); return; }
+            if (!start || !end) { showAppToast('기간을 설정해주세요'); return; }
+            if (start > end) { showAppToast('종료일은 시작일보다 빠를 수 없습니다'); return; }
             
             if (editingEventId) {
                 const ev = events.find(e => e.id === editingEventId);
@@ -3442,18 +3545,46 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         });
         
         // ===== 개선/절감 과제 트래커 =====
+        // 개선/절감 과제 목록의 상태/카테고리 필터 버튼 클릭 시 호출
+        function setSavingsStatusFilter(status) {
+            savingsStatusFilter = status;
+            document.querySelectorAll('#savingsStatusFilterRow .quick-preset-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.filter === status);
+            });
+            renderSavingsProjects();
+        }
+
+        function setSavingsCategoryFilter(category) {
+            savingsCategoryFilter = category;
+            document.querySelectorAll('#savingsCategoryFilterRow .quick-preset-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.filter === category);
+            });
+            renderSavingsProjects();
+        }
+
         function renderSavingsProjects() {
             const container = document.getElementById('projectsList');
             if (!container) return;
-            
+
             if (savingsProjects.length === 0) {
                 container.innerHTML = '<div class="no-projects">아직 등록된 과제가 없습니다. "새 과제 추가"로 시작해보세요.</div>';
                 return;
             }
-            
+
+            const filtered = savingsProjects.filter(p => {
+                if (savingsStatusFilter !== '전체' && p.status !== savingsStatusFilter) return false;
+                if (savingsCategoryFilter !== '전체' && p.category !== savingsCategoryFilter) return false;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="no-projects">조건에 맞는 과제가 없습니다.</div>';
+                return;
+            }
+
             // 최근 수정된 순으로 표시
-            const sorted = savingsProjects.slice().sort((a, b) => (b.updatedMonth || '').localeCompare(a.updatedMonth || ''));
-            
+            const sorted = filtered.slice().sort((a, b) => (b.updatedMonth || '').localeCompare(a.updatedMonth || ''));
+
             container.innerHTML = sorted.map(p => `
                 <div class="project-card" onclick="openProjectModal('${p.id}')">
                     <div class="project-card-top">
@@ -3463,6 +3594,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     <div class="project-card-category">${p.category}</div>
                     ${p.target ? `<div class="project-card-row"><b>목표:</b> ${escapeHtml(p.target)}</div>` : ''}
                     ${p.actual ? `<div class="project-card-row"><b>실제:</b> ${escapeHtml(p.actual)}</div>` : ''}
+                    ${(p.monthlyLogs && p.monthlyLogs.length) ? `<div class="project-card-row">📌 월별 기록 ${p.monthlyLogs.length}건</div>` : ''}
                     <div class="project-card-date">등록: ${p.createdMonth} · 최근 수정: ${p.updatedMonth}</div>
                 </div>
             `).join('');
@@ -3475,6 +3607,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const title = document.getElementById('projectModalTitle');
             const deleteBtn = document.getElementById('deleteProjectBtn');
             
+            const monthlySection = document.getElementById('projectMonthlySection');
+            document.getElementById('projectMonthlyNoteInput').value = '';
+
             if (projectId) {
                 const p = savingsProjects.find(x => x.id === projectId);
                 if (!p) return;
@@ -3485,6 +3620,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 document.getElementById('projectTargetInput').value = p.target || '';
                 document.getElementById('projectActualInput').value = p.actual || '';
                 deleteBtn.style.display = 'inline-block';
+                monthlySection.style.display = '';
+                renderProjectMonthlyLogList(p);
             } else {
                 title.textContent = '💡 개선/절감 과제 추가';
                 document.getElementById('projectTitleInput').value = '';
@@ -3493,9 +3630,59 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 document.getElementById('projectTargetInput').value = '';
                 document.getElementById('projectActualInput').value = '';
                 deleteBtn.style.display = 'none';
+                // 월별 기록은 특정 과제에 매달아야 하는데, 새 과제는 아직 저장 전이라 매달 곳이
+                // 없으므로 일단 저장한 뒤 다시 열어서 기록하도록 안내하고 이 구간은 숨김
+                monthlySection.style.display = 'none';
             }
-            
+
             modal.classList.add('active');
+        }
+
+        // 과제 카드/모달에서 "월별 진행 기록"을 최신순으로 그려줌
+        function renderProjectMonthlyLogList(project) {
+            const listEl = document.getElementById('projectMonthlyLogList');
+            if (!listEl) return;
+            const logs = Array.isArray(project.monthlyLogs) ? project.monthlyLogs : [];
+            if (logs.length === 0) {
+                listEl.innerHTML = '<p style="color:#999; font-size:13px; margin:0;">아직 기록된 월별 진행 내용이 없습니다.</p>';
+                return;
+            }
+            const sorted = logs.slice().sort((a, b) => (b.loggedAt || '').localeCompare(a.loggedAt || ''));
+            listEl.innerHTML = sorted.map(log => `
+                <div style="padding:8px 0; border-bottom:1px solid #eee; font-size:13px;">
+                    <div style="color:#667eea; font-weight:600; font-size:12px; margin-bottom:2px;">${escapeHtml(log.month)} · ${escapeHtml(formatTeamReportSubmittedAt(log.loggedAt))}</div>
+                    <div>${escapeHtml(log.note)}</div>
+                </div>
+            `).join('');
+        }
+
+        // "이번 달 기록으로 추가" 버튼: 기존 target/actual을 덮어쓰는 대신, 이번 달 진행 메모를
+        // 별도의 이력(monthlyLogs)에 계속 쌓아서 나중에 월별 피드백/종합평가 작성 시 근거로 쓸 수 있게 함
+        function addProjectMonthlyLog() {
+            if (!checkEditPermission()) return;
+            if (!editingProjectId) return;
+            const p = savingsProjects.find(x => x.id === editingProjectId);
+            if (!p) return;
+
+            const note = document.getElementById('projectMonthlyNoteInput').value.trim();
+            if (!note) {
+                showAppToast('이번 달 진행 메모를 입력해주세요');
+                return;
+            }
+
+            if (!Array.isArray(p.monthlyLogs)) p.monthlyLogs = [];
+            p.monthlyLogs.push({
+                month: formatDate(new Date()).slice(0, 7),
+                note,
+                loggedAt: new Date().toISOString()
+            });
+            p.updatedMonth = formatDate(new Date()).slice(0, 7);
+
+            localStorage.setItem('savingsProjects', JSON.stringify(savingsProjects));
+            queueSync();
+            document.getElementById('projectMonthlyNoteInput').value = '';
+            renderProjectMonthlyLogList(p);
+            renderSavingsProjects();
         }
         
         function closeProjectModal() {
@@ -3507,7 +3694,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!checkEditPermission()) return;
             const title = document.getElementById('projectTitleInput').value.trim();
             if (!title) {
-                alert('과제명을 입력해주세요');
+                showAppToast('과제명을 입력해주세요');
                 return;
             }
             
@@ -3864,7 +4051,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             const equipment = document.getElementById('maintEquipmentInput').value.trim();
             if (!equipment) {
-                alert('설비명을 입력해주세요');
+                showAppToast('설비명을 입력해주세요');
                 return;
             }
 
@@ -5786,7 +5973,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function adminDeleteUser(targetEmployeeId) {
             const target = adminUserList.find(u => u.employeeId === targetEmployeeId);
             if (target && target.isAdmin) {
-                alert('관리자 계정 자신은 삭제할 수 없습니다.');
+                showAppToast('관리자 계정 자신은 삭제할 수 없습니다.');
                 return;
             }
             // 승인 대기 목록의 "거절" 버튼도 이 함수를 그대로 재사용하는데, 그 계정은
@@ -6458,6 +6645,19 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'adminEditUserModal') closeAdminEditUserModal();
             else if (id === 'confirmActionModal') closeConfirmActionModal();
             else document.getElementById(id).classList.remove('active');
+        }
+
+        // 입력값 검증 오류처럼 짧게 알리고 사라지면 되는 메시지를 브라우저 기본 alert() 대신
+        // 화면 하단 토스트로 보여줌 (alert()는 확인을 누를 때까지 화면을 막아 PWA에서 이질감이 있었음)
+        let appToastTimer = null;
+
+        function showAppToast(message) {
+            const el = document.getElementById('appToast');
+            if (!el) { alert(message); return; } // 안전망(토스트 요소가 없는 예외적인 상황)
+            el.textContent = message;
+            el.classList.add('show');
+            clearTimeout(appToastTimer);
+            appToastTimer = setTimeout(() => el.classList.remove('show'), 2600);
         }
 
         // 삭제/로그아웃처럼 되돌리기 어려운 동작을 브라우저 기본 confirm() 대신 앱 스타일 모달로

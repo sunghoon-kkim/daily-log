@@ -263,6 +263,32 @@ html {
 
         /* 계정 관리 표의 "관리" 열: 버튼 5개를 나열하면 줄바꿈되어 번잡해 보이므로,
            점3개(⋮) 버튼 하나로 모으고 눌렀을 때만 메뉴로 펼쳐 보여줌 */
+        /* 입력값 검증 오류 등 짧게 알리고 사라지면 되는 메시지용 공용 토스트 (alert() 대체) */
+        .app-toast {
+            position: fixed;
+            left: 50%;
+            bottom: 28px;
+            transform: translateX(-50%) translateY(16px);
+            background: #ee5253;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            z-index: 3000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s, transform 0.2s;
+            max-width: min(90vw, 420px);
+            text-align: center;
+        }
+
+        .app-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
         .admin-more-wrap {
             position: relative;
             display: inline-block;
@@ -3167,12 +3193,36 @@ html {
 .dark-mode .hidden-category-chip,
 .dark-mode .result-item,
 .dark-mode .team-report-history-item,
+.dark-mode .project-card,
 .dark-mode #adminPanel,
 .dark-mode .day {
     background: var(--d-bg1);
     border-color: var(--d-border);
     color: var(--d-text1);
 }
+
+.dark-mode .project-card-title {
+    color: var(--d-text1);
+}
+
+.dark-mode .project-card-row {
+    color: var(--d-text2);
+}
+
+.dark-mode .project-card-row b {
+    color: var(--d-text1);
+}
+
+.dark-mode .project-card-date,
+.dark-mode .no-projects {
+    color: var(--d-text3);
+}
+
+/* 정비계획 임박도 강조 배경: 라이트 모드의 옅은 색조 대신 어두운 톤으로 맞춰줌
+   (그대로 두면 라이트 배경이 어두운 카드 위에서 밝게 튀어 눈부심) */
+.dark-mode .project-card.maint-overdue { background: #3a1f1f; }
+.dark-mode .project-card.maint-urgent { background: #3a2c1a; }
+.dark-mode .project-card.maint-notice { background: #3a3319; }
 
 .dark-mode .team-report-history-summary:hover {
     background: var(--d-bg2);
