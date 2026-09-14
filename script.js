@@ -955,10 +955,21 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!teamReportCurrentWeekStart) {
                 teamReportCurrentWeekStart = formatDate(getMondayOfWeek(new Date()));
             }
-            renderTeamReportWeekLabel();
-            await loadTeamReportMemberList();
-            if (!skipAutoLoad) loadTeamReportForWeek(teamReportCurrentWeekStart);
-            loadMyTeamReportHistory();
+
+            // 팀장은 보고를 받는 입장이라 제출할 일이 없으므로, 제출 폼과 내 제출 내역은 숨기고
+            // "나에게 온 보고"만 보여줌
+            const isTeamLeadRole = currentUserTeamReportRole === 'teamLead';
+            const submitSection = document.getElementById('teamReportSubmitSection');
+            const historySection = document.getElementById('myTeamReportHistorySection');
+            if (submitSection) submitSection.style.display = isTeamLeadRole ? 'none' : '';
+            if (historySection) historySection.style.display = isTeamLeadRole ? 'none' : '';
+
+            if (!isTeamLeadRole) {
+                renderTeamReportWeekLabel();
+                await loadTeamReportMemberList();
+                if (!skipAutoLoad) loadTeamReportForWeek(teamReportCurrentWeekStart);
+                loadMyTeamReportHistory();
+            }
             loadTeamReportInbox();
             loadTeamReportPendingStatus();
         }
