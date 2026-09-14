@@ -470,15 +470,39 @@
             <div class="ai-status" data-empty-message-group="teamReport" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 팀 보고 기능이 없습니다. 관리자에게 문의해주세요.</div>
 
             <div class="ai-container" data-feature="teamReport">
-                <h3 style="margin-bottom: 10px;">📋 팀 제출용 보고</h3>
-                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">제출된 내용은 팀장님께 보이며, 수정이 필요한 경우 수정 후 제출하기 버튼을 누르면 됩니다.</p>
+                <h3 style="margin-bottom: 10px;">📋 팀 제출용 보고 (주간)</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">제출된 내용은 <strong id="teamReportTargetNameLabel">-</strong>님께 보이며, 수정이 필요한 경우 수정 후 제출하기 버튼을 누르면 됩니다.</p>
 
-                <div class="category-controls" style="margin-bottom:10px;">
-                    <input type="date" id="teamReportDateInput" class="category-input" style="flex:0 0 170px;" onchange="onTeamReportDateChange()">
+                <div class="query-controls" style="margin-bottom:15px;">
+                    <div class="query-control-group" style="flex:1; min-width:200px;">
+                        <label>제출 대상</label>
+                        <select id="teamReportTargetSelect" class="category-input" onchange="onTeamReportTargetChange()"></select>
+                    </div>
+                </div>
+
+                <div class="quick-preset-row" id="teamReportWeekJumpRow" style="margin-bottom:10px;">
+                    <button type="button" class="quick-preset-btn" id="teamReportWeekBtnPrev" onclick="jumpTeamReportWeek(-1)">◀ 저번주 작성내용</button>
+                    <button type="button" class="quick-preset-btn" id="teamReportWeekBtnCurrent" onclick="jumpTeamReportWeek(0)">이번주 작성내용</button>
+                    <button type="button" class="quick-preset-btn" id="teamReportWeekBtnNext" onclick="jumpTeamReportWeek(1)">다음주 작성내용 ▶</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+                    <span id="teamReportWeekLabel" style="font-weight:700; font-size:15px; color:#333;"></span>
                     <span class="notes-save-indicator" id="teamReportSubmittedIndicator" style="display:none;"></span>
                 </div>
-                <textarea id="teamReportTextarea" class="notes-textarea" style="min-height:120px;" placeholder="팀장님께 보고할 내용을 작성하세요..."></textarea>
-                <div style="margin-top:10px;">
+
+                <div class="team-report-section">
+                    <h4 style="margin-bottom:8px;">✅ 이번주 한 일</h4>
+                    <div id="teamReportThisWeekRows"></div>
+                    <button type="button" class="add-category-btn" onclick="addTeamReportRow('thisWeek')">➕ 항목 추가</button>
+                </div>
+
+                <div class="team-report-section" style="margin-top:22px;">
+                    <h4 style="margin-bottom:8px;">📌 다음주 할 일</h4>
+                    <div id="teamReportNextWeekRows"></div>
+                    <button type="button" class="add-category-btn" onclick="addTeamReportRow('nextWeek')">➕ 항목 추가</button>
+                </div>
+
+                <div style="margin-top:15px;">
                     <button class="add-category-btn" onclick="submitTeamReport()">📤 제출하기</button>
                 </div>
                 <div class="ai-status" id="teamReportStatus"></div>
@@ -486,23 +510,16 @@
 
             <div class="category-manager" id="myTeamReportHistorySection" data-feature="teamReport" style="margin-top:25px;">
                 <h3>🗂️ 나의 제출 내역</h3>
-                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">내가 언제 무엇을 제출했는지 최신순으로 보여줍니다.</p>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">내가 언제, 누구에게, 무엇을 제출했는지 최신순으로 보여줍니다.</p>
                 <div class="ai-status" id="myTeamReportHistoryStatus"></div>
                 <div id="myTeamReportHistoryList"></div>
             </div>
 
-            <div class="category-manager" id="teamReportOverviewSection" style="margin-top:25px; display:none;">
-                <h3>🗂️ 팀원 제출 현황</h3>
-                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">팀장 권한이 있는 계정에만 보이는 화면입니다.</p>
-                <div class="query-controls" style="margin-bottom:15px; flex-wrap:wrap;">
-                    <div class="query-control-group">
-                        <label>날짜</label>
-                        <input type="date" id="teamOverviewDateInput" class="category-input">
-                    </div>
-                    <button class="query-btn" onclick="loadTeamReportOverview()">🔄 불러오기</button>
-                </div>
-                <div class="ai-status" id="teamOverviewStatus"></div>
-                <div id="teamOverviewList"></div>
+            <div class="category-manager" id="teamReportInboxSection" data-feature="teamReport" style="margin-top:25px;">
+                <h3>📥 나에게 온 보고</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">다른 팀원이 나를 제출 대상으로 지정해 제출한 주간 보고를 최신순으로 보여줍니다.</p>
+                <div class="ai-status" id="teamReportInboxStatus"></div>
+                <div id="teamReportInboxList"></div>
             </div>
         </div>
 

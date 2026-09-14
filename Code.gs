@@ -6,7 +6,8 @@ const USERS_SHEET_NAME = "Users";           // 사번별 계정과 프로필(이
 const RECORDS_SHEET_NAME = "Records";       // 일일 기록(records)만 사번+연월 단위로 저장하는 시트 (한 행 = 한 사람의 한 달)
 // records를 Users 시트 셀 하나에 전부 담으면 몇 년 쌓였을 때 셀당 5만자 제한에 걸릴 수 있어서
 // 이 시트로 따로 분리했음. 한 행이 "한 사람의 한 달"이라 아무리 오래 써도 셀 크기가 안 커짐.
-const TEAM_REPORTS_SHEET_NAME = "TeamReports"; // 팀 보고용 제출 내용 저장 시트 (한 행 = 한 사람의 하루치 제출본, 개인 카테고리 기록과는 완전히 별개)
+const TEAM_REPORTS_SHEET_NAME = "TeamReports"; // (레거시) 예전 하루 단위 자유 텍스트 팀 보고 시트. 주간 보고로 개편된 뒤로는 더 이상 새로 쓰지 않고, 과거 기록 조회/계정 삭제 시 정리 용도로만 남겨둠
+const TEAM_WEEKLY_REPORTS_SHEET_NAME = "TeamWeeklyReports"; // 팀 보고(주간, 제출 대상 지정) 저장 시트 - 한 행 = 한 사람의 한 주치 제출본
 const LEGACY_DATA_SHEET_NAME = "AppData";   // 예전 1인용 버전에서 쓰던 시트 (이전용으로만 참조)
 const READABLE_SHEET_PREFIX = "일일기록_";  // 사람이 보기 편한 날짜별 표 (사번별로 시트가 따로 생김)
 const BACKUP_SHEET_NAME = "AppData_백업";   // 저장할 때마다 직전 상태를 자동 백업해두는 시트 (최근 30개 유지)
@@ -290,6 +291,71 @@ function renameTeamReportsOwner(oldEmployeeId, newEmployeeId) {
   }
 }
 
+// ===== 팀 보고(주간, 제출 대상 지정) 저장 시트 =====
+function getTeamWeeklyReportsSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(TEAM_WEEKLY_REPORTS_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(TEAM_WEEKLY_REPORTS_SHEET_NAME);
+    sheet.getRange(1, 1, 1, 5).setValues([["사번", "주시작일(월)", "제출대상사번", "내용(JSON)", "제출시각"]]);
+    sheet.getRange(1, 1, 1, 5).setFontWeight('bold').setBackground('#667eea').setFontColor('white');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 100);
+    sheet.setColumnWidth(2, 110);
+    sheet.setColumnWidth(3, 110);
+    sheet.setColumnWidth(4, 420);
+    sheet.setColumnWidth(5, 160);
+  }
+  return sheet;
+}
+
+function findTeamWeeklyReportRow(sheet, employeeId, weekStart) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  const values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim() === employeeId && normalizeReportDateStr(values[i][1]) === weekStart) return i + 2;
+  }
+  return -1;
+}
+
+// 계정을 완전히 삭제(휴지통 보관기한 만료/관리자 즉시삭제)할 때 이 사람이 제출자이거나
+// 제출 대상으로 지정돼 있던 행을 모두 정리함
+function deleteTeamWeeklyReportsForUser(employeeId) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(TEAM_WEEKLY_REPORTS_SHEET_NAME);
+  if (!sheet) return;
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  for (let i = values.length - 1; i >= 0; i--) {
+    const submitterId = String(values[i][0]).trim();
+    const targetId = String(values[i][2]).trim();
+    if (submitterId === employeeId || targetId === employeeId) {
+      sheet.deleteRow(i + 2);
+    }
+  }
+}
+
+// 관리자가 사번을 바꿀 때, 그 사람이 제출자였던 행과 제출 대상으로 지정돼 있던 행을 모두 새 사번으로 맞춰줌
+function renameTeamWeeklyReportsOwner(oldEmployeeId, newEmployeeId) {
+  if (oldEmployeeId === newEmployeeId) return;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(TEAM_WEEKLY_REPORTS_SHEET_NAME);
+  if (!sheet) return;
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim() === oldEmployeeId) {
+      sheet.getRange(i + 2, 1).setValue(newEmployeeId);
+    }
+    if (String(values[i][2]).trim() === oldEmployeeId) {
+      sheet.getRange(i + 2, 3).setValue(newEmployeeId);
+    }
+  }
+}
+
 // GET 요청: 로그인(action=login) 또는 데이터 불러오기(action=load)
 function doGet(e) {
   try {
@@ -499,11 +565,12 @@ function doPost(e) {
     if (data.action === "adminPurgeUser") return handleAdminPurgeUser(data);
     if (data.action === "adminSetUserDisabled") return handleAdminSetUserDisabled(data);
     if (data.action === "adminSetTeamLead") return handleAdminSetTeamLead(data);
-    if (data.action === "submitTeamReport") return handleSubmitTeamReport(data);
-    if (data.action === "getMyTeamReport") return handleGetMyTeamReport(data);
-    if (data.action === "getMyTeamReportHistory") return handleGetMyTeamReportHistory(data);
-    if (data.action === "deleteTeamReport") return handleDeleteTeamReport(data);
-    if (data.action === "teamReportOverview") return handleTeamReportOverview(data);
+    if (data.action === "submitTeamWeeklyReport") return handleSubmitTeamWeeklyReport(data);
+    if (data.action === "getMyTeamWeeklyReport") return handleGetMyTeamWeeklyReport(data);
+    if (data.action === "getMyTeamWeeklyReportHistory") return handleGetMyTeamWeeklyReportHistory(data);
+    if (data.action === "deleteTeamWeeklyReport") return handleDeleteTeamWeeklyReport(data);
+    if (data.action === "getTeamReportInbox") return handleGetTeamReportInbox(data);
+    if (data.action === "getTeamReportMemberList") return handleGetTeamReportMemberList(data);
 
     return handleSaveState(data, body);
   } catch (error) {
@@ -667,6 +734,7 @@ function handleAdminChangeEmployeeId(data) {
   sheet.getRange(row, 1).setValue(newEmployeeId);
   renameRecordsOwner(oldEmployeeId, newEmployeeId);
   renameTeamReportsOwner(oldEmployeeId, newEmployeeId);
+  renameTeamWeeklyReportsOwner(oldEmployeeId, newEmployeeId);
 
   // 사람이 보기 편한 읽기용 시트도 새 사번 이름으로 맞춰줌 (있을 때만)
   try {
@@ -832,6 +900,7 @@ function purgeUserRow(sheet, rowNumber) {
   if (readable) ss.deleteSheet(readable);
   deleteRecordsForUser(purgedEmployeeId);
   deleteTeamReportsForUser(purgedEmployeeId);
+  deleteTeamWeeklyReportsForUser(purgedEmployeeId);
   // 삭제가 시트에 확실히 반영된 뒤에 응답을 돌려주기 위함. 이게 없으면 이 요청 직후에 프론트가
   // 곧바로 보내는 adminListUsers 조회가 아직 안 지워진 상태를 읽어올 수 있어서(새로고침해야만
   // 사라지는 것처럼 보이는 원인), 관리자 화면에서 "즉시 삭제"를 눌러도 목록에 그대로 남아 보였음
@@ -1376,34 +1445,90 @@ function handleRestoreFromBackup(data) {
 
 const TEAM_REPORT_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-// 팀 보고 제출: 개인 카테고리 기록(records)과는 완전히 별개인 필드라 여기서만 다룸.
-// 같은 날짜에 재제출하면 그 날짜 보고 내용을 덮어씀(갱신)
-function handleSubmitTeamReport(data) {
+// 로그인 상태(사번+비밀번호)만 확인하는 공통 검증. 통과하면 Users 시트에서의 행 번호를,
+// 실패하면 에러 메시지를 담은 jsonResponse를 돌려준다 (호출부에서 typeof로 구분해서 처리)
+function verifyLoggedInUserRow(usersSheet, data) {
   const employeeId = normalizeEmployeeId(data.employeeId);
   const passwordHash = data.passwordHash || "";
-  const dateStr = (data.date || "").toString().trim();
-  const text = (data.text || "").toString();
-
   if (!employeeId || !passwordHash) {
-    return jsonResponse({ status: "error", message: "로그인 정보가 없습니다." });
+    return { error: jsonResponse({ status: "error", message: "로그인 정보가 없습니다." }) };
   }
-  if (!TEAM_REPORT_DATE_PATTERN.test(dateStr)) {
-    return jsonResponse({ status: "error", message: "날짜가 올바르지 않습니다." });
-  }
-
-  const usersSheet = getUsersSheet();
   const row = findUserRow(usersSheet, employeeId);
   if (row === -1) {
-    return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
+    return { error: jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." }) };
   }
   const storedHash = usersSheet.getRange(row, 2).getValue();
   if (String(storedHash) !== passwordHash) {
-    return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
+    return { error: jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." }) };
   }
-  const denialMessage = getAccountAccessDenialMessage(parseUserJson(usersSheet.getRange(row, 3).getValue()));
+  return { employeeId: employeeId, row: row };
+}
+
+// team-report의 "데이터(JSON)" 셀처럼, 실패해도 예외를 던지지 않고 fallback을 돌려주는 안전한 JSON.parse
+function parseJsonSafe(json, fallback) {
+  try {
+    return JSON.parse(json || "{}");
+  } catch (parseErr) {
+    return fallback;
+  }
+}
+
+// 이번주 한 일 / 다음주 할 일 각 줄({category, date, content})을 정제하고, 내용이 빈 줄은 제외함
+function sanitizeTeamReportItems(rawItems) {
+  if (!Array.isArray(rawItems)) return [];
+  const MAX_ITEMS = 50;
+  return rawItems.slice(0, MAX_ITEMS).map(function(item) {
+    return {
+      category: String((item && item.category) || "").trim().slice(0, 100),
+      date: String((item && item.date) || "").trim().slice(0, 20),
+      content: String((item && item.content) || "").trim().slice(0, 2000)
+    };
+  }).filter(function(item) { return item.content; });
+}
+
+// Users 시트를 한 번에 읽어 사번 -> {name, department, isTeamLead} 맵으로 만듦
+// (제출 대상 이름 표시, 받은 보고함의 제출자 이름/소속 표시 등에서 공용으로 씀)
+function buildUserInfoMap(usersSheet) {
+  const userInfoById = {};
+  const usersLastRow = usersSheet.getLastRow();
+  if (usersLastRow >= 2) {
+    const userRows = usersSheet.getRange(2, 1, usersLastRow - 1, 3).getValues();
+    userRows.forEach(function(r) {
+      const id = String(r[0]).trim();
+      const profile = parseUserJson(r[2]);
+      userInfoById[id] = { name: profile.name || "", department: profile.department || "", isTeamLead: !!profile.isTeamLead };
+    });
+  }
+  return userInfoById;
+}
+
+// 팀 보고 제출(주간): 개인 카테고리 기록(records)과는 완전히 별개인 필드라 여기서만 다룸.
+// 같은 주(주시작일=월요일)에 재제출하면 그 주 보고 내용을 덮어씀(갱신)
+function handleSubmitTeamWeeklyReport(data) {
+  const usersSheet = getUsersSheet();
+  const auth = verifyLoggedInUserRow(usersSheet, data);
+  if (auth.error) return auth.error;
+
+  const weekStart = (data.weekStart || "").toString().trim();
+  const targetEmployeeId = normalizeEmployeeId(data.targetEmployeeId);
+
+  if (!TEAM_REPORT_DATE_PATTERN.test(weekStart)) {
+    return jsonResponse({ status: "error", message: "주 시작일이 올바르지 않습니다." });
+  }
+  if (!targetEmployeeId) {
+    return jsonResponse({ status: "error", message: "제출 대상을 선택해주세요." });
+  }
+
+  const denialMessage = getAccountAccessDenialMessage(parseUserJson(usersSheet.getRange(auth.row, 3).getValue()));
   if (denialMessage) {
     return jsonResponse({ status: "error", message: denialMessage });
   }
+  if (findUserRow(usersSheet, targetEmployeeId) === -1) {
+    return jsonResponse({ status: "error", message: "제출 대상이 등록되지 않은 사번입니다." });
+  }
+
+  const thisWeek = sanitizeTeamReportItems(data.thisWeek);
+  const nextWeek = sanitizeTeamReportItems(data.nextWeek);
 
   const lock = LockService.getScriptLock();
   try {
@@ -1413,18 +1538,19 @@ function handleSubmitTeamReport(data) {
   }
 
   try {
-    const sheet = getTeamReportsSheet();
+    const sheet = getTeamWeeklyReportsSheet();
     const submittedAt = new Date().toISOString();
-    const existingRow = findTeamReportRow(sheet, employeeId, dateStr);
+    const payload = JSON.stringify({ thisWeek: thisWeek, nextWeek: nextWeek });
+    const existingRow = findTeamWeeklyReportRow(sheet, auth.employeeId, weekStart);
     if (existingRow === -1) {
       const newRow = sheet.getLastRow() + 1;
-      // "날짜" 열 서식을 텍스트로 먼저 고정한 뒤 값을 써야 "2026-08-30" 같은 값이 Sheets에
-      // 의해 실제 Date로 자동 변환되지 않음 (자동 변환되면 재제출 시 findTeamReportRow가
+      // "주시작일" 열 서식을 텍스트로 먼저 고정한 뒤 값을 써야 "2026-08-30" 같은 값이 Sheets에
+      // 의해 실제 Date로 자동 변환되지 않음 (자동 변환되면 재제출 시 findTeamWeeklyReportRow가
       // 기존 행을 못 찾아 갱신 대신 매번 새 행이 쌓이는 문제가 생김)
       sheet.getRange(newRow, 2).setNumberFormat('@');
-      sheet.getRange(newRow, 1, 1, 4).setValues([[employeeId, dateStr, text, submittedAt]]);
+      sheet.getRange(newRow, 1, 1, 5).setValues([[auth.employeeId, weekStart, targetEmployeeId, payload, submittedAt]]);
     } else {
-      sheet.getRange(existingRow, 3, 1, 2).setValues([[text, submittedAt]]);
+      sheet.getRange(existingRow, 3, 1, 3).setValues([[targetEmployeeId, payload, submittedAt]]);
     }
     return jsonResponse({ status: "success", submittedAt: submittedAt });
   } finally {
@@ -1432,60 +1558,43 @@ function handleSubmitTeamReport(data) {
   }
 }
 
-// [팀 보고] 탭을 열거나 날짜를 바꿀 때, 본인이 그 날짜에 이미 제출해둔 내용을 불러와 보여주기 위함
-function handleGetMyTeamReport(data) {
-  const employeeId = normalizeEmployeeId(data.employeeId);
-  const passwordHash = data.passwordHash || "";
-  const dateStr = (data.date || "").toString().trim();
-
-  if (!employeeId || !passwordHash) {
-    return jsonResponse({ status: "error", message: "로그인 정보가 없습니다." });
-  }
-  if (!TEAM_REPORT_DATE_PATTERN.test(dateStr)) {
-    return jsonResponse({ status: "error", message: "날짜가 올바르지 않습니다." });
-  }
-
+// [팀 보고] 탭을 열거나 보고 있는 주를 바꿀 때, 본인이 그 주에 이미 제출해둔 내용을 불러와 보여주기 위함
+function handleGetMyTeamWeeklyReport(data) {
   const usersSheet = getUsersSheet();
-  const row = findUserRow(usersSheet, employeeId);
-  if (row === -1) {
-    return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
-  }
-  const storedHash = usersSheet.getRange(row, 2).getValue();
-  if (String(storedHash) !== passwordHash) {
-    return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
+  const auth = verifyLoggedInUserRow(usersSheet, data);
+  if (auth.error) return auth.error;
+
+  const weekStart = (data.weekStart || "").toString().trim();
+  if (!TEAM_REPORT_DATE_PATTERN.test(weekStart)) {
+    return jsonResponse({ status: "error", message: "주 시작일이 올바르지 않습니다." });
   }
 
-  const sheet = getTeamReportsSheet();
-  const existingRow = findTeamReportRow(sheet, employeeId, dateStr);
+  const sheet = getTeamWeeklyReportsSheet();
+  const existingRow = findTeamWeeklyReportRow(sheet, auth.employeeId, weekStart);
   if (existingRow === -1) {
-    return jsonResponse({ status: "success", text: "", submittedAt: "" });
+    return jsonResponse({ status: "success", thisWeek: [], nextWeek: [], targetEmployeeId: "", submittedAt: "" });
   }
-  const rowValues = sheet.getRange(existingRow, 3, 1, 2).getValues()[0];
-  return jsonResponse({ status: "success", text: rowValues[0] || "", submittedAt: rowValues[1] || "" });
+  const rowValues = sheet.getRange(existingRow, 3, 1, 3).getValues()[0];
+  const parsed = parseJsonSafe(rowValues[1], {});
+  return jsonResponse({
+    status: "success",
+    targetEmployeeId: rowValues[0] || "",
+    thisWeek: Array.isArray(parsed.thisWeek) ? parsed.thisWeek : [],
+    nextWeek: Array.isArray(parsed.nextWeek) ? parsed.nextWeek : [],
+    submittedAt: rowValues[2] || ""
+  });
 }
 
 // [팀 보고] "내 제출 내역"에서 실수로 제출한 건을 본인이 직접 지울 수 있게 함. 본인 것만 지울 수 있고,
-// 팀장/관리자라도 남의 제출 내용을 이 액션으로 지울 수는 없음(오직 본인 employeeId+비밀번호로만 인증)
-function handleDeleteTeamReport(data) {
-  const employeeId = normalizeEmployeeId(data.employeeId);
-  const passwordHash = data.passwordHash || "";
-  const dateStr = (data.date || "").toString().trim();
-
-  if (!employeeId || !passwordHash) {
-    return jsonResponse({ status: "error", message: "로그인 정보가 없습니다." });
-  }
-  if (!TEAM_REPORT_DATE_PATTERN.test(dateStr)) {
-    return jsonResponse({ status: "error", message: "날짜가 올바르지 않습니다." });
-  }
-
+// 다른 사람(제출 대상 포함)이라도 남의 제출 내용을 이 액션으로 지울 수는 없음(오직 본인 employeeId+비밀번호로만 인증)
+function handleDeleteTeamWeeklyReport(data) {
   const usersSheet = getUsersSheet();
-  const row = findUserRow(usersSheet, employeeId);
-  if (row === -1) {
-    return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
-  }
-  const storedHash = usersSheet.getRange(row, 2).getValue();
-  if (String(storedHash) !== passwordHash) {
-    return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
+  const auth = verifyLoggedInUserRow(usersSheet, data);
+  if (auth.error) return auth.error;
+
+  const weekStart = (data.weekStart || "").toString().trim();
+  if (!TEAM_REPORT_DATE_PATTERN.test(weekStart)) {
+    return jsonResponse({ status: "error", message: "주 시작일이 올바르지 않습니다." });
   }
 
   const lock = LockService.getScriptLock();
@@ -1496,14 +1605,14 @@ function handleDeleteTeamReport(data) {
   }
 
   try {
-    const sheet = getTeamReportsSheet();
-    // 같은 날짜로 예전 버그 때문에 쌓인 중복 행이 남아있을 수 있으므로, 하나만 지우지 않고
-    // 이 사람의 그 날짜 행을 전부 지움(뒤에서부터 지워야 인덱스가 안 밀림)
+    const sheet = getTeamWeeklyReportsSheet();
+    // 같은 주로 예전 버그 때문에 쌓인 중복 행이 남아있을 수 있으므로, 하나만 지우지 않고
+    // 이 사람의 그 주 행을 전부 지움(뒤에서부터 지워야 인덱스가 안 밀림)
     const lastRow = sheet.getLastRow();
     if (lastRow >= 2) {
       const values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
       for (let i = values.length - 1; i >= 0; i--) {
-        if (String(values[i][0]).trim() === employeeId && normalizeReportDateStr(values[i][1]) === dateStr) {
+        if (String(values[i][0]).trim() === auth.employeeId && normalizeReportDateStr(values[i][1]) === weekStart) {
           sheet.deleteRow(i + 2);
         }
       }
@@ -1514,130 +1623,130 @@ function handleDeleteTeamReport(data) {
   }
 }
 
-// [팀 보고] 탭에서 "내가 언제 뭘 제출했는지" 본인 제출 이력을 최신순으로 모아 보여주기 위함
-function handleGetMyTeamReportHistory(data) {
-  const employeeId = normalizeEmployeeId(data.employeeId);
-  const passwordHash = data.passwordHash || "";
-
-  if (!employeeId || !passwordHash) {
-    return jsonResponse({ status: "error", message: "로그인 정보가 없습니다." });
-  }
-
+// [팀 보고] 탭에서 "내가 언제, 누구에게 뭘 제출했는지" 본인 제출 이력을 최신순으로 모아 보여주기 위함
+function handleGetMyTeamWeeklyReportHistory(data) {
   const usersSheet = getUsersSheet();
-  const row = findUserRow(usersSheet, employeeId);
-  if (row === -1) {
-    return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
-  }
-  const storedHash = usersSheet.getRange(row, 2).getValue();
-  if (String(storedHash) !== passwordHash) {
-    return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
-  }
+  const auth = verifyLoggedInUserRow(usersSheet, data);
+  if (auth.error) return auth.error;
 
-  const sheet = getTeamReportsSheet();
+  const userInfoById = buildUserInfoMap(usersSheet);
+  const sheet = getTeamWeeklyReportsSheet();
   const lastRow = sheet.getLastRow();
-  // 예전에 "날짜" 열이 Date로 자동 변환됐던 행들 때문에 같은 날짜로 여러 행이 남아있을 수 있어서,
-  // 날짜별로 제출시각이 가장 최신인 것 하나만 남김(날짜별 최신 버전만 이력에 보여줌)
-  const latestByDate = {};
+  // 예전에 "주시작일" 열이 Date로 자동 변환됐던 행들 때문에 같은 주로 여러 행이 남아있을 수 있어서,
+  // 주별로 제출시각이 가장 최신인 것 하나만 남김(주별 최신 버전만 이력에 보여줌)
+  const latestByWeek = {};
 
   if (lastRow >= 2) {
-    const values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    const values = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
     values.forEach(function(r) {
-      if (String(r[0]).trim() !== employeeId) return;
-      const text = r[2] || "";
-      if (!text) return; // 빈 내용으로 재제출된 건(사실상 취소) 목록에서 제외
+      if (String(r[0]).trim() !== auth.employeeId) return;
 
-      const dateStr = normalizeReportDateStr(r[1]);
-      const submittedAt = r[3] || "";
-      const existing = latestByDate[dateStr];
-      if (!existing || String(submittedAt) > String(existing.submittedAt)) {
-        latestByDate[dateStr] = { date: dateStr, text: text, submittedAt: submittedAt };
-      }
-    });
-  }
+      const parsed = parseJsonSafe(r[3], {});
+      const thisWeek = Array.isArray(parsed.thisWeek) ? parsed.thisWeek : [];
+      const nextWeek = Array.isArray(parsed.nextWeek) ? parsed.nextWeek : [];
+      if (thisWeek.length === 0 && nextWeek.length === 0) return; // 빈 내용으로 재제출된 건(사실상 취소) 제외
 
-  const items = Object.keys(latestByDate).map(function(d) { return latestByDate[d]; });
-  items.sort(function(a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
-
-  return jsonResponse({ status: "success", items: items });
-}
-
-// 관리자이거나, 관리자가 팀장으로 지정해둔(isTeamLead) 계정만 통과함
-function verifyTeamLeadOrAdmin(data) {
-  if (verifyAdmin(data)) return true;
-
-  const employeeId = normalizeEmployeeId(data.employeeId);
-  const passwordHash = data.passwordHash || "";
-  if (!employeeId || !passwordHash) return false;
-
-  const sheet = getUsersSheet();
-  const row = findUserRow(sheet, employeeId);
-  if (row === -1) return false;
-
-  const storedHash = sheet.getRange(row, 2).getValue();
-  if (String(storedHash) !== passwordHash) return false;
-
-  const profile = parseUserJson(sheet.getRange(row, 3).getValue());
-  return !!profile.isTeamLead;
-}
-
-// [팀 보고] 탭의 팀장용 화면: 지정한 날짜에 제출된 모든 팀원의 보고를 모아서 돌려줌
-function handleTeamReportOverview(data) {
-  if (!verifyTeamLeadOrAdmin(data)) {
-    return jsonResponse({ status: "error", message: "팀장 권한이 있는 계정만 볼 수 있습니다." });
-  }
-
-  const dateStr = (data.date || "").toString().trim();
-  if (!TEAM_REPORT_DATE_PATTERN.test(dateStr)) {
-    return jsonResponse({ status: "error", message: "날짜가 올바르지 않습니다." });
-  }
-
-  const reportsSheet = getTeamReportsSheet();
-  const lastRow = reportsSheet.getLastRow();
-  // 예전에 "날짜" 열이 Date로 자동 변환됐던 행들 때문에 같은 사람이 같은 날짜로 여러 행이
-  // 남아있을 수 있어서, 사람별로 제출시각이 가장 최신인 것 하나만 남김
-  const latestByEmployeeId = {};
-
-  if (lastRow >= 2) {
-    const values = reportsSheet.getRange(2, 1, lastRow - 1, 4).getValues();
-
-    const usersSheet = getUsersSheet();
-    const userInfoById = {};
-    const usersLastRow = usersSheet.getLastRow();
-    if (usersLastRow >= 2) {
-      const userRows = usersSheet.getRange(2, 1, usersLastRow - 1, 3).getValues();
-      userRows.forEach(function(r) {
-        const id = String(r[0]).trim();
-        const profile = parseUserJson(r[2]);
-        userInfoById[id] = { name: profile.name || "", department: profile.department || "" };
-      });
-    }
-
-    values.forEach(function(r) {
-      const rowDate = normalizeReportDateStr(r[1]);
-      if (rowDate !== dateStr) return;
-      const text = r[2] || "";
-      if (!text) return; // 빈 내용으로 재제출된 건(사실상 취소) 목록에서 제외
-
-      const employeeId = String(r[0]).trim();
-      const submittedAt = r[3] || "";
-      const existing = latestByEmployeeId[employeeId];
+      const weekStart = normalizeReportDateStr(r[1]);
+      const submittedAt = r[4] || "";
+      const existing = latestByWeek[weekStart];
       if (existing && String(submittedAt) <= String(existing.submittedAt)) return;
 
-      const info = userInfoById[employeeId] || {};
-      latestByEmployeeId[employeeId] = {
-        employeeId: employeeId,
-        name: info.name || "",
-        department: info.department || "",
-        text: text,
+      const targetEmployeeId = String(r[2] || "").trim();
+      const targetInfo = userInfoById[targetEmployeeId] || {};
+      latestByWeek[weekStart] = {
+        weekStart: weekStart,
+        targetEmployeeId: targetEmployeeId,
+        targetName: targetInfo.name || "",
+        thisWeek: thisWeek,
+        nextWeek: nextWeek,
         submittedAt: submittedAt
       };
     });
   }
 
-  const items = Object.keys(latestByEmployeeId).map(function(id) { return latestByEmployeeId[id]; });
-  items.sort(function(a, b) { return a.employeeId < b.employeeId ? -1 : (a.employeeId > b.employeeId ? 1 : 0); });
+  const items = Object.keys(latestByWeek).map(function(w) { return latestByWeek[w]; });
+  items.sort(function(a, b) { return a.weekStart < b.weekStart ? 1 : (a.weekStart > b.weekStart ? -1 : 0); });
 
   return jsonResponse({ status: "success", items: items });
+}
+
+// [팀 보고] 탭의 "나에게 온 보고" 화면: 내가 제출 대상으로 지정된 모든 팀원의 보고를 모아서 돌려줌.
+// 예전처럼 팀장 권한이 있어야만 보이는 화면이 아니라, 누구든 제출 대상으로 지정되면 볼 수 있음
+function handleGetTeamReportInbox(data) {
+  const usersSheet = getUsersSheet();
+  const auth = verifyLoggedInUserRow(usersSheet, data);
+  if (auth.error) return auth.error;
+
+  const userInfoById = buildUserInfoMap(usersSheet);
+  const sheet = getTeamWeeklyReportsSheet();
+  const lastRow = sheet.getLastRow();
+  // 제출자+주 조합별로 제출시각이 가장 최신인 것 하나만 남김
+  const latestByKey = {};
+
+  if (lastRow >= 2) {
+    const values = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    values.forEach(function(r) {
+      const targetEmployeeId = String(r[2] || "").trim();
+      if (targetEmployeeId !== auth.employeeId) return;
+
+      const parsed = parseJsonSafe(r[3], {});
+      const thisWeek = Array.isArray(parsed.thisWeek) ? parsed.thisWeek : [];
+      const nextWeek = Array.isArray(parsed.nextWeek) ? parsed.nextWeek : [];
+      if (thisWeek.length === 0 && nextWeek.length === 0) return; // 빈 내용으로 재제출된 건(사실상 취소) 제외
+
+      const submitterId = String(r[0]).trim();
+      const weekStart = normalizeReportDateStr(r[1]);
+      const key = submitterId + "|" + weekStart;
+      const submittedAt = r[4] || "";
+      const existing = latestByKey[key];
+      if (existing && String(submittedAt) <= String(existing.submittedAt)) return;
+
+      const info = userInfoById[submitterId] || {};
+      latestByKey[key] = {
+        employeeId: submitterId,
+        name: info.name || "",
+        department: info.department || "",
+        weekStart: weekStart,
+        thisWeek: thisWeek,
+        nextWeek: nextWeek,
+        submittedAt: submittedAt
+      };
+    });
+  }
+
+  const items = Object.keys(latestByKey).map(function(k) { return latestByKey[k]; });
+  items.sort(function(a, b) { return a.weekStart < b.weekStart ? 1 : (a.weekStart > b.weekStart ? -1 : 0); });
+
+  return jsonResponse({ status: "success", items: items });
+}
+
+// [팀 보고] "제출 대상" 선택창에 띄울 가입된 인원 목록. 본인을 제외한 정상 상태(승인완료·미삭제·활성화)
+// 계정만 돌려주며, 팀장으로 지정된 사람이 먼저 보이도록 정렬함
+function handleGetTeamReportMemberList(data) {
+  const usersSheet = getUsersSheet();
+  const auth = verifyLoggedInUserRow(usersSheet, data);
+  if (auth.error) return auth.error;
+
+  const lastRow = usersSheet.getLastRow();
+  const members = [];
+  if (lastRow >= 2) {
+    const rows = usersSheet.getRange(2, 1, lastRow - 1, 3).getValues();
+    rows.forEach(function(r) {
+      const id = String(r[0]).trim();
+      if (id === auth.employeeId) return; // 본인은 제출 대상 목록에서 제외
+
+      const profile = parseUserJson(r[2]);
+      if (profile.pending || profile.deletedAt || profile.disabled) return;
+
+      members.push({ employeeId: id, name: profile.name || "", isTeamLead: !!profile.isTeamLead });
+    });
+  }
+  members.sort(function(a, b) {
+    if (!!a.isTeamLead !== !!b.isTeamLead) return a.isTeamLead ? -1 : 1;
+    return String(a.name).localeCompare(String(b.name), 'ko');
+  });
+
+  return jsonResponse({ status: "success", members: members });
 }
 
 function jsonResponse(obj) {

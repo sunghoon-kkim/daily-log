@@ -1378,16 +1378,38 @@ html {
             padding: 15px;
         }
 
-        #teamOverviewList {
-            display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
-            gap: 12px;
+        .team-report-section h4 {
+            color: #333;
+            font-size: 15px;
         }
 
-        #teamOverviewList .team-overview-empty {
-            grid-column: 1 / -1;
+        .team-report-row {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            margin-bottom: 8px;
         }
-        
+
+        .team-report-row select.category-input {
+            flex: 0 0 140px;
+        }
+
+        .team-report-row input[type="date"].category-input {
+            flex: 0 0 150px;
+        }
+
+        .team-report-row-content {
+            flex: 1;
+            min-height: 42px;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .team-report-row .admin-action-btn {
+            flex: 0 0 auto;
+            align-self: center;
+        }
+
         .result-item.clickable {
             cursor: pointer;
             transition: all 0.2s;
@@ -2487,8 +2509,18 @@ html {
         }
         
         @media (max-width: 768px) {
-            #teamOverviewList {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
+            .team-report-row {
+                flex-direction: column;
+            }
+
+            .team-report-row select.category-input,
+            .team-report-row input[type="date"].category-input {
+                flex: 1 1 auto;
+                width: 100%;
+            }
+
+            .team-report-row .admin-action-btn {
+                align-self: flex-end;
             }
 
             body {
@@ -2714,10 +2746,6 @@ html {
                 min-width: 90px;
                 font-size: 11px;
                 padding: 12px 8px;
-            }
-
-            #teamOverviewList {
-                grid-template-columns: 1fr;
             }
 
             /* 버튼이 여러 개인 모달(저장/삭제/취소 등)은 좁은 화면에서 나란히 두면
