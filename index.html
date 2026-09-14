@@ -565,6 +565,13 @@
         <!-- 관리자 전용 화면: 관리자 사번으로 로그인하면 위 탭들 대신 이 화면 하나만 보임 -->
         <div id="adminPanel">
             <div class="category-manager">
+                <h3>🗂️ 조직도 (드래그해서 역할·파트 배정)</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">카드를 원하는 자리로 드래그하면 그 사람의 팀 보고 역할과 소속(파트)이 함께 바뀝니다. 팀장/파트장 자리에 이미 누가 있는 상태로 다른 사람을 놓으면 확인 후 기존 사람은 그 파트의 팀원으로 내려갑니다. 향남공무팀 파트(설비/장비/GMP)에 속하지 않는 인원은 "미배정 인원"에 모여 있습니다.</p>
+                <div class="ai-status" id="orgChartStatus"></div>
+                <div id="orgChartContainer"></div>
+            </div>
+
+            <div class="category-manager" style="margin-top:25px;">
                 <h3>🛠️ 관리자 - 계정 관리</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">가입된 모든 계정을 조회하고, 불필요한 계정을 휴지통으로 옮기거나(삭제) 비밀번호를 초기화·비활성화할 수 있습니다. 표 머리글을 누르면 그 기준으로 정렬됩니다 (관리자 계정은 정렬과 무관하게 항상 맨 위에 고정).</p>
 

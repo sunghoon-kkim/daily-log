@@ -5107,6 +5107,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     renderAdminTrashTable();
                     renderAdminPendingTable();
                     renderAdminDefaultFeatureChecklist();
+                    renderOrgChart();
                     statusEl.textContent = `✅ 총 ${adminUserList.length}개 계정 (휴지통 ${adminTrashList.length}개, 승인 대기 ${adminPendingList.length}개)`;
                     statusEl.className = 'ai-status success';
                 } else {
@@ -5117,6 +5118,216 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 console.error('관리자 계정 목록 조회 오류:', err);
                 statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
+            }
+        }
+
+        // ===== 관리자 조직도 (드래그앤드롭으로 팀장/파트장/팀원 자리 배정) =====
+        // 향남공무팀 산하 파트 목록. 소속(department) 값은 "향남공무팀-설비파트"처럼
+        // TEAM_REPORT_PART_DEPT_PREFIX + 파트명 형태로 저장됨 (회원가입/계정정보 수정 드롭다운과 동일한 값)
+        const TEAM_REPORT_PARTS = ['설비파트', '장비파트', 'GMP파트'];
+        const TEAM_REPORT_PART_DEPT_PREFIX = '향남공무팀-';
+        let orgDraggedEmployeeId = null;
+
+        function getPartFromDepartment(department) {
+            if (!department) return null;
+            const part = department.slice(TEAM_REPORT_PART_DEPT_PREFIX.length);
+            return (department.startsWith(TEAM_REPORT_PART_DEPT_PREFIX) && TEAM_REPORT_PARTS.includes(part)) ? part : null;
+        }
+
+        // adminUserList(이미 불러와 있는 계정 목록)를 팀장/각 파트의 파트장·팀원/미배정으로 나눠서
+        // 카드+드롭존 형태의 조직도를 그림. 관리자 계정 자신은 이 조직도에 표시하지 않음
+        function renderOrgChart() {
+            const container = document.getElementById('orgChartContainer');
+            if (!container) return;
+
+            const activeUsers = adminUserList.filter(u => !u.isAdmin);
+            const teamLeadUsers = activeUsers.filter(u => u.teamReportRole === 'teamLead');
+
+            const buckets = {};
+            TEAM_REPORT_PARTS.forEach(p => { buckets[p] = { partLead: [], members: [] }; });
+            const unassigned = [];
+
+            activeUsers.forEach(u => {
+                if (u.teamReportRole === 'teamLead') return;
+                const part = getPartFromDepartment(u.department);
+                if (part && u.teamReportRole === 'partLead') {
+                    buckets[part].partLead.push(u);
+                } else if (part) {
+                    buckets[part].members.push(u);
+                } else {
+                    unassigned.push(u);
+                }
+            });
+
+            const cardHtml = u => `
+                <div class="org-card${u.disabled ? ' org-card-disabled' : ''}" draggable="true"
+                     ondragstart="orgCardDragStart(event, '${escapeForOnclickArg(u.employeeId)}')"
+                     ondragend="orgCardDragEnd(event)"
+                     title="${escapeHtml(u.department || '소속 없음')}">
+                    <div class="org-card-name">${escapeHtml(u.name || u.employeeId)}</div>
+                    <div class="org-card-id">${escapeHtml(u.employeeId)}${u.disabled ? ' · 비활성' : ''}</div>
+                </div>
+            `;
+
+            const slotHtml = (slotType, part, extraClass, label, users, emptyHint) => `
+                <div class="org-slot ${extraClass}" data-slot-type="${slotType}" data-part="${escapeHtml(part || '')}"
+                     ondragover="orgSlotDragOver(event)" ondragleave="orgSlotDragLeave(event)" ondrop="orgSlotDrop(event)">
+                    <div class="org-slot-label">${label}</div>
+                    <div class="org-slot-cards">${users.map(cardHtml).join('') || `<div class="org-slot-empty-hint">${emptyHint}</div>`}</div>
+                </div>
+            `;
+
+            let html = '<div class="org-chart">';
+            html += '<div class="org-chart-lead-row">';
+            html += slotHtml('teamLead', '', 'org-slot-lead', '👑 팀장', teamLeadUsers, '여기로 드래그해서 팀장 지정');
+            html += '</div>';
+
+            html += '<div class="org-chart-parts-row">';
+            TEAM_REPORT_PARTS.forEach(part => {
+                html += `
+                    <div class="org-part-column">
+                        <div class="org-part-header">${escapeHtml(part)}</div>
+                        ${slotHtml('partLead', part, 'org-slot-partlead', '🔹 파트장', buckets[part].partLead, '드래그해서 파트장 지정')}
+                        ${slotHtml('member', part, 'org-slot-members', '팀원', buckets[part].members, '팀원을 여기로 드래그')}
+                    </div>
+                `;
+            });
+            html += '</div>';
+
+            html += slotHtml('unassigned', '', 'org-slot-unassigned', '📥 미배정 인원 (다른 소속 포함)', unassigned, '향남공무팀 파트에 속하지 않은 인원이 없습니다');
+            html += '</div>';
+
+            container.innerHTML = html;
+        }
+
+        function orgCardDragStart(e, employeeId) {
+            orgDraggedEmployeeId = employeeId;
+            e.currentTarget.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function orgCardDragEnd(e) {
+            e.currentTarget.classList.remove('dragging');
+            document.querySelectorAll('.org-slot.drag-over').forEach(el => el.classList.remove('drag-over'));
+        }
+
+        function orgSlotDragOver(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('drag-over');
+        }
+
+        function orgSlotDragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        function orgSlotDrop(e) {
+            e.preventDefault();
+            const slot = e.currentTarget;
+            slot.classList.remove('drag-over');
+            const employeeId = orgDraggedEmployeeId;
+            orgDraggedEmployeeId = null;
+            if (!employeeId) return;
+
+            const slotType = slot.dataset.slotType; // 'teamLead' | 'partLead' | 'member' | 'unassigned'
+            const part = slot.dataset.part || '';
+
+            const user = adminUserList.find(u => u.employeeId === employeeId);
+            if (!user) return;
+
+            const currentPart = getPartFromDepartment(user.department);
+            const currentRole = user.teamReportRole || '';
+            const alreadyHere =
+                (slotType === 'teamLead' && currentRole === 'teamLead') ||
+                (slotType === 'partLead' && currentRole === 'partLead' && currentPart === part) ||
+                (slotType === 'member' && currentRole === 'member' && currentPart === part) ||
+                (slotType === 'unassigned' && !currentRole && !currentPart);
+            if (alreadyHere) return;
+
+            // 팀장/파트장 자리는 한 명이 기본이라, 이미 다른 사람이 있으면 교체할지 확인부터 받음
+            if (slotType === 'teamLead' || slotType === 'partLead') {
+                const occupant = adminUserList.find(u =>
+                    u.employeeId !== employeeId &&
+                    u.teamReportRole === slotType &&
+                    (slotType === 'teamLead' || getPartFromDepartment(u.department) === part)
+                );
+                if (occupant) {
+                    const label = slotType === 'teamLead' ? '팀장' : `${part} 파트장`;
+                    confirmModal(
+                        `${occupant.name || occupant.employeeId}님이 이미 ${label}(으)로 지정되어 있습니다. ${user.name || user.employeeId}님으로 교체할까요? ${occupant.name || occupant.employeeId}님은 팀원으로 내려갑니다.`,
+                        () => applyOrgChartAssignment(employeeId, slotType, part, occupant.employeeId)
+                    );
+                    return;
+                }
+            }
+
+            applyOrgChartAssignment(employeeId, slotType, part, null);
+        }
+
+        // 실제로 서버에 반영: 드래그한 사람을 그 자리로 옮기고(부서+역할), 밀려난 기존 파트장/팀장이
+        // 있으면 그 사람은 자기 파트의 팀원으로 내림. 끝나면 목록을 다시 불러와 화면을 새로 그림
+        async function applyOrgChartAssignment(employeeId, slotType, part, demoteEmployeeId) {
+            const statusEl = document.getElementById('orgChartStatus');
+            statusEl.textContent = '☁️ 반영하는 중...';
+            statusEl.className = 'ai-status';
+
+            try {
+                await applyOrgChartPlacement(employeeId, slotType, part);
+
+                if (demoteEmployeeId) {
+                    // 항상 "팀원"으로 내림(확인창 문구와 일치시킴). 소속에 파트가 없으면(예: 파트 미지정
+                    // 상태였던 팀장) 부서는 건드리지 않고 역할만 팀원으로 바꿈
+                    const occupant = adminUserList.find(u => u.employeeId === demoteEmployeeId);
+                    const occupantPart = occupant ? getPartFromDepartment(occupant.department) : null;
+                    await applyOrgChartPlacement(demoteEmployeeId, 'member', occupantPart || '');
+                }
+
+                statusEl.textContent = '✅ 반영되었습니다';
+                statusEl.className = 'ai-status success';
+                await loadAdminUserList();
+            } catch (err) {
+                console.error('조직도 배정 오류:', err);
+                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.className = 'ai-status error';
+            }
+        }
+
+        // 한 사람을 특정 자리(slotType/part)로 옮김: 파트가 있는 자리(파트장/팀원)면 소속을 그 파트로
+        // 맞추고(이미 그 파트면 건드리지 않음), 그 자리에 맞는 역할을 지정함(unassigned면 역할을 비움)
+        async function applyOrgChartPlacement(employeeId, slotType, part) {
+            const user = adminUserList.find(u => u.employeeId === employeeId);
+            if (!user) return;
+
+            if ((slotType === 'member' || slotType === 'partLead') && part) {
+                const targetDepartment = TEAM_REPORT_PART_DEPT_PREFIX + part;
+                if (user.department !== targetDepartment) {
+                    await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: 'adminUpdateUserInfo',
+                            employeeId: currentEmployeeId,
+                            passwordHash: currentPasswordHash,
+                            targetEmployeeId: employeeId,
+                            name: user.name,
+                            department: targetDepartment
+                        })
+                    });
+                    user.department = targetDepartment;
+                }
+            }
+
+            const newRole = slotType === 'unassigned' ? '' : slotType;
+            if ((user.teamReportRole || '') !== newRole) {
+                await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'adminSetTeamReportRole',
+                        employeeId: currentEmployeeId,
+                        passwordHash: currentPasswordHash,
+                        targetEmployeeId: employeeId,
+                        role: newRole
+                    })
+                });
+                user.teamReportRole = newRole;
             }
         }
 
