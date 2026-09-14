@@ -292,20 +292,30 @@
             <div class="ai-container" style="margin-top: 25px;" data-feature="monthlyFeedback">
                 <h3 style="margin-bottom: 10px;">🤖 AI 월별 피드백</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 20px;">기간을 선택하면 그 기간의 활동기록과 예정작업을 모아서, 아래 양식에 맞춰 AI가 핵심 내용 위주로 정리해줍니다.</p>
-                
+
+                <div class="quick-preset-row" id="aiFeedbackPresetRow" style="margin-bottom:12px;">
+                    <button type="button" class="quick-preset-btn" data-preset="이번주" onclick="applyAiFeedbackPreset('이번주')">이번주</button>
+                    <button type="button" class="quick-preset-btn" data-preset="이번달" onclick="applyAiFeedbackPreset('이번달')">이번달</button>
+                    <button type="button" class="quick-preset-btn" data-preset="지난달" onclick="applyAiFeedbackPreset('지난달')">지난달</button>
+                    <button type="button" class="quick-preset-btn" data-preset="올해" onclick="applyAiFeedbackPreset('올해')">올해</button>
+                </div>
+
                 <div class="query-controls">
                     <div class="query-control-group" style="flex: 1;">
                         <label>시작일</label>
-                        <input type="date" id="aiStartDate">
+                        <input type="date" id="aiStartDate" onchange="clearAiFeedbackPresetSelection()">
                     </div>
                     <div class="query-control-group" style="flex: 1;">
                         <label>종료일</label>
-                        <input type="date" id="aiEndDate">
+                        <input type="date" id="aiEndDate" onchange="clearAiFeedbackPresetSelection()">
                     </div>
                 </div>
                 
                 <div class="ai-template-block">
-                    <label class="ai-block-label">📋 피드백 양식 (자유롭게 수정 가능)</label>
+                    <div class="ai-block-label-row">
+                        <label class="ai-block-label">📋 피드백 양식 (자유롭게 수정 가능)</label>
+                        <button class="ai-copy-btn" onclick="resetAITemplate()">↩️ 기본 양식으로 되돌리기</button>
+                    </div>
                     <textarea id="aiTemplateTextarea" class="ai-template-textarea"></textarea>
                 </div>
                 
@@ -1036,7 +1046,21 @@
                 <label>색상</label>
                 <div class="color-picker" id="colorPicker"></div>
             </div>
-            
+
+            <div class="modal-field" id="eventRepeatSection">
+                <label>반복 (당직·연차처럼 주기적인 일정을 한 번에 등록)</label>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <select id="eventRepeatIntervalInput" class="category-input" style="flex:1; min-width:140px;">
+                        <option value="0">반복 안 함</option>
+                        <option value="7">매주 반복</option>
+                        <option value="14">격주 반복</option>
+                        <option value="month">매월 반복</option>
+                    </select>
+                    <input type="number" id="eventRepeatCountInput" class="category-input" min="2" max="52" value="4" style="width:70px;">
+                    <span style="font-size:13px; color:#666;">회</span>
+                </div>
+            </div>
+
             <div class="modal-buttons">
                 <button class="modal-btn modal-save-btn" onclick="saveEvent()">💾 저장</button>
                 <button class="modal-btn modal-delete-btn" id="deleteEventBtn" onclick="deleteEvent()" style="display:none;">🗑️ 삭제</button>

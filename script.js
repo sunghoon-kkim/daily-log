@@ -128,7 +128,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         };
         let tabOrder = ['calendar', 'category', 'query', 'notes', 'ai', 'improvement', 'trend', 'maintenance', 'teamReport', 'settings'];
         let activeTabId = 'calendar';
-        let draggedTabId = null;
         // 환경설정에서 꺼둔(비활성화한) 탭 id 목록. 'settings'는 절대 여기 들어가지 않음(항상 표시)
         let disabledTabIds = [];
         // 개인이 환경설정에 입력해 저장한 본인 Gemini API 키. 공용 키는 없어서 AI 기능은 전부 이 키가 있어야만 동작함
@@ -326,6 +325,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             document.addEventListener('click', function (e) {
                 if (!e.target.closest('.admin-more-wrap')) closeAllAdminMoreMenus();
             });
+
+            // 와이파이가 불안정한 현장에서 저장이 몇 번 실패해도, 인터넷이 다시 연결되는 순간
+            // 자동으로 재동기화를 시도함(로그인 전이거나 아직 서버 데이터를 못 받아온 상태면
+            // queueSync 안에서 알아서 무시됨)
+            window.addEventListener('online', () => queueSync());
+
             loadTeamReportParts(); // 회원가입 모달의 소속(파트) 선택지를 채우기 위해 로그인 전에도 불러옴
 
             // 홈페이지에 접속하면 항상 로그아웃 상태로 시작: 로그인 모달만 띄워두고 홈페이지
@@ -828,50 +833,98 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             container.innerHTML = visibleTabOrder.map(tabId => {
                 const activeClass = tabId === activeTabId ? ' active' : '';
-                return `<div class="tab${activeClass}" data-tab-id="${tabId}" draggable="true">${TAB_LABELS[tabId]}</div>`;
+                return `<div class="tab${activeClass}" data-tab-id="${tabId}" onpointerdown="tabPointerDown(event, '${tabId}')">${TAB_LABELS[tabId]}</div>`;
             }).join('');
 
             container.querySelectorAll('.tab').forEach(tabEl => {
                 const tabId = tabEl.dataset.tabId;
-                
                 tabEl.addEventListener('click', () => switchTab(tabId));
-                
-                tabEl.addEventListener('dragstart', (e) => {
-                    if (!editUnlocked) { e.preventDefault(); return; }
-                    draggedTabId = tabId;
-                    tabEl.classList.add('dragging');
-                    e.dataTransfer.effectAllowed = 'move';
-                });
-                
-                tabEl.addEventListener('dragend', () => {
-                    tabEl.classList.remove('dragging');
-                    container.querySelectorAll('.tab').forEach(t => t.classList.remove('drag-over'));
-                });
-                
-                tabEl.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    if (tabId !== draggedTabId) tabEl.classList.add('drag-over');
-                });
-                
-                tabEl.addEventListener('dragleave', () => {
-                    tabEl.classList.remove('drag-over');
-                });
-                
-                tabEl.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    tabEl.classList.remove('drag-over');
-                    if (!draggedTabId || draggedTabId === tabId) return;
-                    
-                    const fromIndex = tabOrder.indexOf(draggedTabId);
-                    const toIndex = tabOrder.indexOf(tabId);
-                    tabOrder.splice(fromIndex, 1);
-                    tabOrder.splice(toIndex, 0, draggedTabId);
-
-                    saveTabOrderToStorage();
-                    renderTabs();
-                    if (typeof renderSettingsTab === 'function') renderSettingsTab();
-                });
             });
+        }
+
+        // 탭 순서 변경 드래그: 조직도 카드와 마찬가지로 네이티브 HTML5 드래그앤드롭 대신
+        // Pointer Events로 구현함 (트랙패드/브라우저별로 잘 안 먹거나 버벅이고, 터치 기기에서는
+        // 아예 동작하지 않는 문제가 있었음). 손을 뗀 지점 아래의 탭을 elementFromPoint로 찾아
+        // 그 자리로 옮김
+        let tabDragState = null; // { tabId, originEl, startX, startY, moved, ghostEl }
+        const TAB_DRAG_MOVE_THRESHOLD = 6; // 이보다 적게 움직이면 그냥 클릭으로 취급(드래그로 안 침)
+
+        function tabPointerDown(e, tabId) {
+            if (!editUnlocked) return; // 잠긴 상태에서는 순서 변경을 못 하게 막되, 클릭(탭 전환)은 그대로 동작함
+            if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
+            tabDragState = {
+                tabId,
+                originEl: e.currentTarget,
+                startX: e.clientX,
+                startY: e.clientY,
+                moved: false,
+                ghostEl: null
+            };
+            document.addEventListener('pointermove', tabPointerMove);
+            document.addEventListener('pointerup', tabPointerUp);
+            document.addEventListener('pointercancel', tabPointerUp);
+        }
+
+        function tabPointerMove(e) {
+            if (!tabDragState) return;
+            const dx = e.clientX - tabDragState.startX;
+            const dy = e.clientY - tabDragState.startY;
+
+            if (!tabDragState.moved) {
+                if (Math.hypot(dx, dy) < TAB_DRAG_MOVE_THRESHOLD) return;
+                tabDragState.moved = true;
+                tabDragState.originEl.classList.add('dragging');
+
+                const rect = tabDragState.originEl.getBoundingClientRect();
+                const ghost = tabDragState.originEl.cloneNode(true);
+                ghost.className = 'tab tab-ghost';
+                ghost.style.width = rect.width + 'px';
+                document.body.appendChild(ghost);
+                tabDragState.ghostEl = ghost;
+            }
+
+            e.preventDefault(); // 드래그 중 터치 스크롤/텍스트 선택 방지
+            tabDragState.ghostEl.style.left = e.clientX + 'px';
+            tabDragState.ghostEl.style.top = e.clientY + 'px';
+
+            document.querySelectorAll('.tab.drag-over').forEach(el => el.classList.remove('drag-over'));
+            tabDragState.ghostEl.style.display = 'none'; // elementFromPoint가 고스트 자신을 집지 않도록 잠깐 숨김
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            tabDragState.ghostEl.style.display = '';
+            const targetTab = under && under.closest('.tab');
+            if (targetTab && targetTab.dataset.tabId !== tabDragState.tabId) targetTab.classList.add('drag-over');
+        }
+
+        function tabPointerUp(e) {
+            if (!tabDragState) return;
+            document.removeEventListener('pointermove', tabPointerMove);
+            document.removeEventListener('pointerup', tabPointerUp);
+            document.removeEventListener('pointercancel', tabPointerUp);
+
+            const state = tabDragState;
+            tabDragState = null;
+
+            state.originEl.classList.remove('dragging');
+            if (state.ghostEl) state.ghostEl.remove();
+            document.querySelectorAll('.tab.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+            if (!state.moved) return; // 움직임 없이 그냥 눌렀다 뗀 경우는 클릭으로 처리되게 둠(별도 click 리스너)
+
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            const targetTab = under && under.closest('.tab');
+            if (!targetTab) return;
+            const targetTabId = targetTab.dataset.tabId;
+            if (!targetTabId || targetTabId === state.tabId) return;
+
+            const fromIndex = tabOrder.indexOf(state.tabId);
+            const toIndex = tabOrder.indexOf(targetTabId);
+            if (fromIndex === -1 || toIndex === -1) return;
+            tabOrder.splice(fromIndex, 1);
+            tabOrder.splice(toIndex, 0, state.tabId);
+
+            saveTabOrderToStorage();
+            renderTabs();
+            if (typeof renderSettingsTab === 'function') renderSettingsTab();
         }
         
         function switchTab(tabName, options) {
@@ -916,6 +969,19 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function addDaysToDateStr(dateStr, days) {
             const d = new Date(dateStr + 'T00:00:00');
             d.setDate(d.getDate() + days);
+            return formatDate(d);
+        }
+
+        // 일정 반복 등록("매월 반복")에서 씀. 31일처럼 다음 달에 없는 날짜는 Date가 자동으로
+        // 그 다음 달로 넘겨버리므로(예: 1/31 + 1개월 → 3/3), 그런 경우엔 그 달의 마지막 날로 보정함
+        function addMonthsToDateStr(dateStr, months) {
+            const d = new Date(dateStr + 'T00:00:00');
+            const targetMonth = d.getMonth() + months;
+            const originalDay = d.getDate();
+            d.setDate(1);
+            d.setMonth(targetMonth);
+            const lastDayOfTargetMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+            d.setDate(Math.min(originalDay, lastDayOfTargetMonth));
             return formatDate(d);
         }
 
@@ -1936,35 +2002,58 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         // 기간별 카테고리 조회: 매번 시작일/종료일을 손으로 고르지 않아도 되도록 자주 쓰는
         // 기간을 버튼 하나로 바로 채워줌
-        function applyPeriodQueryPreset(preset) {
+        // "오늘/이번주/이번달/지난달/올해" 프리셋 공통 계산 로직. 기간별 카테고리 조회, AI 월별
+        // 피드백처럼 시작일/종료일 두 칸을 직접 고르는 곳이면 어디서든 재사용함
+        function computePresetDateRange(preset) {
             const today = new Date();
-            let start, end;
-
-            if (preset === '오늘') {
-                start = end = today;
-            } else if (preset === '이번주') {
-                start = getMondayOfWeek(today);
-                end = new Date(start);
+            if (preset === '오늘') return { start: today, end: today };
+            if (preset === '이번주') {
+                const start = getMondayOfWeek(today);
+                const end = new Date(start);
                 end.setDate(end.getDate() + 6);
-            } else if (preset === '이번달') {
-                start = new Date(today.getFullYear(), today.getMonth(), 1);
-                end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            } else if (preset === '지난달') {
-                start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                end = new Date(today.getFullYear(), today.getMonth(), 0);
-            } else if (preset === '올해') {
-                start = new Date(today.getFullYear(), 0, 1);
-                end = new Date(today.getFullYear(), 11, 31);
-            } else {
-                return;
+                return { start, end };
             }
+            if (preset === '이번달') {
+                return { start: new Date(today.getFullYear(), today.getMonth(), 1), end: new Date(today.getFullYear(), today.getMonth() + 1, 0) };
+            }
+            if (preset === '지난달') {
+                return { start: new Date(today.getFullYear(), today.getMonth() - 1, 1), end: new Date(today.getFullYear(), today.getMonth(), 0) };
+            }
+            if (preset === '올해') {
+                return { start: new Date(today.getFullYear(), 0, 1), end: new Date(today.getFullYear(), 11, 31) };
+            }
+            return null;
+        }
 
-            document.getElementById('startDate').value = formatDate(start);
-            document.getElementById('endDate').value = formatDate(end);
+        function applyPeriodQueryPreset(preset) {
+            const range = computePresetDateRange(preset);
+            if (!range) return;
+
+            document.getElementById('startDate').value = formatDate(range.start);
+            document.getElementById('endDate').value = formatDate(range.end);
             document.querySelectorAll('#periodQueryPresetRow .quick-preset-btn').forEach(btn => {
                 btn.classList.toggle('selected', btn.dataset.preset === preset);
             });
             queryRecords();
+        }
+
+        // AI 월별 피드백도 기간별 카테고리 조회와 똑같이 매번 날짜 두 칸을 손으로 고르게 돼 있었어서,
+        // 같은 프리셋 버튼을 재사용해 붙여줌
+        function applyAiFeedbackPreset(preset) {
+            const range = computePresetDateRange(preset);
+            if (!range) return;
+
+            document.getElementById('aiStartDate').value = formatDate(range.start);
+            document.getElementById('aiEndDate').value = formatDate(range.end);
+            document.querySelectorAll('#aiFeedbackPresetRow .quick-preset-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.preset === preset);
+            });
+        }
+
+        function clearAiFeedbackPresetSelection() {
+            document.querySelectorAll('#aiFeedbackPresetRow .quick-preset-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
         }
 
         // 시작일/종료일을 직접 손으로 바꾸면 더 이상 프리셋과 일치하지 않으므로 선택 표시를 지움
@@ -3069,6 +3158,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             editingEventId = eventId;
             const modal = document.getElementById('eventModal');
             const deleteBtn = document.getElementById('deleteEventBtn');
+            const repeatSection = document.getElementById('eventRepeatSection');
 
             if (eventId) {
                 // 수정 모드
@@ -3081,6 +3171,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 document.getElementById('eventEndInput').value = ev.end;
                 selectedColor = ev.color;
                 deleteBtn.style.display = 'block';
+                // 이미 등록된 일정 하나를 고치는 중에 반복을 걸면 그 자리에서 여러 건으로
+                // 불어나 버려 헷갈리므로, 반복 등록은 새 일정을 추가할 때만 제공함
+                repeatSection.style.display = 'none';
             } else {
                 // 추가 모드
                 const dateStr = defaultDateStr || formatDate(new Date());
@@ -3090,6 +3183,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 document.getElementById('eventEndInput').value = dateStr;
                 selectedColor = COLOR_PALETTE[0];
                 deleteBtn.style.display = 'none';
+                document.getElementById('eventRepeatIntervalInput').value = '0';
+                document.getElementById('eventRepeatCountInput').value = '4';
+                repeatSection.style.display = '';
             }
 
             syncColorSwatchSelection(selectedColor);
@@ -3112,7 +3208,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!title) { showAppToast('내용을 입력해주세요'); return; }
             if (!start || !end) { showAppToast('기간을 설정해주세요'); return; }
             if (start > end) { showAppToast('종료일은 시작일보다 빠를 수 없습니다'); return; }
-            
+
+            let repeatCount = 1;
             if (editingEventId) {
                 const ev = events.find(e => e.id === editingEventId);
                 if (ev) {
@@ -3122,19 +3219,37 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     ev.color = selectedColor;
                 }
             } else {
-                events.push({
-                    id: 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                    title, start, end, color: selectedColor
-                });
+                // 당직/연차처럼 같은 간격으로 반복되는 일정은, 서로 독립된 일정 여러 건으로 한 번에
+                // 만들어서 매번 새로 등록하지 않아도 되게 함(각 회차는 이후 따로 수정/삭제 가능)
+                const repeatInterval = document.getElementById('eventRepeatIntervalInput').value;
+                repeatCount = repeatInterval === '0' ? 1 : Math.max(1, Math.min(52, parseInt(document.getElementById('eventRepeatCountInput').value, 10) || 1));
+
+                for (let i = 0; i < repeatCount; i++) {
+                    let occStart = start, occEnd = end;
+                    if (i > 0) {
+                        if (repeatInterval === 'month') {
+                            occStart = addMonthsToDateStr(start, i);
+                            occEnd = addMonthsToDateStr(end, i);
+                        } else {
+                            const offsetDays = parseInt(repeatInterval, 10) * i;
+                            occStart = addDaysToDateStr(start, offsetDays);
+                            occEnd = addDaysToDateStr(end, offsetDays);
+                        }
+                    }
+                    events.push({
+                        id: 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + i,
+                        title, start: occStart, end: occEnd, color: selectedColor
+                    });
+                }
             }
-            
+
             saveEventsToStorage();
             closeEventModal();
             renderCalendar();
             if (selectedDate) renderRecordForm();
-            showStatus('✅ 일정이 저장되었습니다!', 'success');
+            showStatus(repeatCount > 1 ? `✅ 일정이 ${repeatCount}건 반복 등록되었습니다!` : '✅ 일정이 저장되었습니다!', 'success');
         }
-        
+
         function deleteEvent() {
             if (!checkEditPermission()) return;
             if (!editingEventId) return;
@@ -3776,7 +3891,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (monthMatch) { months += parseInt(monthMatch[1], 10); matched = true; }
 
             if (!matched) {
-                if (/분기/.test(text)) { months = 3; matched = true; }
+                if (/격월/.test(text)) { months = 2; matched = true; }
+                else if (/분기/.test(text)) { months = 3; matched = true; }
                 else if (/반기/.test(text)) { months = 6; matched = true; }
                 else if (/매년|매해/.test(text)) { months = 12; matched = true; }
                 else if (/매월|매달/.test(text)) { months = 1; matched = true; }
@@ -3913,6 +4029,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     </div>
                     <div class="project-card-row"><b>예정월:</b> ${renderOccurrenceMonthsHtml(m._occurrenceMonths)}</div>
                     ${m.cycle ? `<div class="project-card-row"><b>주기:</b> ${escapeHtml(m.cycle)}</div>` : ''}
+                    ${(m.cycle && !parseCycleIntervalMonths(m.cycle)) ? `<div class="project-card-row maint-cycle-warning">⚠️ 주기 표현을 자동으로 인식하지 못해, 등록된 차기 점검월만 표시돼요. ("3개월", "격월", "분기", "반기", "매년" 등으로 적으면 반복월이 자동 계산됩니다)</div>` : ''}
                     ${m.sop ? `<div class="project-card-row"><b>SOP:</b> ${escapeHtml(m.sop)}</div>` : ''}
                     ${m.lastDone ? `<div class="project-card-row"><b>이전 완료:</b> ${escapeHtml(m.lastDone)}</div>` : ''}
                     ${showAck ? `
@@ -4101,6 +4218,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function applyAITemplate() {
             document.getElementById('aiTemplateTextarea').value = aiTemplateContent;
         }
+
+        // 자유롭게 고칠 수 있는 피드백 양식을 원래 기본 양식으로 되돌림. 자유 수정은 되는데
+        // 되돌릴 방법이 없어서, 이상하게 고쳐놓고 되돌리지 못하는 경우를 위한 안전장치
+        function resetAITemplate() {
+            if (!checkEditPermission()) return;
+            confirmModal('지금 수정한 피드백 양식을 기본 양식으로 되돌리시겠습니까?', () => {
+                aiTemplateContent = DEFAULT_AI_TEMPLATE;
+                document.getElementById('aiTemplateTextarea').value = DEFAULT_AI_TEMPLATE;
+                localStorage.setItem('aiTemplate', aiTemplateContent);
+                queueSync();
+            });
+        }
         
         function setupAITemplateAutosave() {
             const textarea = document.getElementById('aiTemplateTextarea');
@@ -4184,7 +4313,26 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
         }
 
-        async function generateDailySummary() {
+        // 결과를 직접 손으로 고친 뒤 "생성"을 다시 누르면 확인 없이 사라졌었음. 마지막으로
+        // AI가 채워준 값을 기억해뒀다가, 지금 textarea 값이 그것과 다르면(=사람이 손을 댔으면)
+        // 재생성 전에 한 번 확인받음
+        let lastGeneratedDailySummaryText = null;
+
+        function confirmOverwriteIfEdited(textareaId, lastGeneratedText, onConfirmed) {
+            const textarea = document.getElementById(textareaId);
+            const hasUnsavedEdit = textarea && textarea.value && textarea.value !== lastGeneratedText;
+            if (hasUnsavedEdit) {
+                confirmModal('지금 결과창에 직접 수정한 내용이 있습니다. 다시 생성하면 그 내용이 사라집니다. 계속할까요?', onConfirmed);
+                return;
+            }
+            onConfirmed();
+        }
+
+        function generateDailySummary() {
+            confirmOverwriteIfEdited('dailySummaryResultTextarea', lastGeneratedDailySummaryText, doGenerateDailySummary);
+        }
+
+        async function doGenerateDailySummary() {
             const dateStr = document.getElementById('dailySummaryDate').value;
             const btn = document.getElementById('dailySummaryBtn');
             const loading = document.getElementById('dailySummaryLoading');
@@ -4232,6 +4380,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
                 if (data.status === 'success' && data.summary) {
                     stopDailySummaryProgress(true);
+                    lastGeneratedDailySummaryText = data.summary;
                     document.getElementById('dailySummaryResultTextarea').value = data.summary;
                     resultBlock.style.display = 'block';
                     statusEl.textContent = '✅ 오늘 업무 요약이 생성되었습니다';
@@ -4312,7 +4461,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
         }
 
-        async function generateWeeklySummary() {
+        let lastGeneratedWeeklySummaryText = null;
+
+        function generateWeeklySummary() {
+            confirmOverwriteIfEdited('weeklySummaryResultTextarea', lastGeneratedWeeklySummaryText, doGenerateWeeklySummary);
+        }
+
+        async function doGenerateWeeklySummary() {
             const btn = document.getElementById('weeklySummaryBtn');
             const loading = document.getElementById('weeklySummaryLoading');
             const statusEl = document.getElementById('weeklySummaryStatus');
@@ -4352,6 +4507,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
                 if (data.status === 'success' && data.summary) {
                     stopWeeklySummaryProgress(true);
+                    lastGeneratedWeeklySummaryText = data.summary;
                     document.getElementById('weeklySummaryResultTextarea').value = data.summary;
                     resultBlock.style.display = 'block';
                     statusEl.textContent = '✅ 이번주 업무 요약이 생성되었습니다';

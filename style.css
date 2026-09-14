@@ -127,6 +127,21 @@ html {
             transition: background 0.3s, color 0.3s;
             user-select: none;
             position: relative;
+            touch-action: none; /* 드래그하는 동안 화면이 같이 스크롤되지 않도록 함(터치 기기 포함) */
+        }
+
+        /* 드래그 중 커서/손가락을 따라다니는 탭 복제본 */
+        .tab-ghost {
+            position: fixed;
+            top: 0;
+            left: 0;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 9999;
+            cursor: grabbing;
+            box-shadow: 0 6px 20px rgba(45, 55, 90, 0.25);
+            background: white;
+            border-radius: 10px;
         }
         
         .tab:active {
@@ -1475,6 +1490,11 @@ html {
             font-weight: 700;
             padding: 2px 8px;
             border-radius: 10px;
+        }
+
+        /* 정비계획: 등록한 주기 표현을 자동 인식하지 못했을 때 보여주는 안내 문구 */
+        .maint-cycle-warning {
+            color: #b8860b;
         }
 
         .categories-list {
@@ -3254,6 +3274,10 @@ html {
     color: var(--d-text1);
 }
 
+.dark-mode .maint-cycle-warning {
+    color: #e0b84a;
+}
+
 .dark-mode .admin-user-table th {
     background: var(--d-bg2);
     color: var(--d-text1);
@@ -3356,6 +3380,10 @@ html {
 
 .dark-mode .day:hover {
     border-color: #8a9bf5;
+}
+
+.dark-mode .tab-ghost {
+    background: var(--d-bg1);
 }
 
 .dark-mode .tab {
