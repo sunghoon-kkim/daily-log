@@ -417,6 +417,74 @@ function parseUserJson(json) {
 
 // ===== 팀 보고 계층(팀원 → 파트장 → 팀장) =====
 const TEAM_REPORT_ROLES = ['member', 'partLead', 'teamLead'];
+// 소속(department) 값 중 "향남공무팀-설비파트"처럼 파트가 붙은 형태를 알아볼 때 쓰는 접두사.
+// 파트 목록 자체는 고정이 아니라 관리자가 추가/삭제/수정할 수 있음 (getTeamReportParts 참고)
+const TEAM_REPORT_PART_DEPT_PREFIX = "향남공무팀-";
+
+// 관리자가 추가/삭제/수정한 파트 목록. 한 번도 설정한 적이 없으면 처음 도입 당시의 기본값을 씀.
+// 로그인 전(회원가입 화면)에서도 보여줘야 해서 별도 인증 없이 부를 수 있는 공개 정보로 다룸
+function getTeamReportParts() {
+  const stored = PropertiesService.getScriptProperties().getProperty('TEAM_REPORT_PARTS');
+  if (!stored) return ['설비파트', '장비파트', 'GMP파트'];
+  try {
+    const parsed = JSON.parse(stored);
+    return (Array.isArray(parsed) && parsed.length > 0) ? parsed : ['설비파트', '장비파트', 'GMP파트'];
+  } catch (parseErr) {
+    return ['설비파트', '장비파트', 'GMP파트'];
+  }
+}
+
+// 회원가입/계정정보 수정 화면의 소속(파트) 드롭다운을 채우기 위한 조회. 가입 전 화면에서도
+// 써야 하므로 로그인 여부와 무관하게 누구나 부를 수 있음(파트 이름 자체는 민감정보가 아님)
+function handleGetTeamReportParts() {
+  return jsonResponse({ status: "success", parts: getTeamReportParts() });
+}
+
+// 관리자 화면: 파트 목록 추가/삭제/이름변경. renameMap({"옛이름":"새이름"})이 있으면 그 이름을
+// 소속으로 쓰고 있던 모든 계정의 소속도 함께 새 이름으로 바꿔줌. 목록에서 아예 빠진(삭제된)
+// 파트를 쓰던 계정은 소속을 건드리지 않고 그대로 두되, 조직도에서는 "미배정"으로 보이게 되고
+// 관리자가 나중에 다시 배정하면 됨
+function handleAdminSetTeamReportParts(data) {
+  if (!verifyAdmin(data)) return adminAuthFailedResponse();
+
+  const seen = {};
+  const parts = [];
+  (Array.isArray(data.parts) ? data.parts : []).forEach(function(p) {
+    const name = String(p || "").trim().slice(0, 30);
+    if (!name || seen[name]) return;
+    seen[name] = true;
+    parts.push(name);
+  });
+  if (parts.length === 0) {
+    return jsonResponse({ status: "error", message: "파트를 한 개 이상 입력해주세요." });
+  }
+
+  const renameMap = (data.renameMap && typeof data.renameMap === 'object') ? data.renameMap : {};
+  const renameFromKeys = Object.keys(renameMap).filter(function(oldName) {
+    return renameMap[oldName] && renameMap[oldName] !== oldName;
+  });
+
+  if (renameFromKeys.length > 0) {
+    const usersSheet = getUsersSheet();
+    const lastRow = usersSheet.getLastRow();
+    if (lastRow >= 2) {
+      const rows = usersSheet.getRange(2, 1, lastRow - 1, 3).getValues();
+      rows.forEach(function(r, i) {
+        const profile = parseUserJson(r[2]);
+        const dept = profile.department || "";
+        if (!dept.startsWith(TEAM_REPORT_PART_DEPT_PREFIX)) return;
+        const oldPart = dept.slice(TEAM_REPORT_PART_DEPT_PREFIX.length);
+        if (renameMap[oldPart] && renameMap[oldPart] !== oldPart) {
+          profile.department = TEAM_REPORT_PART_DEPT_PREFIX + renameMap[oldPart];
+          usersSheet.getRange(i + 2, 3).setValue(JSON.stringify(profile));
+        }
+      });
+    }
+  }
+
+  PropertiesService.getScriptProperties().setProperty('TEAM_REPORT_PARTS', JSON.stringify(parts));
+  return jsonResponse({ status: "success", parts: parts });
+}
 
 // 이 계정의 팀 보고 계층상 역할을 돌려줌. 관리자가 새 역할 선택 UI로 지정한 profile.teamReportRole을
 // 우선 쓰고, 아직 지정 안 된 계정은 예전 팀장 지정(isTeamLead) 값을 팀장으로 간주해 호환성을 유지함.
@@ -625,6 +693,8 @@ function doPost(e) {
     if (data.action === "getTeamReportInbox") return handleGetTeamReportInbox(data);
     if (data.action === "getTeamReportMemberList") return handleGetTeamReportMemberList(data);
     if (data.action === "getTeamReportPendingStatus") return handleGetTeamReportPendingStatus(data);
+    if (data.action === "getTeamReportParts") return handleGetTeamReportParts();
+    if (data.action === "adminSetTeamReportParts") return handleAdminSetTeamReportParts(data);
 
     return handleSaveState(data, body);
   } catch (error) {

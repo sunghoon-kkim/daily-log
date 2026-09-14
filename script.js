@@ -321,6 +321,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             applyThemeButtonLabel(); // <head>의 조기 스크립트가 이미 dark-mode 클래스를 적용해뒀으므로 버튼 표시만 맞춰줌
             setupGlobalEditLockInterceptor();
             setupModalDismissHandlers();
+            loadTeamReportParts(); // 회원가입 모달의 소속(파트) 선택지를 채우기 위해 로그인 전에도 불러옴
 
             // 홈페이지에 접속하면 항상 로그아웃 상태로 시작: 로그인 모달만 띄워두고 홈페이지
             // 내용은 그리지 않음 (로그인/회원가입 성공 시 그 안에서 initAppUI/loadAllFromServer로 이어짐)
@@ -5080,6 +5081,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function enterAdminMode() {
             document.body.classList.add('admin-mode');
             loadAdminUserList();
+            loadTeamReportParts();
         }
 
         async function loadAdminUserList() {
@@ -5122,15 +5124,168 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         // ===== 관리자 조직도 (드래그앤드롭으로 팀장/파트장/팀원 자리 배정) =====
-        // 향남공무팀 산하 파트 목록. 소속(department) 값은 "향남공무팀-설비파트"처럼
-        // TEAM_REPORT_PART_DEPT_PREFIX + 파트명 형태로 저장됨 (회원가입/계정정보 수정 드롭다운과 동일한 값)
-        const TEAM_REPORT_PARTS = ['설비파트', '장비파트', 'GMP파트'];
+        // 향남공무팀 산하 파트 목록. 관리자가 자유롭게 추가/삭제/수정할 수 있어서 고정값이 아니라
+        // 서버(getTeamReportParts)에서 불러와 채움 - 응답이 오기 전까지 쓸 기본값만 여기 적어둠.
+        // 소속(department) 값은 "향남공무팀-설비파트"처럼 TEAM_REPORT_PART_DEPT_PREFIX + 파트명
+        // 형태로 저장됨 (회원가입/계정정보 수정 드롭다운과 동일한 값)
+        let TEAM_REPORT_PARTS = ['설비파트', '장비파트', 'GMP파트'];
         const TEAM_REPORT_PART_DEPT_PREFIX = '향남공무팀-';
+        let partManagerRows = []; // 관리자 화면의 파트 관리 편집 상태: [{original, value}]
 
         function getPartFromDepartment(department) {
             if (!department) return null;
             const part = department.slice(TEAM_REPORT_PART_DEPT_PREFIX.length);
             return (department.startsWith(TEAM_REPORT_PART_DEPT_PREFIX) && TEAM_REPORT_PARTS.includes(part)) ? part : null;
+        }
+
+        // 파트 목록을 서버에서 불러와 TEAM_REPORT_PARTS를 갱신하고, 그걸 쓰는 화면들(소속 선택
+        // 드롭다운 3곳, 조직도, 파트 관리 편집창)을 다시 그림. 로그인 여부와 무관하게 부를 수 있어서
+        // 회원가입 모달을 열기 전(로그인 전 초기 화면)에도 호출함
+        async function loadTeamReportParts() {
+            try {
+                const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'getTeamReportParts' })
+                });
+                const data = await res.json();
+                if (data.status === 'success' && Array.isArray(data.parts) && data.parts.length > 0) {
+                    TEAM_REPORT_PARTS = data.parts;
+                }
+            } catch (err) {
+                console.error('파트 목록 불러오기 오류:', err);
+            }
+            renderAllDepartmentSelects();
+            renderOrgChart();
+            renderPartManagerUI();
+        }
+
+        // 회원가입/계정정보 수정/관리자 계정정보 수정 3곳의 소속 select를 지금의 TEAM_REPORT_PARTS로 다시 채움.
+        // "직접입력"으로 저장해둔 값 등 목록에 없는 기존 선택값은 setDepartmentFieldValue가 알아서 커스텀 입력으로 되돌림
+        function renderAllDepartmentSelects() {
+            ['signup', 'account', 'adminEdit'].forEach(which => {
+                const select = document.getElementById(which + 'DepartmentInput');
+                if (!select) return;
+                const prevValue = select.value;
+                const partOptions = TEAM_REPORT_PARTS.map(p => {
+                    const val = TEAM_REPORT_PART_DEPT_PREFIX + p;
+                    return `<option value="${escapeHtml(val)}">${escapeHtml(val)}</option>`;
+                }).join('');
+                select.innerHTML = partOptions
+                    + '<option value="나보타공무팀">나보타공무팀</option>'
+                    + '<option value="__custom__">직접입력</option>';
+                if (prevValue && Array.from(select.options).some(o => o.value === prevValue)) {
+                    select.value = prevValue;
+                }
+            });
+        }
+
+        // ===== 관리자 - 파트 관리(추가/삭제/이름변경) =====
+        function renderPartManagerUI() {
+            const container = document.getElementById('partManagerList');
+            if (!container) return;
+            if (partManagerRows.length === 0) {
+                partManagerRows = TEAM_REPORT_PARTS.map(p => ({ original: p, value: p }));
+            }
+
+            container.innerHTML = partManagerRows.map((row, i) => `
+                <div class="team-report-row" style="margin-bottom:8px;">
+                    <input type="text" class="category-input" value="${escapeHtml(row.value)}" maxlength="20"
+                           placeholder="파트 이름" oninput="updatePartManagerRow(${i}, this.value)">
+                    <button type="button" class="admin-action-btn danger" onclick="removePartManagerRow(${i})" title="이 파트 삭제">✕</button>
+                </div>
+            `).join('') || '<p style="color:#999; font-size:13px;">➕ 파트 추가 버튼을 눌러 파트를 만들어주세요.</p>';
+        }
+
+        function updatePartManagerRow(index, value) {
+            if (partManagerRows[index]) partManagerRows[index].value = value;
+        }
+
+        function removePartManagerRow(index) {
+            partManagerRows.splice(index, 1);
+            renderPartManagerUI();
+        }
+
+        function addPartManagerRow() {
+            partManagerRows.push({ original: null, value: '' });
+            renderPartManagerUI();
+        }
+
+        function savePartManagerChanges() {
+            const statusEl = document.getElementById('partManagerStatus');
+            const trimmedRows = partManagerRows
+                .map(r => ({ original: r.original, value: (r.value || '').trim() }))
+                .filter(r => r.value);
+
+            if (trimmedRows.length === 0) {
+                statusEl.textContent = '⚠️ 파트를 한 개 이상 입력해주세요';
+                statusEl.className = 'ai-status error';
+                return;
+            }
+            const names = trimmedRows.map(r => r.value);
+            if (new Set(names).size !== names.length) {
+                statusEl.textContent = '⚠️ 파트 이름이 중복되었습니다';
+                statusEl.className = 'ai-status error';
+                return;
+            }
+
+            // 원래 있던 파트의 이름이 바뀐 것만 이동 대상으로 서버에 함께 보냄(새로 추가된 줄은 original이 없음)
+            const renameMap = {};
+            trimmedRows.forEach(r => {
+                if (r.original && r.original !== r.value) renameMap[r.original] = r.value;
+            });
+
+            // 이름이 바뀐 게 아니라 완전히 없어지는 파트에 인원이 있으면, 저장 전에 미리 알려줌
+            // (그 인원들은 소속은 그대로 두고 조직도에서만 "미배정"으로 보이게 됨)
+            const removedParts = TEAM_REPORT_PARTS.filter(p => !names.includes(p) && !renameMap[p]);
+            if (removedParts.length > 0) {
+                const affectedCount = adminUserList.filter(u => removedParts.includes(getPartFromDepartment(u.department))).length;
+                if (affectedCount > 0) {
+                    confirmModal(
+                        `삭제하는 파트(${removedParts.join(', ')})에 속한 인원이 ${affectedCount}명 있습니다. 저장하면 이 인원들은 조직도에서 "미배정 인원"으로 표시됩니다. 계속할까요?`,
+                        () => savePartManagerChangesConfirmed(names, renameMap)
+                    );
+                    return;
+                }
+            }
+
+            savePartManagerChangesConfirmed(names, renameMap);
+        }
+
+        async function savePartManagerChangesConfirmed(names, renameMap) {
+            const statusEl = document.getElementById('partManagerStatus');
+            statusEl.textContent = '☁️ 저장하는 중...';
+            statusEl.className = 'ai-status';
+
+            try {
+                const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'adminSetTeamReportParts',
+                        employeeId: currentEmployeeId,
+                        passwordHash: currentPasswordHash,
+                        parts: names,
+                        renameMap: renameMap
+                    })
+                });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    TEAM_REPORT_PARTS = Array.isArray(data.parts) ? data.parts : names;
+                    partManagerRows = TEAM_REPORT_PARTS.map(p => ({ original: p, value: p }));
+                    statusEl.textContent = '✅ 저장되었습니다';
+                    statusEl.className = 'ai-status success';
+                    renderAllDepartmentSelects();
+                    renderPartManagerUI();
+                    await loadAdminUserList(); // 소속이 바뀐 인원 반영 + 조직도 다시 그림
+                } else {
+                    statusEl.textContent = '⚠️ ' + (data.message || '저장에 실패했습니다');
+                    statusEl.className = 'ai-status error';
+                }
+            } catch (err) {
+                console.error('파트 목록 저장 오류:', err);
+                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.className = 'ai-status error';
+            }
         }
 
         // adminUserList(이미 불러와 있는 계정 목록)를 팀장/각 파트의 파트장·팀원/미배정으로 나눠서

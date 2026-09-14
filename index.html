@@ -565,6 +565,17 @@
         <!-- 관리자 전용 화면: 관리자 사번으로 로그인하면 위 탭들 대신 이 화면 하나만 보임 -->
         <div id="adminPanel">
             <div class="category-manager">
+                <h3>🧩 파트 관리</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">향남공무팀 산하 파트를 자유롭게 추가·삭제·이름 변경할 수 있습니다. 이름을 바꾸면 그 파트가 소속이었던 인원의 소속도 함께 바뀝니다. 파트를 삭제하면 그 파트였던 인원은 조직도의 "미배정 인원"으로 남고, 나중에 다시 배정해주면 됩니다.</p>
+                <div class="ai-status" id="partManagerStatus"></div>
+                <div id="partManagerList" style="margin-bottom:12px;"></div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button type="button" class="add-category-btn" onclick="addPartManagerRow()">➕ 파트 추가</button>
+                    <button type="button" class="add-category-btn" onclick="savePartManagerChanges()">💾 저장</button>
+                </div>
+            </div>
+
+            <div class="category-manager" style="margin-top:25px;">
                 <h3>🗂️ 조직도 (드래그해서 역할·파트 배정)</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">카드를 원하는 자리로 드래그하면 그 사람의 팀 보고 역할과 소속(파트)이 함께 바뀝니다. 팀장/파트장 자리에 이미 누가 있는 상태로 다른 사람을 놓으면 확인 후 기존 사람은 그 파트의 팀원으로 내려갑니다. 향남공무팀 파트(설비/장비/GMP)에 속하지 않는 인원은 "미배정 인원"에 모여 있습니다.</p>
                 <div class="ai-status" id="orgChartStatus"></div>
