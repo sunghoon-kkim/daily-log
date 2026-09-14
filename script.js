@@ -1306,6 +1306,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const listEl = document.getElementById('myTeamReportHistoryList');
             if (!statusEl || !listEl) return;
 
+            // 월별 필터를 아직 아무것도 고르지 않은 상태라면(=처음 열었을 때) 이번 달로 기본 설정해줌
+            const monthInput = document.getElementById('myTeamReportHistoryMonthFilter');
+            if (monthInput && !monthInput.value) {
+                monthInput.value = formatDate(new Date()).slice(0, 7);
+            }
+
             statusEl.textContent = '☁️ 불러오는 중...';
             statusEl.className = 'ai-status';
             listEl.innerHTML = '';
