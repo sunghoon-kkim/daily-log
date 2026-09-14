@@ -92,6 +92,12 @@ html {
         .sync-status.syncing {
             background: #dfe3ee;
             color: #5a6079;
+            animation: syncPulse 1.2s ease-in-out infinite;
+        }
+
+        @keyframes syncPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.55; }
         }
         
         .sync-status.error {
@@ -415,6 +421,11 @@ html {
         .upcoming-card-mini:hover {
             width: 20px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .upcoming-card-mini:focus-visible {
+            outline: 2px solid #667eea;
+            outline-offset: 2px;
         }
         
         .upcoming-empty {
@@ -981,6 +992,13 @@ html {
         .save-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .save-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
         
         .reset-btn {
@@ -2436,6 +2454,12 @@ html {
         
         .modal-save-btn:hover {
             transform: translateY(-2px);
+        }
+
+        .modal-save-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
         }
         
         .modal-delete-btn {

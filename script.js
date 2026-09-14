@@ -1798,7 +1798,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 
                 html += `
                     <div class="${classes}" onclick="selectDate('${dateStr}')">
-                        <button class="day-plus-btn" onclick="event.stopPropagation(); openEventModal(null, '${dateStr}')">+</button>
+                        <button class="day-plus-btn" onclick="event.stopPropagation(); openEventModal(null, '${dateStr}')" aria-label="${dateStr} 일정 추가">+</button>
                         <div class="day-top">
                             <div class="day-number ${numClass}">${d}</div>
                             <div class="day-record-dots">${buildRecordDots(dateStr)}</div>
@@ -1902,7 +1902,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 // 개별적으로 접힌 카드는 색상 막대만 표시, 클릭하면 다시 펼쳐짐 (툴팁으로 제목/D-day 확인 가능)
                 if (collapsedUpcomingCardIds.has(ev.id)) {
                     return `
-                        <div class="upcoming-card-mini" style="background:${ev.color}" onclick="expandUpcomingCard('${ev.id}')" title="${escapeHtml(ev.title)} (${ddayInfo})"></div>
+                        <div class="upcoming-card-mini" style="background:${ev.color}" onclick="expandUpcomingCard('${ev.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();expandUpcomingCard('${ev.id}')}" role="button" tabindex="0" title="${escapeHtml(ev.title)} (${ddayInfo})" aria-label="${escapeHtml(ev.title)} (${ddayInfo}) 펼치기"></div>
                     `;
                 }
                 
@@ -1912,7 +1912,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 
                 return `
                     <div class="upcoming-card" style="border-left-color:${ev.color}" onclick="jumpToUpcomingDate('${ev.start}','${ev.end}')">
-                        <button class="upcoming-card-collapse-btn" onclick="event.stopPropagation(); collapseUpcomingCard('${ev.id}')" title="작게 접기">−</button>
+                        <button class="upcoming-card-collapse-btn" onclick="event.stopPropagation(); collapseUpcomingCard('${ev.id}')" title="작게 접기" aria-label="작게 접기">−</button>
                         <span class="upcoming-card-dday" style="background:${ev.color}">${ddayInfo}</span>
                         <div class="upcoming-card-title" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>
                         <div class="upcoming-card-date">${dateLabel}</div>
@@ -2525,8 +2525,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             clearTimeout(syncTimeout); // 곧 이어서 직접 동기화하므로, 뒤늦게 또 도는 디바운스 자동저장은 취소함
             showStatus('💾 저장 중...', 'success');
-            const ok = await syncToServer();
-            showStatus(ok ? '✅ 저장되었습니다!' : '⚠️ 서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
+
+            // 저장이 끝나기 전에 버튼을 다시 눌러 syncToServer()가 겹쳐 나가는 것을 막음
+            const saveBtn = document.getElementById('saveAllBtn');
+            if (saveBtn) saveBtn.disabled = true;
+            try {
+                const ok = await syncToServer();
+                showStatus(ok ? '✅ 저장되었습니다!' : '⚠️ 서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
+            } finally {
+                if (saveBtn) saveBtn.disabled = false;
+            }
         }
         
         function showStatus(message, type) {
