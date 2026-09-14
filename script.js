@@ -5126,7 +5126,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // TEAM_REPORT_PART_DEPT_PREFIX + 파트명 형태로 저장됨 (회원가입/계정정보 수정 드롭다운과 동일한 값)
         const TEAM_REPORT_PARTS = ['설비파트', '장비파트', 'GMP파트'];
         const TEAM_REPORT_PART_DEPT_PREFIX = '향남공무팀-';
-        let orgDraggedEmployeeId = null;
 
         function getPartFromDepartment(department) {
             if (!department) return null;
@@ -5160,9 +5159,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
 
             const cardHtml = u => `
-                <div class="org-card${u.disabled ? ' org-card-disabled' : ''}" draggable="true"
-                     ondragstart="orgCardDragStart(event, '${escapeForOnclickArg(u.employeeId)}')"
-                     ondragend="orgCardDragEnd(event)"
+                <div class="org-card${u.disabled ? ' org-card-disabled' : ''}"
+                     onpointerdown="orgCardPointerDown(event, '${escapeForOnclickArg(u.employeeId)}')"
                      title="${escapeHtml(u.department || '소속 없음')}">
                     <div class="org-card-name">${escapeHtml(u.name || u.employeeId)}</div>
                     <div class="org-card-id">${escapeHtml(u.employeeId)}${u.disabled ? ' · 비활성' : ''}</div>
@@ -5170,8 +5168,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             `;
 
             const slotHtml = (slotType, part, extraClass, label, users, emptyHint) => `
-                <div class="org-slot ${extraClass}" data-slot-type="${slotType}" data-part="${escapeHtml(part || '')}"
-                     ondragover="orgSlotDragOver(event)" ondragleave="orgSlotDragLeave(event)" ondrop="orgSlotDrop(event)">
+                <div class="org-slot ${extraClass}" data-slot-type="${slotType}" data-part="${escapeHtml(part || '')}">
                     <div class="org-slot-label">${label}</div>
                     <div class="org-slot-cards">${users.map(cardHtml).join('') || `<div class="org-slot-empty-hint">${emptyHint}</div>`}</div>
                 </div>
@@ -5200,37 +5197,84 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             container.innerHTML = html;
         }
 
-        function orgCardDragStart(e, employeeId) {
-            orgDraggedEmployeeId = employeeId;
-            e.currentTarget.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
+        // 네이티브 HTML5 드래그앤드롭(draggable+dragstart/dragover/drop)은 트랙패드/브라우저별로
+        // 잘 안 먹거나 버벅이는 경우가 많고 터치 기기에서는 아예 동작하지 않아서, 대신 Pointer
+        // Events(마우스/터치 공용)로 직접 구현함 - 카드를 따라다니는 고스트를 그려서 옮기고,
+        // 손을 뗀 지점 아래에 있는 슬롯을 elementFromPoint로 찾아 드롭 처리함
+        let orgDragState = null; // { employeeId, originCard, pointerId, startX, startY, moved, ghostEl }
+        const ORG_DRAG_MOVE_THRESHOLD = 6; // 이보다 적게 움직이면 그냥 클릭으로 취급(드래그로 안 침)
+
+        function orgCardPointerDown(e, employeeId) {
+            if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
+            const card = e.currentTarget;
+            orgDragState = {
+                employeeId,
+                originCard: card,
+                pointerId: e.pointerId,
+                startX: e.clientX,
+                startY: e.clientY,
+                moved: false,
+                ghostEl: null
+            };
+            document.addEventListener('pointermove', orgCardPointerMove);
+            document.addEventListener('pointerup', orgCardPointerUp);
+            document.addEventListener('pointercancel', orgCardPointerUp);
         }
 
-        function orgCardDragEnd(e) {
-            e.currentTarget.classList.remove('dragging');
+        function orgCardPointerMove(e) {
+            if (!orgDragState) return;
+            const dx = e.clientX - orgDragState.startX;
+            const dy = e.clientY - orgDragState.startY;
+
+            if (!orgDragState.moved) {
+                if (Math.hypot(dx, dy) < ORG_DRAG_MOVE_THRESHOLD) return;
+                orgDragState.moved = true;
+                orgDragState.originCard.classList.add('dragging');
+
+                const rect = orgDragState.originCard.getBoundingClientRect();
+                const ghost = orgDragState.originCard.cloneNode(true);
+                ghost.className = 'org-card org-card-ghost';
+                ghost.style.width = rect.width + 'px';
+                document.body.appendChild(ghost);
+                orgDragState.ghostEl = ghost;
+            }
+
+            e.preventDefault(); // 드래그 중 터치 스크롤/텍스트 선택 방지
+            orgDragState.ghostEl.style.left = e.clientX + 'px';
+            orgDragState.ghostEl.style.top = e.clientY + 'px';
+
             document.querySelectorAll('.org-slot.drag-over').forEach(el => el.classList.remove('drag-over'));
+            orgDragState.ghostEl.style.display = 'none'; // elementFromPoint가 고스트 자신을 집지 않도록 잠깐 숨김
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            orgDragState.ghostEl.style.display = '';
+            const slot = under && under.closest('.org-slot');
+            if (slot) slot.classList.add('drag-over');
         }
 
-        function orgSlotDragOver(e) {
-            e.preventDefault();
-            e.currentTarget.classList.add('drag-over');
+        function orgCardPointerUp(e) {
+            if (!orgDragState) return;
+            document.removeEventListener('pointermove', orgCardPointerMove);
+            document.removeEventListener('pointerup', orgCardPointerUp);
+            document.removeEventListener('pointercancel', orgCardPointerUp);
+
+            const state = orgDragState;
+            orgDragState = null;
+
+            state.originCard.classList.remove('dragging');
+            if (state.ghostEl) state.ghostEl.remove();
+            document.querySelectorAll('.org-slot.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+            if (!state.moved) return; // 움직임 없이 그냥 눌렀다 뗀 경우(클릭)는 무시
+
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            const slot = under && under.closest('.org-slot');
+            if (!slot) return;
+
+            handleOrgSlotDrop(state.employeeId, slot.dataset.slotType, slot.dataset.part || '');
         }
 
-        function orgSlotDragLeave(e) {
-            e.currentTarget.classList.remove('drag-over');
-        }
-
-        function orgSlotDrop(e) {
-            e.preventDefault();
-            const slot = e.currentTarget;
-            slot.classList.remove('drag-over');
-            const employeeId = orgDraggedEmployeeId;
-            orgDraggedEmployeeId = null;
-            if (!employeeId) return;
-
-            const slotType = slot.dataset.slotType; // 'teamLead' | 'partLead' | 'member' | 'unassigned'
-            const part = slot.dataset.part || '';
-
+        // 카드를 놓은 위치(slotType/part)에 맞게 실제로 배정을 적용함
+        function handleOrgSlotDrop(employeeId, slotType, part) {
             const user = adminUserList.find(u => u.employeeId === employeeId);
             if (!user) return;
 

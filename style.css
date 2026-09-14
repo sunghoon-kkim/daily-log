@@ -337,6 +337,8 @@ html {
             padding: 6px 10px;
             cursor: grab;
             user-select: none;
+            -webkit-user-select: none;
+            touch-action: none; /* 카드 위에서 드래그하는 동안 화면이 같이 스크롤되지 않도록 함(터치 기기 포함) */
             min-width: 84px;
             transition: transform 0.1s, box-shadow 0.1s;
         }
@@ -347,7 +349,19 @@ html {
         }
 
         .org-card.dragging {
-            opacity: 0.4;
+            opacity: 0.35;
+        }
+
+        /* 드래그 중 커서를 따라다니는 카드 복제본 */
+        .org-card-ghost {
+            position: fixed;
+            top: 0;
+            left: 0;
+            transform: translate(-50%, -50%) rotate(-2deg);
+            pointer-events: none;
+            z-index: 9999;
+            cursor: grabbing;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
         }
 
         .org-slot-lead .org-card {
