@@ -1398,11 +1398,23 @@ html {
             flex: 0 0 150px;
         }
 
-        .team-report-row-content {
+        .team-report-row-content-wrap {
             flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .team-report-row-content {
+            width: 100%;
             min-height: 42px;
             resize: vertical;
             font-family: inherit;
+        }
+
+        .team-report-row-content-wrap .category-prev-btn {
+            align-self: flex-start;
         }
 
         .team-report-row .admin-action-btn {

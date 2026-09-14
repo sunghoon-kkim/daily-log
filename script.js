@@ -81,10 +81,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // [팀 보고] 탭 상태: 지금 보고 있는 주의 시작일(월요일, "yyyy-MM-dd"), 제출 대상 후보 목록,
         // "이번주 한 일"/"다음주 할 일" 각 줄({id, category, date, content}) - 서버에는 제출할 때만 보냄
         let teamReportCurrentWeekStart = null;
-        let teamReportMemberList = [];
+        let teamReportMemberList = []; // [{employeeId, name, role}] - 내 역할에 맞게 서버가 걸러서 내려줌
         let teamReportRows = { thisWeek: [], nextWeek: [] };
         let teamReportRowIdCounter = 0;
-        let teamReportLastTarget = ''; // 마지막으로 제출했던 대상 - 다음 주로 넘어갔을 때 기본값으로 이어서 씀
+        let teamReportSelectedTargets = []; // 지금 체크돼 있는 제출 대상 사번 배열 (여러 명 선택 가능)
+        let teamReportLastTargets = []; // 마지막으로 제출했던 대상들 - 다음 주로 넘어갔을 때 기본값으로 이어서 씀
+        let teamReportPreviousWeekData = { thisWeek: [], nextWeek: [] }; // 지난주 데이터 캐시 (이전 기록 불러오기 / 자동 이월용)
         let categoryColors = { '카테고리1': '#ff6b6b', '카테고리2': '#ff9f43', '카테고리3': '#54a0ff' }; // 빨강/주황/파랑
         let categoryBoxHeights = {}; // { "수처리": 180 } - 카테고리별 기본값
         let dateCategoryBoxHeights = {}; // { "2026-08-26": { "수처리": 300 } } - 날짜별 개별 지정값 (있으면 기본값보다 우선)
@@ -213,9 +215,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         const FORCE_DISABLED_FEATURES = ['goalSetting'];
         // 관리자가 이 계정에서 꺼둔 세부 기능 키 목록 (서버에서 로그인 시 받아옴). 본인은 못 바꾸고 관리자만 조정 가능
         let disabledFeatures = [];
-        // 이 계정이 관리자가 지정한 팀장인지 (서버에서 로그인 시 받아옴). [팀 보고] 탭의 제출 대상
-        // 목록에서 팀장을 맨 위로 정렬해 보여주는 용도로 씀 (실제 열람 권한은 제출 대상 지정으로 결정됨)
-        let isTeamLead = false;
+        // 이 계정의 [팀 보고] 계층상 역할 ('', 'member', 'partLead', 'teamLead') - 서버에서 로그인 시
+        // 받아온 teamReportRole(없으면 예전 isTeamLead 값)으로 채워짐. computeEffectiveTeamReportRole 참고
+        let currentUserTeamReportRole = '';
         // 이 계정이 관리자인지 (로그인/불러오기 응답의 isAdmin 필드로 채워짐). 화면 표시(관리자
         // 전용 화면 진입 등)에만 쓰고, 실제 관리자 권한 검증은 서버가 매 요청마다 다시 함
         let isAdmin = false;
@@ -678,7 +680,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     disabledTabIds = Array.isArray(data.disabledTabIds) ? data.disabledTabIds.filter(id => id !== 'settings') : [];
                     personalAiApiKey = (typeof data.aiApiKey === 'string') ? data.aiApiKey : '';
                     disabledFeatures = Array.isArray(data.disabledFeatures) ? data.disabledFeatures : [];
-                    isTeamLead = !!data.isTeamLead;
+                    currentUserTeamReportRole = computeEffectiveTeamReportRole(data);
                     notesContent = (typeof data.notes === 'string') ? data.notes : '';
                     if (Array.isArray(data.todo)) {
                         todoItems = data.todo;
@@ -885,7 +887,17 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
         }
 
-        // ===== 팀 보고 (개인 카테고리 기록과 별개로, 지정한 제출 대상에게 주간 보고를 따로 제출) =====
+        // ===== 팀 보고 (개인 카테고리 기록과 별개로, 지정한 제출 대상들에게 주간 보고를 따로 제출) =====
+        // 서버가 로그인/불러오기 응답에 실어주는 teamReportRole(없으면 예전 isTeamLead 값)을 이 계정의
+        // 팀 보고 계층 역할로 계산함. Code.gs의 getEffectiveTeamReportRole과 규칙이 동일해야 함
+        function computeEffectiveTeamReportRole(data) {
+            if (data && (data.teamReportRole === 'member' || data.teamReportRole === 'partLead' || data.teamReportRole === 'teamLead')) {
+                return data.teamReportRole;
+            }
+            if (data && data.isTeamLead) return 'teamLead';
+            return '';
+        }
+
         // 주는 항상 월요일을 기준일(weekStart)로 다룸
         function getMondayOfWeek(date) {
             const d = new Date(date);
@@ -939,22 +951,21 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // skipAutoLoad: fillTeamReportWithDailySummary처럼 호출하는 쪽에서 직접 loadTeamReportForWeek를
         // 호출해 결과를 이어붙일 때, 여기서도 같은 주를 또 불러오면 두 요청이 경쟁해서 방금 채운
         // 내용이 뒤늦게 도착한 서버 응답으로 덮어써질 수 있음 - 그런 경우 자동 로드를 건너뜀
-        function initTeamReportTab(skipAutoLoad) {
+        async function initTeamReportTab(skipAutoLoad) {
             if (!teamReportCurrentWeekStart) {
                 teamReportCurrentWeekStart = formatDate(getMondayOfWeek(new Date()));
             }
             renderTeamReportWeekLabel();
-            loadTeamReportMemberList();
+            await loadTeamReportMemberList();
             if (!skipAutoLoad) loadTeamReportForWeek(teamReportCurrentWeekStart);
             loadMyTeamReportHistory();
             loadTeamReportInbox();
+            loadTeamReportPendingStatus();
         }
 
-        // [팀 보고] "제출 대상" 드롭다운을 가입된 인원 목록으로 채움 (본인 제외, 팀장이 먼저 보이도록 정렬됨)
+        // [팀 보고] "제출 대상" 후보 목록을 불러옴. 내가 팀원이면 파트장만, 파트장이면 팀장만 후보로
+        // 내려오고(서버 쪽 규칙, filterTeamReportTargetsByRole 참고), 팀장/미지정이면 전체 인원이 내려옴
         async function loadTeamReportMemberList() {
-            const select = document.getElementById('teamReportTargetSelect');
-            if (!select) return;
-
             try {
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
@@ -968,29 +979,54 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
                 if (data.status === 'success') {
                     teamReportMemberList = Array.isArray(data.members) ? data.members : [];
-                    const prevValue = select.value;
-                    select.innerHTML = teamReportMemberList.map(m => `<option value="${escapeHtml(m.employeeId)}">${escapeHtml(m.name || m.employeeId)}${m.isTeamLead ? ' 👔' : ''}</option>`).join('');
-                    if (prevValue && teamReportMemberList.some(m => m.employeeId === prevValue)) {
-                        select.value = prevValue;
-                    }
-                    updateTeamReportIntroText();
+                    // 역할이 바뀌어 더 이상 후보에 없는 사람은 선택에서도 빠짐
+                    teamReportSelectedTargets = teamReportSelectedTargets.filter(id => teamReportMemberList.some(m => m.employeeId === id));
+                    renderTeamReportTargetChips();
                 }
             } catch (err) {
                 console.error('팀 보고 대상 목록 불러오기 오류:', err);
             }
         }
 
-        function onTeamReportTargetChange() {
+        // [팀 보고] "제출 대상" 여러 명을 토글 버튼(칩)으로 고를 수 있게 그려줌
+        function renderTeamReportTargetChips() {
+            const container = document.getElementById('teamReportTargetChips');
+            if (!container) return;
+
+            if (teamReportMemberList.length === 0) {
+                container.innerHTML = '<p style="color:#999; font-size:13px;">선택 가능한 제출 대상이 없습니다. 관리자에게 역할 지정을 요청해주세요.</p>';
+                updateTeamReportIntroText();
+                return;
+            }
+
+            container.innerHTML = teamReportMemberList.map(m => {
+                const selected = teamReportSelectedTargets.includes(m.employeeId);
+                const roleIcon = m.role === 'teamLead' ? '👑 ' : (m.role === 'partLead' ? '🔹 ' : '');
+                return `<button type="button" class="quick-preset-btn${selected ? ' selected' : ''}" onclick="toggleTeamReportTarget('${m.employeeId}')">${roleIcon}${escapeHtml(m.name || m.employeeId)}</button>`;
+            }).join('');
             updateTeamReportIntroText();
         }
 
-        // 상단 안내 문구의 "OOO님께 보이며"를 지금 선택된 제출 대상 이름으로 갱신
+        function toggleTeamReportTarget(employeeId) {
+            const idx = teamReportSelectedTargets.indexOf(employeeId);
+            if (idx === -1) teamReportSelectedTargets.push(employeeId);
+            else teamReportSelectedTargets.splice(idx, 1);
+            renderTeamReportTargetChips();
+        }
+
+        // 상단 안내 문구의 "OOO님께 보이며"를 지금 선택된 제출 대상 이름(들)으로 갱신
         function updateTeamReportIntroText() {
-            const select = document.getElementById('teamReportTargetSelect');
             const label = document.getElementById('teamReportTargetNameLabel');
-            if (!select || !label) return;
-            const member = teamReportMemberList.find(m => m.employeeId === select.value);
-            label.textContent = member ? (member.name || member.employeeId) : '-';
+            if (!label) return;
+            if (teamReportSelectedTargets.length === 0) {
+                label.textContent = '-';
+                return;
+            }
+            const names = teamReportSelectedTargets.map(id => {
+                const m = teamReportMemberList.find(mm => mm.employeeId === id);
+                return m ? (m.name || m.employeeId) : id;
+            });
+            label.textContent = names.join(', ');
         }
 
         // 저번주/이번주/다음주 버튼: 지금 보고 있는 주가 아니라 실제 오늘 기준 주에서 ±1주로 이동함
@@ -1028,6 +1064,23 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (row) row[field] = value;
         }
 
+        // 카테고리를 바꾸면 "이전 기록 불러오기" 버튼이 보일지도 달라지므로, 필드 갱신 후 다시 그림
+        function updateTeamReportRowFieldAndRerender(section, rowId, field, value) {
+            updateTeamReportRowField(section, rowId, field, value);
+            renderTeamReportRows(section);
+        }
+
+        // 지난주 같은 카테고리로 적어뒀던 내용을 지금 줄에 그대로 불러옴 (내용이 비어있을 때만 버튼이 보임)
+        function loadPreviousTeamReportContent(section, rowId) {
+            const row = teamReportRows[section].find(r => r.id === rowId);
+            if (!row) return;
+            const prevItems = (teamReportPreviousWeekData && teamReportPreviousWeekData[section]) || [];
+            const matches = prevItems.filter(it => it.category === row.category);
+            if (matches.length === 0) return;
+            row.content = matches.map(it => it.content).join('\n');
+            renderTeamReportRows(section);
+        }
+
         function renderTeamReportRows(section) {
             const containerId = section === 'thisWeek' ? 'teamReportThisWeekRows' : 'teamReportNextWeekRows';
             const container = document.getElementById(containerId);
@@ -1039,13 +1092,22 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 return;
             }
 
+            const prevItems = (teamReportPreviousWeekData && teamReportPreviousWeekData[section]) || [];
+
             container.innerHTML = rows.map(row => {
                 const options = categories.map(c => `<option value="${escapeHtml(c)}" ${c === row.category ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+                const hasPrev = !row.content && prevItems.some(it => it.category === row.category);
+                const prevBtn = hasPrev
+                    ? `<button type="button" class="category-prev-btn" onclick="loadPreviousTeamReportContent('${section}','${row.id}')" title="지난주 같은 카테고리에 적었던 내용 불러오기">↓ 이전 기록</button>`
+                    : '';
                 return `
                     <div class="team-report-row" data-row-id="${row.id}">
-                        <select class="category-input" onchange="updateTeamReportRowField('${section}','${row.id}','category',this.value)">${options}</select>
+                        <select class="category-input" onchange="updateTeamReportRowFieldAndRerender('${section}','${row.id}','category',this.value)">${options}</select>
                         <input type="date" class="category-input" value="${row.date}" onchange="updateTeamReportRowField('${section}','${row.id}','date',this.value)">
-                        <textarea class="category-input team-report-row-content" rows="1" placeholder="내용을 입력하세요" oninput="updateTeamReportRowField('${section}','${row.id}','content',this.value)">${escapeHtml(row.content)}</textarea>
+                        <div class="team-report-row-content-wrap">
+                            <textarea class="category-input team-report-row-content" rows="1" placeholder="내용을 입력하세요" oninput="updateTeamReportRowField('${section}','${row.id}','content',this.value)">${escapeHtml(row.content)}</textarea>
+                            ${prevBtn}
+                        </div>
                         <button type="button" class="admin-action-btn danger" onclick="removeTeamReportRow('${section}','${row.id}')" title="이 항목 삭제">✕</button>
                     </div>
                 `;
@@ -1068,13 +1130,40 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             renderTeamReportRows('thisWeek');
         }
 
+        // 지금 보고 있는 주의 바로 전 주 데이터를 받아와 캐시해둠. (1) 내용이 비어있는 줄에 뜨는
+        // "이전 기록 불러오기" 버튼, (2) 이번 주가 완전히 비어있을 때 지난주 "다음주 할 일"을
+        // 이번주 "한 일"로 자동 이월하는 데 씀
+        async function loadTeamReportPreviousWeekData(weekStart) {
+            teamReportPreviousWeekData = { thisWeek: [], nextWeek: [] };
+            const prevWeekStart = addDaysToDateStr(weekStart, -7);
+            try {
+                const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'getMyTeamWeeklyReport',
+                        employeeId: currentEmployeeId,
+                        passwordHash: currentPasswordHash,
+                        weekStart: prevWeekStart
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    teamReportPreviousWeekData = {
+                        thisWeek: Array.isArray(data.thisWeek) ? data.thisWeek : [],
+                        nextWeek: Array.isArray(data.nextWeek) ? data.nextWeek : []
+                    };
+                }
+            } catch (err) {
+                console.error('지난주 팀 보고 불러오기 오류:', err);
+            }
+        }
+
         async function loadTeamReportForWeek(weekStart) {
             teamReportCurrentWeekStart = weekStart;
             renderTeamReportWeekLabel();
 
             const indicator = document.getElementById('teamReportSubmittedIndicator');
             const statusEl = document.getElementById('teamReportStatus');
-            const targetSelect = document.getElementById('teamReportTargetSelect');
             if (!weekStart) return;
 
             teamReportRows.thisWeek = [];
@@ -1100,17 +1189,23 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (data.status === 'success') {
                     (data.thisWeek || []).forEach(item => createTeamReportRow('thisWeek', item));
                     (data.nextWeek || []).forEach(item => createTeamReportRow('nextWeek', item));
+
+                    teamReportSelectedTargets = (data.targetEmployeeIds && data.targetEmployeeIds.length)
+                        ? data.targetEmployeeIds.slice()
+                        : teamReportLastTargets.slice();
+                    renderTeamReportTargetChips();
+
+                    await loadTeamReportPreviousWeekData(weekStart);
+
+                    // 이번 주가 완전히 비어있고(아직 아무것도 안 썼고) 지난주에 적어둔 "다음주 할 일"이
+                    // 있으면, 이번주 "한 일"에 초안으로 자동으로 옮겨줌 (제출은 여전히 직접 눌러야 함)
+                    if (teamReportRows.thisWeek.length === 0 && teamReportRows.nextWeek.length === 0
+                        && teamReportPreviousWeekData.nextWeek.length > 0) {
+                        teamReportPreviousWeekData.nextWeek.forEach(item => createTeamReportRow('thisWeek', item));
+                    }
+
                     renderTeamReportRows('thisWeek');
                     renderTeamReportRows('nextWeek');
-
-                    if (targetSelect) {
-                        const teamLeadFallback = teamReportMemberList.find(m => m.isTeamLead);
-                        const targetToUse = data.targetEmployeeId || teamReportLastTarget
-                            || (teamLeadFallback && teamLeadFallback.employeeId)
-                            || (teamReportMemberList[0] && teamReportMemberList[0].employeeId) || '';
-                        if (targetToUse) targetSelect.value = targetToUse;
-                    }
-                    updateTeamReportIntroText();
 
                     if (data.submittedAt) {
                         indicator.style.display = '';
@@ -1132,14 +1227,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         async function submitTeamReport() {
             if (!checkEditPermission()) return;
             const weekStart = teamReportCurrentWeekStart;
-            const targetSelect = document.getElementById('teamReportTargetSelect');
-            const targetEmployeeId = targetSelect ? targetSelect.value : '';
             const indicator = document.getElementById('teamReportSubmittedIndicator');
             const statusEl = document.getElementById('teamReportStatus');
 
             if (!weekStart) return;
-            if (!targetEmployeeId) {
-                statusEl.textContent = '⚠️ 제출 대상을 선택해주세요';
+            if (teamReportSelectedTargets.length === 0) {
+                statusEl.textContent = '⚠️ 제출 대상을 한 명 이상 선택해주세요';
                 statusEl.className = 'ai-status error';
                 return;
             }
@@ -1159,7 +1252,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         employeeId: currentEmployeeId,
                         passwordHash: currentPasswordHash,
                         weekStart: weekStart,
-                        targetEmployeeId: targetEmployeeId,
+                        targetEmployeeIds: teamReportSelectedTargets,
                         thisWeek: sanitizeRows(teamReportRows.thisWeek),
                         nextWeek: sanitizeRows(teamReportRows.nextWeek)
                     })
@@ -1171,7 +1264,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     statusEl.className = 'ai-status success';
                     indicator.style.display = '';
                     indicator.textContent = `✓ ${formatDateTimeKo(data.submittedAt)} 제출됨`;
-                    teamReportLastTarget = targetEmployeeId;
+                    teamReportLastTargets = teamReportSelectedTargets.slice();
                     loadMyTeamReportHistory();
                 } else {
                     statusEl.textContent = '⚠️ ' + (data.message || '제출에 실패했습니다');
@@ -1225,9 +1318,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (items.length === 0) {
                         listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">아직 제출한 보고가 없습니다.</p>';
                     } else {
-                        listEl.innerHTML = items.map(item => `
+                        listEl.innerHTML = items.map(item => {
+                            const targetLabel = (item.targetNames && item.targetNames.length) ? item.targetNames.join(', ') : '-';
+                            return `
                             <div class="result-item" style="margin-bottom:10px;">
-                                <div style="font-weight:600; margin-bottom:6px;">${escapeHtml(getTeamReportWeekLabel(item.weekStart))} → ${escapeHtml(item.targetName || item.targetEmployeeId || '-')}님</div>
+                                <div style="font-weight:600; margin-bottom:6px;">${escapeHtml(getTeamReportWeekLabel(item.weekStart))} → ${escapeHtml(targetLabel)}님</div>
                                 ${renderTeamReportItemsHtml('✅ 이번주 한 일', item.thisWeek)}
                                 ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
@@ -1235,7 +1330,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                                     <button type="button" class="admin-action-btn danger" onclick="deleteMyTeamReport('${item.weekStart}')">🗑️ 삭제</button>
                                 </div>
                             </div>
-                        `).join('');
+                        `;
+                        }).join('');
                     }
                 } else {
                     statusEl.textContent = '⚠️ ' + (data.message || '불러오기에 실패했습니다');
@@ -1347,6 +1443,38 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 console.error('받은 보고 불러오기 오류:', err);
                 statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
+            }
+        }
+
+        // [팀 보고] 미제출 알림: 나보다 한 단계 아래 역할(팀장→파트장, 파트장→팀원) 사람들 중
+        // 이번주 아무한테도 아직 보고를 제출하지 않은 사람이 있으면 "나에게 온 보고" 위에 보여줌
+        async function loadTeamReportPendingStatus() {
+            const el = document.getElementById('teamReportPendingStatus');
+            if (!el) return;
+            el.innerHTML = '';
+
+            try {
+                const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'getTeamReportPendingStatus',
+                        employeeId: currentEmployeeId,
+                        passwordHash: currentPasswordHash,
+                        weekStart: formatDate(getMondayOfWeek(new Date()))
+                    })
+                });
+                const data = await res.json();
+
+                if (data.status === 'success' && data.applicable) {
+                    if (data.pending.length === 0) {
+                        el.innerHTML = `<div class="ai-status success">✅ 이번주 전원 제출 완료 (${data.submittedCount}/${data.totalCount}명)</div>`;
+                    } else {
+                        const names = data.pending.map(p => escapeHtml(p.name || p.employeeId)).join(', ');
+                        el.innerHTML = `<div class="ai-status error">⚠️ 이번주 미제출 ${data.pending.length}명 (${data.submittedCount}/${data.totalCount}명 제출) - ${names}</div>`;
+                    }
+                }
+            } catch (err) {
+                console.error('팀 보고 미제출 현황 불러오기 오류:', err);
             }
         }
 
@@ -5079,15 +5207,22 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
 
             if (list.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#999; padding:20px;">계정이 없습니다</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#999; padding:20px;">계정이 없습니다</td></tr>';
                 return;
             }
 
             tbody.innerHTML = list.map(u => `
                 <tr>
                     <td>${u.disabled ? '🚫 ' : ''}${u.locked ? '🔒 ' : ''}${escapeHtml(u.employeeId)}</td>
-                    <td>${u.isTeamLead ? '👔 ' : ''}${escapeHtml(u.name)}</td>
+                    <td>${teamReportRoleIcon(u.teamReportRole)}${escapeHtml(u.name)}</td>
                     <td>${escapeHtml(u.department)}</td>
+                    <td>${u.isAdmin ? '-' : `
+                        <select class="category-input" style="padding:4px 6px; font-size:12px;" onchange="adminSetTeamReportRole('${u.employeeId}', this.value)">
+                            <option value="" ${!u.teamReportRole ? 'selected' : ''}>미지정</option>
+                            <option value="member" ${u.teamReportRole === 'member' ? 'selected' : ''}>팀원</option>
+                            <option value="partLead" ${u.teamReportRole === 'partLead' ? 'selected' : ''}>파트장</option>
+                            <option value="teamLead" ${u.teamReportRole === 'teamLead' ? 'selected' : ''}>팀장</option>
+                        </select>`}</td>
                     <td>${u.recordCount}</td>
                     <td>${escapeHtml(formatDisabledFeaturesSummary(u.disabledFeatures))}</td>
                     <td>${u.aiApiKey ? `
@@ -5099,13 +5234,19 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     <td class="admin-actions-cell">${u.isAdmin ? '<span style="color:#999;">관리자 계정</span>' : `
                         <button class="admin-action-btn" onclick="openAdminEditUserModal('${u.employeeId}')">✏️ 정보수정</button>
                         <button class="admin-action-btn" onclick="openAdminFeatureModal('${u.employeeId}')">🔧 기능 설정</button>
-                        <button class="admin-action-btn${u.isTeamLead ? ' danger' : ''}" onclick="adminToggleTeamLead('${u.employeeId}', ${u.isTeamLead ? 'false' : 'true'})">${u.isTeamLead ? '👔 팀장 해제' : '👔 팀장 지정'}</button>
                         <button class="admin-action-btn${u.passwordResetRequestedAt ? ' danger' : ''}" onclick="adminResetPassword('${u.employeeId}')">🔑 비밀번호 초기화${u.passwordResetRequestedAt ? ' 🔴요청됨' : ''}</button>
                         <button class="admin-action-btn${u.disabled ? '' : ' danger'}" onclick="adminToggleUserDisabled('${u.employeeId}', ${u.disabled ? 'false' : 'true'})">${u.disabled ? '✅ 활성화' : '🚫 비활성화'}</button>
                         <button class="admin-action-btn danger" onclick="adminDeleteUser('${u.employeeId}')">🗑️ 삭제</button>`}
                     </td>
                 </tr>
             `).join('');
+        }
+
+        // 관리자 화면 표에서 팀 보고 역할을 이름 앞에 짧게 표시하는 아이콘
+        function teamReportRoleIcon(role) {
+            if (role === 'teamLead') return '👑 ';
+            if (role === 'partLead') return '🔹 ';
+            return '';
         }
 
         function renderAdminDefaultFeatureChecklist() {
@@ -5412,45 +5553,41 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
-        // 팀장 권한을 켜면 [팀 보고] 탭에서 그 계정이 팀원들의 제출 현황을 모아볼 수 있게 됨
-        function adminToggleTeamLead(targetEmployeeId, nextIsTeamLead) {
-            const target = adminUserList.find(u => u.employeeId === targetEmployeeId);
-            const targetName = target ? target.name : '';
-            const confirmMsg = nextIsTeamLead
-                ? `${targetName || targetEmployeeId}(${targetEmployeeId}) 계정을 팀장으로 지정할까요? [팀 보고] 탭에서 팀원들의 제출 내용을 모아볼 수 있게 됩니다.`
-                : `${targetName || targetEmployeeId}(${targetEmployeeId}) 계정의 팀장 권한을 해제할까요?`;
-            confirmModal(confirmMsg, async () => {
-                const statusEl = document.getElementById('adminStatus');
-                statusEl.textContent = '☁️ 처리하는 중...';
-                statusEl.className = 'ai-status';
+        // [팀 보고] 계층 역할(미지정/팀원/파트장/팀장) 지정. 팀원은 파트장에게만, 파트장은 팀장에게만
+        // 제출 대상을 고를 수 있게 되는 기준이 되는 값이라 확인창 없이 select 하나로 바로 적용함
+        async function adminSetTeamReportRole(targetEmployeeId, role) {
+            const statusEl = document.getElementById('adminStatus');
+            statusEl.textContent = '☁️ 처리하는 중...';
+            statusEl.className = 'ai-status';
 
-                try {
-                    const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            action: 'adminSetTeamLead',
-                            employeeId: currentEmployeeId,
-                            passwordHash: currentPasswordHash,
-                            targetEmployeeId: targetEmployeeId,
-                            isTeamLead: nextIsTeamLead
-                        })
-                    });
-                    const data = await res.json();
+            try {
+                const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'adminSetTeamReportRole',
+                        employeeId: currentEmployeeId,
+                        passwordHash: currentPasswordHash,
+                        targetEmployeeId: targetEmployeeId,
+                        role: role
+                    })
+                });
+                const data = await res.json();
 
-                    if (data.status === 'success') {
-                        statusEl.textContent = nextIsTeamLead ? '✅ 팀장으로 지정되었습니다' : '✅ 팀장 권한이 해제되었습니다';
-                        statusEl.className = 'ai-status success';
-                        await loadAdminUserList();
-                    } else {
-                        statusEl.textContent = '⚠️ ' + (data.message || '처리에 실패했습니다');
-                        statusEl.className = 'ai-status error';
-                    }
-                } catch (err) {
-                    console.error('관리자 팀장 지정/해제 오류:', err);
-                    statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                if (data.status === 'success') {
+                    statusEl.textContent = '✅ 역할이 변경되었습니다';
+                    statusEl.className = 'ai-status success';
+                    await loadAdminUserList();
+                } else {
+                    statusEl.textContent = '⚠️ ' + (data.message || '처리에 실패했습니다');
                     statusEl.className = 'ai-status error';
+                    await loadAdminUserList(); // select가 되돌아가도록 실패 시에도 다시 그림
                 }
-            });
+            } catch (err) {
+                console.error('관리자 팀 보고 역할 지정 오류:', err);
+                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.className = 'ai-status error';
+                await loadAdminUserList();
+            }
         }
 
         function adminResetPassword(targetEmployeeId) {
