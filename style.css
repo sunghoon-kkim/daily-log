@@ -955,6 +955,7 @@ html {
 
         .water-flow-block-edit-btn,
         .water-flow-block-connect-btn,
+        .water-flow-block-duplicate-btn,
         .water-flow-block-delete-btn {
             position: absolute;
             top: 6px;
@@ -984,8 +985,14 @@ html {
             color: #667eea;
         }
 
+        .water-flow-block-duplicate-btn {
+            left: 32px;
+            color: #667eea;
+        }
+
         .water-flow-block-edit-btn:hover,
-        .water-flow-block-connect-btn:hover {
+        .water-flow-block-connect-btn:hover,
+        .water-flow-block-duplicate-btn:hover {
             background: #e0e0e0;
         }
 
@@ -3846,7 +3853,8 @@ html {
     color: var(--d-text2);
 }
 
-.dark-mode .water-flow-block-connect-btn {
+.dark-mode .water-flow-block-connect-btn,
+.dark-mode .water-flow-block-duplicate-btn {
     background: var(--d-bg3);
     color: #a9b6ff;
 }

@@ -4886,6 +4886,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                          onpointerdown="waterFlowBlockPointerDown(event, '${b.id}')"
                          onclick="toggleWaterFlowBlockExpand('${b.id}')">
                         <button class="water-flow-block-connect-btn" onclick="event.stopPropagation(); startWaterFlowConnect('${b.id}')" title="다른 블록과 화살표로 연결" aria-label="다른 블록과 화살표로 연결">🔗</button>
+                        <button class="water-flow-block-duplicate-btn" onclick="event.stopPropagation(); duplicateWaterFlowBlock('${b.id}')" title="블록 복제" aria-label="블록 복제">📋</button>
                         <button class="water-flow-block-delete-btn" onclick="event.stopPropagation(); deleteWaterFlowBlockDirect('${b.id}')" title="블록 삭제" aria-label="블록 삭제">🗑️</button>
                         <button class="water-flow-block-edit-btn" onclick="event.stopPropagation(); openWaterFlowBlockModal('${b.id}')" title="블록 수정" aria-label="블록 수정">✏️</button>
                         <div class="water-flow-block-title">${escapeHtml(b.title)}</div>
@@ -5173,6 +5174,26 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             saveWaterFlowConnectionsToStorage();
             closeWaterFlowConnectionModal();
             renderWaterFlowConnections();
+        }
+
+        // 박스를 옮기거나 간격을 조절하다 보면, 드래그로 손봐둔 트렁크/exitBend/entryBend 값이
+        // 새 박스 위치와 안 맞아서 선이 어색하게 꺾여 보이는 경우가 생김. 이 버튼은 그 값들을 모두
+        // 지워서 다시 "출발/도착 위치로부터 자동 계산된" 원래 모양으로 되돌림. 트렁크/exitBend는
+        // 같은 블록에서 나가는 형제 연결선 전체가 값을 공유하므로, 그 형제들 것도 함께 지워야
+        // 실제로 모양이 바뀜(하나만 지워도 형제 중 하나가 남은 값을 계속 쓰면 그대로 보임)
+        function resetWaterFlowConnectionShape() {
+            if (!checkEditPermission()) return;
+            const conn = waterFlowConnections.find(c => c.id === editingWaterFlowConnectionId);
+            if (!conn) return;
+            pushWaterFlowUndoSnapshot();
+            delete conn.entryBend;
+            waterFlowConnections.forEach(c => {
+                if (c.from === conn.from) { delete c.trunkOverride; delete c.exitBend; }
+            });
+            saveWaterFlowConnectionsToStorage();
+            closeWaterFlowConnectionModal();
+            renderWaterFlowConnections();
+            showAppToast('↺ 연결선 모양을 자동으로 되돌렸습니다');
         }
 
         function deleteWaterFlowConnectionFromModal() {
@@ -5697,7 +5718,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function waterFlowBlockPointerDown(e, blockId) {
             if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
             if (!editUnlocked) return; // 잠긴 상태에서는 위치를 옮길 수 없음(펼쳐보는 클릭은 별도 onclick으로 그대로 동작)
-            if (e.target.closest('.water-flow-block-edit-btn') || e.target.closest('.water-flow-block-connect-btn') || e.target.closest('.water-flow-block-delete-btn')) return;
+            if (e.target.closest('.water-flow-block-edit-btn') || e.target.closest('.water-flow-block-connect-btn') || e.target.closest('.water-flow-block-delete-btn') || e.target.closest('.water-flow-block-duplicate-btn')) return;
             const block = waterFlowBlocks.find(b => b.id === blockId);
             if (!block) return;
 
@@ -5896,6 +5917,24 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!checkEditPermission()) return;
             editingWaterFlowBlockId = blockId;
             deleteWaterFlowBlock();
+        }
+
+        // 제목/내용/색만 살짝 바꿔서 비슷한 블록을 또 만들고 싶을 때, 매번 새로 입력하지 않아도 되게
+        // 바로 옆에 복제본을 놓음. 원본과 연결된 화살표는 복제하지 않음(무엇과 이어야 할지 애매해서)
+        function duplicateWaterFlowBlock(blockId) {
+            if (!checkEditPermission()) return;
+            const b = waterFlowBlocks.find(x => x.id === blockId);
+            if (!b) return;
+            pushWaterFlowUndoSnapshot();
+            waterFlowBlocks.push({
+                id: 'wfb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                title: b.title, detail: b.detail, color: b.color,
+                x: (b.x || 0) + 24, y: (b.y || 0) + 24,
+                expanded: b.expanded
+            });
+            saveWaterFlowBlocksToStorage();
+            renderWaterFlowCanvas();
+            showStatus('📋 블록을 복제했습니다', 'success');
         }
 
         // 빈 곳(블록/연결선이 아닌 곳)을 더블클릭하면 그 위치에 새 블록을 추가하는 창을 바로 띄움
