@@ -777,6 +777,23 @@ html {
             pointer-events: none;
         }
 
+        /* 블록 여러 개가 가로/세로로 정렬돼 있을 때, 그 줄 전체를 한 번에 옮길 수 있는 투명한 손잡이.
+           평소엔 안 보이다가(투명), 마우스를 올리면 아주 옅은 색으로 살짝 존재를 알려줌 */
+        .water-flow-align-strip {
+            position: absolute;
+            background: transparent;
+            cursor: grab;
+            touch-action: none;
+        }
+
+        .water-flow-align-strip:hover {
+            background: rgba(102, 126, 234, 0.08);
+        }
+
+        .water-flow-align-strip:active {
+            cursor: grabbing;
+        }
+
         .water-flow-connection-line {
             stroke: #667eea;
             stroke-width: 2.5;
