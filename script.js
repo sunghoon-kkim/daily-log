@@ -123,7 +123,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             improvement: '💡 개선/절감 과제',
             trend: '📈 설비 데이터 분석',
             maintenance: '🔧 정비계획',
-            waterFlow: '💧 정제수&주사용수 흐름도',
+            waterFlow: '💧 흐름도',
             teamReport: '📋 팀 보고',
             settings: '⚙️ 환경설정'
         };
@@ -202,9 +202,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             },
             {
                 key: 'waterFlow',
-                label: '💧 정제수&주사용수 흐름도',
+                label: '💧 흐름도',
                 features: {
-                    waterFlowDiagram: '💧 정제수&주사용수 흐름도'
+                    waterFlowDiagram: '💧 흐름도'
                 }
             },
             {
@@ -258,10 +258,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let trendSpec = '';    // 관리 기준 (동일)
         let maintenanceSchedule = []; // [{id, equipment, item, sop, cycle, status, lastDone, nextDue, note, ackFor, updatedAt}]
         let editingMaintenanceId = null;
-        let waterFlowBlocks = []; // [{id, title, detail, color, x, y, expanded}] - 정제수&주사용수 시스템 흐름도 블록(자유 배치)
+        let waterFlowBlocks = []; // [{id, title, detail, color, x, y, expanded}] - 흐름도 탭의 블록(자유 배치)
         let editingWaterFlowBlockId = null;
         let waterFlowConnections = []; // [{id, from, to}] - 블록 사이의 방향성 있는 연결선(from → to). 한 블록에서 여러 개로 연결 가능
         let waterFlowConnectSourceId = null; // 지금 연결선을 잇는 중인 출발 블록 id (연결 모드가 아니면 null). 화면 상태값이라 저장하지 않음
+        // 흐름도 캔버스의 현재 화면 이동/확대 상태 (빈 곳 드래그로 이동, 휠로 확대/축소). 뷰포트일 뿐
+        // 데이터가 아니라서 저장하지 않고, 탭을 나갔다 들어오거나 새로고침하면 초기 상태로 돌아옴
+        let waterFlowViewX = 0, waterFlowViewY = 0, waterFlowViewZoom = 1;
         let maintenanceStatusFilter = '전체'; // 정비계획 목록 상태 필터 (전체/예정/완료/보류). 화면 상태값이라 저장하지 않음
         let maintenanceViewMode = 'detail'; // 정비계획 목록 보기 모드 (detail: 자세히 보기, simple: 간단히 보기). 화면 상태값이라 저장하지 않음
         let savingsStatusFilter = '전체'; // 개선/절감 과제 목록 상태 필터. 화면 상태값이라 저장하지 않음
@@ -4420,7 +4423,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
-        // ===== 정제수&주사용수 시스템 흐름도 (자유 배치 블록 + 연결선) =====
+        // ===== 흐름도 탭 (자유 배치 블록 + 연결선) =====
         // 블록은 캔버스 위에 절대좌표(x, y, px)로 배치되고, 클릭하면 세부 내용이 펼쳐지며,
         // 드래그(Pointer Events)로 자유롭게 위치를 옮길 수 있음. 탭 순서변경/캘린더 일정 이동과
         // 같은 방식으로 "약간이라도 움직이면 드래그, 안 움직이면 클릭"을 구분해 처리함.
@@ -4444,6 +4447,103 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const cols = 5;
             const idx = waterFlowBlocks.length;
             return { x: startX + (idx % cols) * stepX, y: startY + Math.floor(idx / cols) * stepY };
+        }
+
+        // ===== 흐름도 캔버스 화면 이동(팬)/확대축소(줌) =====
+        // 블록을 여러 개 만들면 화면이 좁아지므로, 빈 곳을 드래그하면 화면을 이동하고 마우스 휠로
+        // 확대/축소할 수 있게 함. 블록의 x/y 좌표(데이터) 자체는 그대로 두고, 캔버스 전체에
+        // CSS transform(translate+scale)만 적용해서 "보는 위치"만 바꾸는 방식이라 저장할 필요가 없음
+        const WATER_FLOW_ZOOM_MIN = 0.3;
+        const WATER_FLOW_ZOOM_MAX = 2;
+        const WATER_FLOW_ZOOM_STEP = 0.1;
+
+        function applyWaterFlowViewTransform() {
+            const canvas = document.getElementById('waterFlowCanvas');
+            if (!canvas) return;
+            canvas.style.transform = `translate(${waterFlowViewX}px, ${waterFlowViewY}px) scale(${waterFlowViewZoom})`;
+        }
+
+        function resetWaterFlowView() {
+            waterFlowViewX = 0;
+            waterFlowViewY = 0;
+            waterFlowViewZoom = 1;
+            applyWaterFlowViewTransform();
+        }
+
+        // 커서가 가리키는 지점이 화면상 같은 자리에 남도록 확대/축소 기준점을 보정함
+        // (지도 서비스의 "마우스 위치 기준 확대"와 같은 방식)
+        function waterFlowCanvasWheel(e) {
+            e.preventDefault();
+            const wrap = document.getElementById('waterFlowCanvasWrap');
+            if (!wrap) return;
+            const rect = wrap.getBoundingClientRect();
+            const cursorX = e.clientX - rect.left;
+            const cursorY = e.clientY - rect.top;
+
+            const oldZoom = waterFlowViewZoom;
+            const rawZoom = oldZoom + (e.deltaY > 0 ? -WATER_FLOW_ZOOM_STEP : WATER_FLOW_ZOOM_STEP);
+            const newZoom = Math.min(WATER_FLOW_ZOOM_MAX, Math.max(WATER_FLOW_ZOOM_MIN, +rawZoom.toFixed(2)));
+            if (newZoom === oldZoom) return;
+
+            waterFlowViewX = cursorX - (cursorX - waterFlowViewX) * (newZoom / oldZoom);
+            waterFlowViewY = cursorY - (cursorY - waterFlowViewY) * (newZoom / oldZoom);
+            waterFlowViewZoom = newZoom;
+            applyWaterFlowViewTransform();
+        }
+
+        let waterFlowPanState = null; // { startClientX, startClientY, startViewX, startViewY, moved }
+        const WATER_FLOW_PAN_MOVE_THRESHOLD = 6;
+
+        function waterFlowCanvasPointerDown(e) {
+            if (e.target.closest('.water-flow-block')) return; // 블록 위 드래그는 블록 이동이 처리하므로 화면 이동을 시작하지 않음
+            if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
+            waterFlowPanState = {
+                startClientX: e.clientX,
+                startClientY: e.clientY,
+                startViewX: waterFlowViewX,
+                startViewY: waterFlowViewY,
+                moved: false
+            };
+            document.addEventListener('pointermove', waterFlowCanvasPointerMove);
+            document.addEventListener('pointerup', waterFlowCanvasPointerUp);
+            document.addEventListener('pointercancel', waterFlowCanvasPointerUp);
+        }
+
+        function waterFlowCanvasPointerMove(e) {
+            if (!waterFlowPanState) return;
+            const dx = e.clientX - waterFlowPanState.startClientX;
+            const dy = e.clientY - waterFlowPanState.startClientY;
+
+            if (!waterFlowPanState.moved) {
+                if (Math.hypot(dx, dy) < WATER_FLOW_PAN_MOVE_THRESHOLD) return;
+                waterFlowPanState.moved = true;
+                const wrap = document.getElementById('waterFlowCanvasWrap');
+                if (wrap) wrap.classList.add('panning');
+            }
+
+            e.preventDefault();
+            waterFlowViewX = waterFlowPanState.startViewX + dx;
+            waterFlowViewY = waterFlowPanState.startViewY + dy;
+            applyWaterFlowViewTransform();
+        }
+
+        function waterFlowCanvasPointerUp(e) {
+            if (!waterFlowPanState) return;
+            document.removeEventListener('pointermove', waterFlowCanvasPointerMove);
+            document.removeEventListener('pointerup', waterFlowCanvasPointerUp);
+            document.removeEventListener('pointercancel', waterFlowCanvasPointerUp);
+
+            const moved = waterFlowPanState.moved;
+            waterFlowPanState = null;
+            const wrap = document.getElementById('waterFlowCanvasWrap');
+            if (wrap) wrap.classList.remove('panning');
+
+            if (moved) {
+                // 실제로 화면을 옮긴 경우엔 뒤이어 발생하는 click이 연결 모드를 취소하지 않도록 한 번 막음
+                document.addEventListener('click', function suppressClick(ev) {
+                    ev.stopPropagation();
+                }, { capture: true, once: true });
+            }
         }
 
         function renderWaterFlowCanvas() {
@@ -4539,30 +4639,21 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
-        // 사각형(rect) 중심에서 (dirX, dirY) 방향으로 나아갈 때 테두리와 만나는 점을 구함.
-        // 화살표가 블록 안쪽이 아니라 테두리에서 시작/끝나도록 다듬는 용도
-        function waterFlowRectEdgePoint(rect, dirX, dirY) {
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            if (dirX === 0 && dirY === 0) return { x: cx, y: cy };
-            const halfW = rect.width / 2, halfH = rect.height / 2;
-            const scaleX = dirX !== 0 ? halfW / Math.abs(dirX) : Infinity;
-            const scaleY = dirY !== 0 ? halfH / Math.abs(dirY) : Infinity;
-            const scale = Math.min(scaleX, scaleY);
-            return { x: cx + dirX * scale, y: cy + dirY * scale };
-        }
-
-        const WATER_FLOW_ARROW_DEFS = '<defs><marker id="waterFlowArrowHead" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" class="water-flow-arrow-head"></path></marker></defs>';
+        // 출발 블록 아래쪽에서 세로로 내려오는 줄기(trunk)를 얼마나 짧게 뺄지 (px). 이후 이 높이에서
+        // 가로로 꺾여 각 도착 블록의 x좌표로 갈라짐
+        const WATER_FLOW_CONNECTION_DROP = 24;
 
         // 블록의 실제 DOM 위치/크기를 기준으로 연결선을 다시 그림. 블록을 드래그하는 동안에도
-        // (전체 재렌더 없이) 매 이동마다 호출해서 선이 블록을 따라 실시간으로 움직이게 함
+        // (전체 재렌더 없이) 매 이동마다 호출해서 선이 블록을 따라 실시간으로 움직이게 함.
+        // 화살표 없이 계통도처럼 "출발 블록 아래로 수직 → 수평 → 도착 블록 위로 수직"으로 꺾어 그리며,
+        // 같은 블록에서 나가는 연결선들은 꺾이는 높이(trunkY)를 공유해서 한 줄기에서 갈라진 것처럼 보임
         function renderWaterFlowConnections() {
             const svg = document.getElementById('waterFlowConnectionsSvg');
             const canvas = document.getElementById('waterFlowCanvas');
             if (!svg || !canvas) return;
 
             if (waterFlowConnections.length === 0) {
-                svg.innerHTML = WATER_FLOW_ARROW_DEFS;
+                svg.innerHTML = '';
                 return;
             }
 
@@ -4572,20 +4663,40 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (el) rects[b.id] = { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
             });
 
+            const trunkYByFrom = {};
+            waterFlowConnections.forEach(conn => {
+                if (trunkYByFrom[conn.from] !== undefined) return;
+                const rFrom = rects[conn.from];
+                if (!rFrom) return;
+                const siblingTops = waterFlowConnections
+                    .filter(c => c.from === conn.from)
+                    .map(c => rects[c.to])
+                    .filter(Boolean)
+                    .map(r => r.top);
+                if (siblingTops.length === 0) return;
+                const srcY = rFrom.top + rFrom.height;
+                let trunkY = srcY + WATER_FLOW_CONNECTION_DROP;
+                trunkY = Math.min(trunkY, Math.min(...siblingTops) - 4);
+                trunkY = Math.max(trunkY, srcY + 4);
+                trunkYByFrom[conn.from] = trunkY;
+            });
+
             const linesHtml = waterFlowConnections.map(conn => {
                 const rFrom = rects[conn.from], rTo = rects[conn.to];
                 if (!rFrom || !rTo) return ''; // 블록이 삭제되는 등으로 대상이 사라진 연결은 그리지 않음
-                const cFrom = { x: rFrom.left + rFrom.width / 2, y: rFrom.top + rFrom.height / 2 };
-                const cTo = { x: rTo.left + rTo.width / 2, y: rTo.top + rTo.height / 2 };
-                const p1 = waterFlowRectEdgePoint(rFrom, cTo.x - cFrom.x, cTo.y - cFrom.y);
-                const p2 = waterFlowRectEdgePoint(rTo, cFrom.x - cTo.x, cFrom.y - cTo.y);
+                const srcX = rFrom.left + rFrom.width / 2;
+                const srcY = rFrom.top + rFrom.height;
+                const tgtX = rTo.left + rTo.width / 2;
+                const tgtY = rTo.top;
+                const trunkY = trunkYByFrom[conn.from];
+                const points = `${srcX},${srcY} ${srcX},${trunkY} ${tgtX},${trunkY} ${tgtX},${tgtY}`;
                 return `
-                    <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" class="water-flow-connection-line" marker-end="url(#waterFlowArrowHead)"></line>
-                    <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" class="water-flow-connection-hit" onclick="deleteWaterFlowConnection('${conn.id}')"><title>연결 삭제</title></line>
+                    <polyline points="${points}" class="water-flow-connection-line"></polyline>
+                    <polyline points="${points}" class="water-flow-connection-hit" onclick="deleteWaterFlowConnection('${conn.id}')"><title>연결 삭제</title></polyline>
                 `;
             }).join('');
 
-            svg.innerHTML = WATER_FLOW_ARROW_DEFS + linesHtml;
+            svg.innerHTML = linesHtml;
         }
 
         let waterFlowDragState = null; // { blockId, el, startClientX, startClientY, startLeft, startTop, moved, pendingX, pendingY }
@@ -4688,16 +4799,20 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         function waterFlowBlockPointerMove(e) {
             if (!waterFlowDragState) return;
-            const dx = e.clientX - waterFlowDragState.startClientX;
-            const dy = e.clientY - waterFlowDragState.startClientY;
+            const rawDx = e.clientX - waterFlowDragState.startClientX;
+            const rawDy = e.clientY - waterFlowDragState.startClientY;
 
             if (!waterFlowDragState.moved) {
-                if (Math.hypot(dx, dy) < WATER_FLOW_DRAG_MOVE_THRESHOLD) return;
+                if (Math.hypot(rawDx, rawDy) < WATER_FLOW_DRAG_MOVE_THRESHOLD) return;
                 waterFlowDragState.moved = true;
                 waterFlowDragState.el.classList.add('dragging');
             }
 
             e.preventDefault(); // 드래그 중 터치 스크롤/텍스트 선택 방지
+            // 캔버스가 확대/축소된 상태에서는 화면상 이동 거리와 실제(스케일 이전) 좌표 이동량이
+            // 다르므로, 배율만큼 나눠서 블록이 마우스 포인터를 그대로 따라오도록 보정함
+            const dx = rawDx / waterFlowViewZoom;
+            const dy = rawDy / waterFlowViewZoom;
             const canvas = document.getElementById('waterFlowCanvas');
             let newLeft = Math.max(0, waterFlowDragState.startLeft + dx);
             let newTop = Math.max(0, waterFlowDragState.startTop + dy);
