@@ -4869,7 +4869,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 블록의 실제 DOM 위치/크기를 기준으로 연결선을 다시 그림. 블록을 드래그하는 동안에도
         // (전체 재렌더 없이) 매 이동마다 호출해서 선이 블록을 따라 실시간으로 움직이게 함.
         // 화살표 없이 계통도처럼 직각으로 꺾어 그리며, 같은 출발 블록에서 같은 방향으로 나가는
-        // 연결선들은 그 사이 가운데 지점에서 갈라져(줄기 공유) 나뭇가지처럼 보이게 함
+        // 연결선들은 출발 지점에서 꺾이는 위치(줄기)까지는 겹치는 부분을 한 줄로만 그리고,
+        // 거기서부터 각 도착 블록까지는 가지로 따로 그려서 나뭇가지처럼 보이게 함
         function renderWaterFlowConnections() {
             const svg = document.getElementById('waterFlowConnectionsSvg');
             const canvas = document.getElementById('waterFlowCanvas');
@@ -4892,73 +4893,87 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (rFrom && rTo) directionByConn[conn.id] = waterFlowConnectionDirection(rFrom, rTo);
             });
 
-            // 같은 (출발 블록, 방향) 조합끼리 줄기 위치를 공유함: 출발 지점과, 그 방향으로 나가는
-            // 형제 연결들의 도착 지점 중 가장 가까운 것과의 "가운데"에서 갈라지도록 함
-            const trunkByGroup = {};
+            // (출발 블록, 방향)별로 하나의 그룹을 만들어 나가는 지점과 그 그룹에 속한 가지(도착 지점)들을 모음
+            const groups = {}; // groupKey -> { direction, exit, branches: [{connId, entry}], overrideTrunk }
             waterFlowConnections.forEach(conn => {
                 const direction = directionByConn[conn.id];
                 if (!direction) return;
+                const rFrom = rects[conn.from], rTo = rects[conn.to];
                 const groupKey = conn.from + '|' + direction;
-                if (trunkByGroup[groupKey] !== undefined) return;
-
-                const rFrom = rects[conn.from];
-                const exit = waterFlowAttachPoint(rFrom, direction);
-                const siblingEntries = waterFlowConnections
-                    .filter(c => c.from === conn.from && directionByConn[c.id] === direction)
-                    .map(c => rects[c.to] && waterFlowAttachPoint(rects[c.to], WATER_FLOW_ENTRY_SIDE[direction]))
-                    .filter(Boolean);
-                if (siblingEntries.length === 0) return;
-
-                if (direction === 'down' || direction === 'up') {
-                    const nearestY = direction === 'down'
-                        ? Math.min(...siblingEntries.map(p => p.y))
-                        : Math.max(...siblingEntries.map(p => p.y));
-                    trunkByGroup[groupKey] = (exit.y + nearestY) / 2;
-                } else {
-                    const nearestX = direction === 'right'
-                        ? Math.min(...siblingEntries.map(p => p.x))
-                        : Math.max(...siblingEntries.map(p => p.x));
-                    trunkByGroup[groupKey] = (exit.x + nearestX) / 2;
+                if (!groups[groupKey]) {
+                    groups[groupKey] = { direction, exit: waterFlowAttachPoint(rFrom, direction), branches: [], overrideTrunk: null };
+                }
+                groups[groupKey].branches.push({ connId: conn.id, entry: waterFlowAttachPoint(rTo, WATER_FLOW_ENTRY_SIDE[direction]) });
+                if (groups[groupKey].overrideTrunk === null && typeof conn.trunkOverride === 'number') {
+                    groups[groupKey].overrideTrunk = conn.trunkOverride;
                 }
             });
 
-            const linesHtml = waterFlowConnections.map(conn => {
-                const rFrom = rects[conn.from], rTo = rects[conn.to];
-                if (!rFrom || !rTo) return ''; // 블록이 삭제되는 등으로 대상이 사라진 연결은 그리지 않음
-                const direction = directionByConn[conn.id];
-                const exit = waterFlowAttachPoint(rFrom, direction);
-                const entry = waterFlowAttachPoint(rTo, WATER_FLOW_ENTRY_SIDE[direction]);
-                // 사용자가 직접 꺾이는 위치를 드래그해서 옮겨뒀으면(trunkOverride) 그 값을 쓰고,
-                // 아니면 같은 (출발 블록, 방향) 형제들과 공유하는 자동 계산 위치를 씀
-                const trunk = (typeof conn.trunkOverride === 'number') ? conn.trunkOverride : trunkByGroup[conn.from + '|' + direction];
-                const isVertical = direction === 'down' || direction === 'up';
+            let svgHtml = '';
+            Object.keys(groups).forEach(groupKey => {
+                const g = groups[groupKey];
+                const isVertical = g.direction === 'down' || g.direction === 'up';
 
-                const points = isVertical
-                    ? `${exit.x},${exit.y} ${exit.x},${trunk} ${entry.x},${trunk} ${entry.x},${entry.y}`
-                    : `${exit.x},${exit.y} ${trunk},${exit.y} ${trunk},${entry.y} ${entry.x},${entry.y}`;
+                // 꺾이는 위치: 사용자가 직접 드래그해서 옮겨뒀으면 그 값을, 아니면 출발 지점과
+                // 가장 가까운 도착 지점 사이 "가운데"를 자동으로 계산해서 씀
+                let trunk;
+                if (g.overrideTrunk !== null) {
+                    trunk = g.overrideTrunk;
+                } else if (isVertical) {
+                    const nearestY = g.direction === 'down' ? Math.min(...g.branches.map(b => b.entry.y)) : Math.max(...g.branches.map(b => b.entry.y));
+                    trunk = (g.exit.y + nearestY) / 2;
+                } else {
+                    const nearestX = g.direction === 'right' ? Math.min(...g.branches.map(b => b.entry.x)) : Math.max(...g.branches.map(b => b.entry.x));
+                    trunk = (g.exit.x + nearestX) / 2;
+                }
+
+                // 줄기(출발 지점 → 꺾이는 위치 → 가지들의 좌우/상하 범위를 잇는 버스)는 그룹당 한 번만 그려서
+                // 여러 갈래로 나가더라도 겹치는 구간이 하나로 이어져 보이게 함
+                const branchCoords = g.branches.map(b => isVertical ? b.entry.x : b.entry.y);
+                const exitCoord = isVertical ? g.exit.x : g.exit.y;
+                const busMin = Math.min(exitCoord, ...branchCoords);
+                const busMax = Math.max(exitCoord, ...branchCoords);
+                const trunkPoints = isVertical
+                    ? `${g.exit.x},${g.exit.y} ${g.exit.x},${trunk} ${busMin},${trunk} ${busMax},${trunk}`
+                    : `${g.exit.x},${g.exit.y} ${trunk},${g.exit.y} ${trunk},${busMin} ${trunk},${busMax}`;
                 const dragCursor = isVertical ? 'ns-resize' : 'ew-resize';
-                return `
-                    <polyline points="${points}" class="water-flow-connection-line"></polyline>
-                    <polyline points="${points}" class="water-flow-connection-hit" style="cursor:${dragCursor}"
-                        onpointerdown="waterFlowConnectionPointerDown(event, '${conn.id}', '${direction}', ${trunk})"
-                        onclick="deleteWaterFlowConnection('${conn.id}')"><title>드래그로 꺾이는 위치 옮기기 · 클릭하면 삭제</title></polyline>
-                `;
-            }).join('');
+                const connIds = g.branches.map(b => b.connId).join(',');
+                // 가지가 하나뿐이면(형제가 없으면) 줄기 자체가 곧 그 연결선 전체이므로 클릭으로도 삭제할 수 있게 함
+                const singleConnClickHandler = g.branches.length === 1 ? ` onclick="deleteWaterFlowConnection('${g.branches[0].connId}')"` : '';
 
-            svg.innerHTML = linesHtml;
+                svgHtml += `
+                    <polyline points="${trunkPoints}" class="water-flow-connection-line"></polyline>
+                    <polyline points="${trunkPoints}" class="water-flow-connection-hit" style="cursor:${dragCursor}"
+                        onpointerdown="waterFlowConnectionPointerDown(event, '${connIds}', '${g.direction}', ${trunk})"${singleConnClickHandler}><title>드래그로 꺾이는 위치 옮기기${g.branches.length === 1 ? ' · 클릭하면 삭제' : ''}</title></polyline>
+                `;
+
+                // 가지(줄기 → 각 도착 블록)는 연결마다 따로 그려서, 클릭하면 그 연결만 삭제되게 함
+                g.branches.forEach(b => {
+                    const branchPoints = isVertical
+                        ? `${b.entry.x},${trunk} ${b.entry.x},${b.entry.y}`
+                        : `${trunk},${b.entry.y} ${b.entry.x},${b.entry.y}`;
+                    svgHtml += `
+                        <polyline points="${branchPoints}" class="water-flow-connection-line"></polyline>
+                        <polyline points="${branchPoints}" class="water-flow-connection-hit" onclick="deleteWaterFlowConnection('${b.connId}')"><title>연결 삭제</title></polyline>
+                    `;
+                });
+            });
+
+            svg.innerHTML = svgHtml;
         }
 
-        let waterFlowConnDragState = null; // { connId, direction, startClientX, startClientY, startTrunk, moved }
+        let waterFlowConnDragState = null; // { connIds, direction, startClientX, startClientY, startTrunk, moved }
         const WATER_FLOW_CONN_DRAG_THRESHOLD = 6;
 
         // 연결선이 꺾이는 지점(trunk)을 드래그로 자유롭게 옮길 수 있게 함. 세로 연결(위/아래)이면
-        // 위아래로, 가로 연결(좌/우)이면 좌우로만 움직이며, 옮긴 위치는 그 연결선에 저장되어
-        // 형제 연결들과의 자동 공유 위치보다 우선함
-        function waterFlowConnectionPointerDown(e, connId, direction, startTrunk) {
+        // 위아래로, 가로 연결(좌/우)이면 좌우로만 움직임. 여러 갈래가 한 줄기를 공유하는 경우
+        // connIds에 그 줄기에 속한 모든 연결의 id가 담겨 있어서, 한 번에 다 같이 옮겨져 계속 하나로 이어짐
+        function waterFlowConnectionPointerDown(e, connIdsStr, direction, startTrunk) {
             if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
             if (!editUnlocked) return; // 잠긴 상태에서는 옮길 수 없음(클릭해서 지우는 것도 로그인 필요 - deleteWaterFlowConnection에서 다시 확인함)
             waterFlowConnDragState = {
-                connId, direction,
+                connIds: connIdsStr.split(','),
+                direction,
                 startClientX: e.clientX, startClientY: e.clientY,
                 startTrunk,
                 moved: false
@@ -4979,11 +4994,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
             e.preventDefault();
 
-            const conn = waterFlowConnections.find(c => c.id === waterFlowConnDragState.connId);
-            if (!conn) return;
             const isVertical = waterFlowConnDragState.direction === 'down' || waterFlowConnDragState.direction === 'up';
             const delta = (isVertical ? rawDy : rawDx) / waterFlowViewZoom; // 확대 배율만큼 보정
-            conn.trunkOverride = waterFlowConnDragState.startTrunk + delta;
+            const newTrunk = waterFlowConnDragState.startTrunk + delta;
+            waterFlowConnDragState.connIds.forEach(id => {
+                const conn = waterFlowConnections.find(c => c.id === id);
+                if (conn) conn.trunkOverride = newTrunk;
+            });
             renderWaterFlowConnections();
         }
 
