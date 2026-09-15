@@ -4915,12 +4915,73 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         function deleteWaterFlowConnection(connId) {
             if (!checkEditPermission()) return;
-            confirmModal('이 연결선을 삭제하시겠습니까?', () => {
+            confirmModal('이 연결선을 삭제하시겠습니까? 이 선에 이어붙은 연결선이 있으면 함께 삭제됩니다.', () => {
                 pushWaterFlowUndoSnapshot();
-                waterFlowConnections = waterFlowConnections.filter(c => c.id !== connId);
+                const idsToRemove = collectWaterFlowConnectionCascadeIds([connId]);
+                waterFlowConnections = waterFlowConnections.filter(c => !idsToRemove.has(c.id));
                 saveWaterFlowConnectionsToStorage();
                 renderWaterFlowConnections();
             });
+        }
+
+        // 연결선을 지울 때, 그 연결선에 이어붙어(tap) 있던 다른 연결선들도 앵커가 사라지므로
+        // 함께 지워야 함. 이어붙은 선에 또 이어붙은 경우까지 체인으로 전부 찾아냄
+        function collectWaterFlowConnectionCascadeIds(initialIds) {
+            const ids = new Set(initialIds);
+            let changed = true;
+            while (changed) {
+                changed = false;
+                waterFlowConnections.forEach(c => {
+                    if (c.toConnectionId && ids.has(c.toConnectionId) && !ids.has(c.id)) {
+                        ids.add(c.id);
+                        changed = true;
+                    }
+                });
+            }
+            return ids;
+        }
+
+        // 연결선을 클릭했을 때: 연결 모드 중이면(다른 블록의 🔗를 누른 상태) 이 선에 이어붙이고,
+        // 아니면 원래대로 이 연결선을 삭제함
+        function handleWaterFlowConnectionLineClick(connId) {
+            if (waterFlowConnectSourceId) {
+                addWaterFlowTapConnection(waterFlowConnectSourceId, connId);
+                waterFlowConnectSourceId = null;
+                renderWaterFlowCanvas();
+                return;
+            }
+            deleteWaterFlowConnection(connId);
+        }
+
+        // 블록을 다른 블록이 아니라 "이미 있는 연결선"에 이어붙임(계통도의 T자 분기처럼).
+        // 이어붙은 지점은 그 호스트 연결선의 가지 중간 지점이며, 호스트가 움직이면 같이 따라감.
+        // 이어붙은 선에 또 이어붙는 것(체인)은 지원하지 않음 - 항상 블록↔블록 선에만 이어붙일 수 있음
+        function addWaterFlowTapConnection(fromId, hostConnId) {
+            if (!checkEditPermission()) return;
+            const hostConn = waterFlowConnections.find(c => c.id === hostConnId);
+            if (!hostConn) return;
+            if (hostConn.toConnectionId) {
+                showAppToast('다른 연결선에 이어붙은 선에는 연결할 수 없습니다');
+                return;
+            }
+            if (hostConn.from === fromId || hostConn.to === fromId) {
+                showAppToast('이미 직접 연결되어 있는 블록입니다');
+                return;
+            }
+            if (waterFlowConnections.some(c => c.from === fromId && c.toConnectionId === hostConnId)) {
+                showAppToast('이미 이어붙어 있습니다');
+                return;
+            }
+            pushWaterFlowUndoSnapshot();
+            waterFlowConnections.push({
+                id: 'wfc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                from: fromId,
+                to: null,
+                toConnectionId: hostConnId
+            });
+            saveWaterFlowConnectionsToStorage();
+            renderWaterFlowConnections();
+            showStatus('🔗 연결선에 이어붙였습니다', 'success');
         }
 
         // 방향에 따라 블록 테두리의 연결 지점(우/좌 중앙, 하/상 중앙)을 구함
@@ -4956,46 +5017,53 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (el) rects[b.id] = { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
             });
 
-            // 같은 블록에서 나가는 연결선은 도착 블록 하나하나의 위치가 아니라, 그 도착 블록들
-            // 전체의 "평균 위치"를 기준으로 방향(상/하/좌/우)을 한 번만 정함. 개별적으로 방향을
-            // 따로 정하면 도착 블록 하나가 유독 옆으로 치우쳐 있을 때 그것만 다른 방향으로
-            // 분류돼 줄기가 안 합쳐지는 경우가 생기는데, 그런 일이 없도록 항상 하나로 묶이게 함
-            const directionByFrom = {};
-            waterFlowConnections.forEach(conn => {
-                if (directionByFrom[conn.from] !== undefined) return;
-                const rFrom = rects[conn.from];
-                if (!rFrom) return;
-                const targetRects = waterFlowConnections
-                    .filter(c => c.from === conn.from)
-                    .map(c => rects[c.to])
-                    .filter(Boolean);
-                if (targetRects.length === 0) return;
+            // 블록↔블록 연결선과, 다른 연결선에 이어붙은(탭) 연결선을 나눔. 탭 연결선의 도착 지점은
+            // 자신이 이어붙은 연결선(호스트)의 가지 중간 지점이라서, 호스트를 먼저 그려 그 지점을
+            // 구해야 함 - 그래서 블록↔블록 그룹을 1단계로, 탭 그룹을 2단계로 나눠서 처리함
+            const blockTargetConns = waterFlowConnections.filter(c => !c.toConnectionId);
+            const tapConns = waterFlowConnections.filter(c => c.toConnectionId);
+            const branchMidpointByConnId = {};
 
-                const srcCX = rFrom.left + rFrom.width / 2, srcCY = rFrom.top + rFrom.height / 2;
-                const avgCX = targetRects.reduce((sum, r) => sum + r.left + r.width / 2, 0) / targetRects.length;
-                const avgCY = targetRects.reduce((sum, r) => sum + r.top + r.height / 2, 0) / targetRects.length;
-                const dx = avgCX - srcCX, dy = avgCY - srcCY;
-                directionByFrom[conn.from] = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'down' : 'up');
-            });
+            // 같은 블록에서 나가는 연결선은 도착 지점 하나하나가 아니라 그 지점들 전체의 "평균 위치"를
+            // 기준으로 방향(상/하/좌/우)을 한 번만 정함. 개별적으로 정하면 도착 지점 하나가 유독
+            // 옆으로 치우쳐 있을 때 그것만 다른 방향으로 분류돼 줄기가 안 합쳐지는 경우가 생기는데,
+            // 그런 일이 없도록 항상 하나로 묶이게 함
+            function buildGroups(conns, getTargetPos, getEntryPoint) {
+                const directionByFrom = {};
+                conns.forEach(conn => {
+                    if (directionByFrom[conn.from] !== undefined) return;
+                    const rFrom = rects[conn.from];
+                    if (!rFrom) return;
+                    const positions = conns.filter(c => c.from === conn.from).map(getTargetPos).filter(Boolean);
+                    if (positions.length === 0) return;
+                    const srcCX = rFrom.left + rFrom.width / 2, srcCY = rFrom.top + rFrom.height / 2;
+                    const avgCX = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+                    const avgCY = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+                    const dx = avgCX - srcCX, dy = avgCY - srcCY;
+                    directionByFrom[conn.from] = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'down' : 'up');
+                });
 
-            // 출발 블록별로 하나의 그룹을 만들어 나가는 지점과 그 그룹에 속한 가지(도착 지점)들을 모음
-            const groups = {}; // fromId -> { direction, exit, branches: [{connId, entry}], overrideTrunk }
-            waterFlowConnections.forEach(conn => {
-                const direction = directionByFrom[conn.from];
-                const rFrom = rects[conn.from], rTo = rects[conn.to];
-                if (!direction || !rFrom || !rTo) return;
-                if (!groups[conn.from]) {
-                    groups[conn.from] = { direction, exit: waterFlowAttachPoint(rFrom, direction), branches: [], overrideTrunk: null };
-                }
-                groups[conn.from].branches.push({ connId: conn.id, entry: waterFlowAttachPoint(rTo, WATER_FLOW_ENTRY_SIDE[direction]) });
-                if (groups[conn.from].overrideTrunk === null && typeof conn.trunkOverride === 'number') {
-                    groups[conn.from].overrideTrunk = conn.trunkOverride;
-                }
-            });
+                const groups = {}; // fromId -> { direction, exit, branches: [{connId, entry}], overrideTrunk }
+                conns.forEach(conn => {
+                    const direction = directionByFrom[conn.from];
+                    const rFrom = rects[conn.from];
+                    if (!direction || !rFrom) return;
+                    const entry = getEntryPoint(conn, direction);
+                    if (!entry) return;
+                    if (!groups[conn.from]) {
+                        groups[conn.from] = { direction, exit: waterFlowAttachPoint(rFrom, direction), branches: [], overrideTrunk: null };
+                    }
+                    groups[conn.from].branches.push({ connId: conn.id, entry });
+                    if (groups[conn.from].overrideTrunk === null && typeof conn.trunkOverride === 'number') {
+                        groups[conn.from].overrideTrunk = conn.trunkOverride;
+                    }
+                });
+                return groups;
+            }
 
             let svgHtml = '';
-            Object.keys(groups).forEach(groupKey => {
-                const g = groups[groupKey];
+
+            function renderGroup(g) {
                 const isVertical = g.direction === 'down' || g.direction === 'up';
 
                 // 꺾이는 위치: 사용자가 직접 드래그해서 옮겨뒀으면 그 값을, 아니면 출발 지점과
@@ -5022,26 +5090,45 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     : `${g.exit.x},${g.exit.y} ${trunk},${g.exit.y} ${trunk},${busMin} ${trunk},${busMax}`;
                 const dragCursor = isVertical ? 'ns-resize' : 'ew-resize';
                 const connIds = g.branches.map(b => b.connId).join(',');
-                // 가지가 하나뿐이면(형제가 없으면) 줄기 자체가 곧 그 연결선 전체이므로 클릭으로도 삭제할 수 있게 함
-                const singleConnClickHandler = g.branches.length === 1 ? ` onclick="deleteWaterFlowConnection('${g.branches[0].connId}')"` : '';
+                // 가지가 하나뿐이면(형제가 없으면) 줄기 자체가 곧 그 연결선 전체이므로 클릭으로도 처리할 수 있게 함
+                const singleConnClickHandler = g.branches.length === 1 ? ` onclick="handleWaterFlowConnectionLineClick('${g.branches[0].connId}')"` : '';
 
                 svgHtml += `
                     <polyline points="${trunkPoints}" class="water-flow-connection-line"></polyline>
                     <polyline points="${trunkPoints}" class="water-flow-connection-hit" style="cursor:${dragCursor}"
-                        onpointerdown="waterFlowConnectionPointerDown(event, '${connIds}', '${g.direction}', ${trunk})"${singleConnClickHandler}><title>드래그로 꺾이는 위치 옮기기${g.branches.length === 1 ? ' · 클릭하면 삭제' : ''}</title></polyline>
+                        onpointerdown="waterFlowConnectionPointerDown(event, '${connIds}', '${g.direction}', ${trunk})"${singleConnClickHandler}><title>드래그로 꺾이는 위치 옮기기${g.branches.length === 1 ? ' · 클릭하면 삭제(연결 모드 중이면 여기로 이어붙이기)' : ''}</title></polyline>
                 `;
 
-                // 가지(줄기 → 각 도착 블록)는 연결마다 따로 그려서, 클릭하면 그 연결만 삭제되게 함
+                // 가지(줄기 → 각 도착 지점)는 연결마다 따로 그려서, 클릭하면 그 연결만 삭제되게 함.
+                // 이 가지의 중간 지점은 다른 블록이 이 연결선에 "이어붙을" 때 앵커로 쓰임
                 g.branches.forEach(b => {
+                    const elbow = isVertical ? { x: b.entry.x, y: trunk } : { x: trunk, y: b.entry.y };
+                    branchMidpointByConnId[b.connId] = { x: (elbow.x + b.entry.x) / 2, y: (elbow.y + b.entry.y) / 2 };
                     const branchPoints = isVertical
                         ? `${b.entry.x},${trunk} ${b.entry.x},${b.entry.y}`
                         : `${trunk},${b.entry.y} ${b.entry.x},${b.entry.y}`;
                     svgHtml += `
                         <polyline points="${branchPoints}" class="water-flow-connection-line"></polyline>
-                        <polyline points="${branchPoints}" class="water-flow-connection-hit" onclick="deleteWaterFlowConnection('${b.connId}')"><title>연결 삭제</title></polyline>
+                        <polyline points="${branchPoints}" class="water-flow-connection-hit" onclick="handleWaterFlowConnectionLineClick('${b.connId}')"><title>클릭하면 삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>
                     `;
                 });
-            });
+            }
+
+            // 1단계: 블록↔블록 연결선
+            const blockGroups = buildGroups(
+                blockTargetConns,
+                c => { const r = rects[c.to]; return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; },
+                (c, direction) => { const r = rects[c.to]; return r ? waterFlowAttachPoint(r, WATER_FLOW_ENTRY_SIDE[direction]) : null; }
+            );
+            Object.values(blockGroups).forEach(renderGroup);
+
+            // 2단계: 다른 연결선에 이어붙은(탭) 연결선 - 1단계에서 구한 가지 중간 지점을 향해 그림
+            const tapGroups = buildGroups(
+                tapConns,
+                c => branchMidpointByConnId[c.toConnectionId] || null,
+                c => branchMidpointByConnId[c.toConnectionId] || null
+            );
+            Object.values(tapGroups).forEach(renderGroup);
 
             svg.innerHTML = svgHtml;
         }
@@ -5418,7 +5505,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 pushWaterFlowUndoSnapshot();
                 const deletedId = editingWaterFlowBlockId;
                 waterFlowBlocks = waterFlowBlocks.filter(b => b.id !== deletedId);
-                waterFlowConnections = waterFlowConnections.filter(c => c.from !== deletedId && c.to !== deletedId);
+                const directIds = waterFlowConnections.filter(c => c.from === deletedId || c.to === deletedId).map(c => c.id);
+                const idsToRemove = collectWaterFlowConnectionCascadeIds(directIds);
+                waterFlowConnections = waterFlowConnections.filter(c => !idsToRemove.has(c.id));
                 saveWaterFlowBlocksToStorage();
                 saveWaterFlowConnectionsToStorage();
                 closeWaterFlowBlockModal();
