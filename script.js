@@ -3228,6 +3228,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 // 만들어서 매번 새로 등록하지 않아도 되게 함(각 회차는 이후 따로 수정/삭제 가능)
                 const repeatInterval = document.getElementById('eventRepeatIntervalInput').value;
                 repeatCount = repeatInterval === '0' ? 1 : Math.max(1, Math.min(52, parseInt(document.getElementById('eventRepeatCountInput').value, 10) || 1));
+                // 반복 등록된 회차들을 나중에 "전체 삭제"할 수 있도록 묶어주는 id (1건짜리는 필요 없음)
+                const repeatGroupId = repeatCount > 1 ? 'rep_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) : null;
 
                 for (let i = 0; i < repeatCount; i++) {
                     let occStart = start, occEnd = end;
@@ -3236,13 +3238,19 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                             occStart = addMonthsToDateStr(start, i);
                             occEnd = addMonthsToDateStr(end, i);
                             // 처음 고른 날짜가 평일이었는데 같은 날짜가 주말로 넘어가는 달이 있으면
-                            // (당직/근무일처럼 평일에만 의미가 있는 일정이 대부분이라) 직전 금요일로 당김
+                            // (당직/근무일처럼 평일에만 의미가 있는 일정이 대부분이라) 직전 금요일로 당김.
+                            // 단, 매월 1~2일처럼 초순이라 당기면 전달로 넘어가버리는 경우엔 그 달을 벗어나지
+                            // 않도록 대신 다음 월요일로 미룸
                             if (!isWeekendDateStr(start)) {
-                                const day = new Date(occStart + 'T00:00:00').getDay();
-                                const pullBackDays = day === 0 ? 2 : (day === 6 ? 1 : 0);
-                                if (pullBackDays > 0) {
-                                    occStart = addDaysToDateStr(occStart, -pullBackDays);
-                                    occEnd = addDaysToDateStr(occEnd, -pullBackDays);
+                                const occDate = new Date(occStart + 'T00:00:00');
+                                const day = occDate.getDay();
+                                if (day === 6 || day === 0) {
+                                    const pullBackDays = day === 0 ? 2 : 1;
+                                    const pulledBackDate = new Date(addDaysToDateStr(occStart, -pullBackDays) + 'T00:00:00');
+                                    const staysInMonth = pulledBackDate.getFullYear() === occDate.getFullYear() && pulledBackDate.getMonth() === occDate.getMonth();
+                                    const adjustDays = staysInMonth ? -pullBackDays : (day === 0 ? 1 : 2);
+                                    occStart = addDaysToDateStr(occStart, adjustDays);
+                                    occEnd = addDaysToDateStr(occEnd, adjustDays);
                                 }
                             }
                         } else {
@@ -3253,7 +3261,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     }
                     events.push({
                         id: 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + i,
-                        title, start: occStart, end: occEnd, color: selectedColor
+                        title, start: occStart, end: occEnd, color: selectedColor, repeatGroupId
                     });
                 }
             }
@@ -3268,16 +3276,46 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function deleteEvent() {
             if (!checkEditPermission()) return;
             if (!editingEventId) return;
-            confirmModal('이 일정을 삭제하시겠습니까?', () => {
-                events = events.filter(e => e.id !== editingEventId);
-                if (collapsedUpcomingCardIds.has(editingEventId)) {
-                    collapsedUpcomingCardIds.delete(editingEventId);
-                    saveCollapsedUpcomingCardsToStorage();
-                }
+
+            const removeEventsByIds = (ids) => {
+                events = events.filter(e => !ids.includes(e.id));
+                let collapsedChanged = false;
+                ids.forEach(id => { if (collapsedUpcomingCardIds.delete(id)) collapsedChanged = true; });
+                if (collapsedChanged) saveCollapsedUpcomingCardsToStorage();
                 saveEventsToStorage();
                 closeEventModal();
                 renderCalendar();
                 if (selectedDate) renderRecordForm();
+            };
+
+            const targetEvent = events.find(e => e.id === editingEventId);
+            const seriesEvents = targetEvent && targetEvent.repeatGroupId
+                ? events.filter(e => e.repeatGroupId === targetEvent.repeatGroupId)
+                : [];
+
+            if (seriesEvents.length > 1) {
+                // 반복 등록으로 여러 건 한 번에 만들어진 일정은, 이번 것 하나만 지울지
+                // 반복분 전체를 지울지 골라야 함
+                confirmModal(
+                    `반복 등록된 일정입니다 (총 ${seriesEvents.length}건). 이 일정만 삭제할까요, 반복 전체를 삭제할까요?`,
+                    () => {
+                        removeEventsByIds([editingEventId]);
+                        showStatus('🗑️ 삭제되었습니다', 'success');
+                    },
+                    {
+                        confirmLabel: '이 일정만',
+                        extraLabel: `전체 ${seriesEvents.length}건 삭제`,
+                        extraCallback: () => {
+                            removeEventsByIds(seriesEvents.map(e => e.id));
+                            showStatus(`🗑️ ${seriesEvents.length}건 모두 삭제되었습니다`, 'success');
+                        }
+                    }
+                );
+                return;
+            }
+
+            confirmModal('이 일정을 삭제하시겠습니까?', () => {
+                removeEventsByIds([editingEventId]);
                 showStatus('🗑️ 삭제되었습니다', 'success');
             });
         }
@@ -6835,22 +6873,46 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 확인받음. confirm()과 달리 결과를 바로 리턴하지 못하고 비동기(모달 클릭 이후)로 진행되므로,
         // 호출부는 "if (!confirm(...)) return;" 대신 원래 하려던 동작을 callback 안에 넣는 식으로 씀
         let confirmActionCallback = null;
+        let confirmActionExtraCallback = null;
 
-        function confirmModal(message, callback) {
+        // options로 { confirmLabel, extraLabel, extraCallback }을 주면, 반복 일정 삭제처럼
+        // "이 일정만" / "전체 삭제" 두 가지 중 고르게 해야 하는 경우에 버튼을 하나 더 보여줄 수 있음
+        function confirmModal(message, callback, options) {
             document.getElementById('confirmActionMessage').textContent = message;
             confirmActionCallback = callback;
+            document.getElementById('confirmActionConfirmBtn').textContent = (options && options.confirmLabel) || '확인';
+            const extraBtn = document.getElementById('confirmActionExtraBtn');
+            if (options && options.extraLabel) {
+                extraBtn.textContent = options.extraLabel;
+                extraBtn.style.display = '';
+                confirmActionExtraCallback = options.extraCallback;
+            } else {
+                extraBtn.style.display = 'none';
+                confirmActionExtraCallback = null;
+            }
             document.getElementById('confirmActionModal').classList.add('active');
         }
 
         function confirmActionModalConfirm() {
             const callback = confirmActionCallback;
             confirmActionCallback = null;
+            confirmActionExtraCallback = null;
+            document.getElementById('confirmActionModal').classList.remove('active');
+            if (typeof callback === 'function') callback();
+        }
+
+        function confirmActionModalExtra() {
+            const callback = confirmActionExtraCallback;
+            confirmActionCallback = null;
+            confirmActionExtraCallback = null;
             document.getElementById('confirmActionModal').classList.remove('active');
             if (typeof callback === 'function') callback();
         }
 
         function closeConfirmActionModal() {
-            confirmActionCallback = null; // 취소/ESC로 닫을 땐 예정돼있던 동작을 실행하지 않도록 콜백을 버림
+            // 취소/ESC로 닫을 땐 예정돼있던 동작을 실행하지 않도록 콜백을 버림
+            confirmActionCallback = null;
+            confirmActionExtraCallback = null;
             document.getElementById('confirmActionModal').classList.remove('active');
         }
 
