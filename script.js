@@ -5316,7 +5316,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 return groups;
             }
 
-            let svgHtml = '';
+            let svgHtml = ''; // 클릭/드래그용 히트 영역(투명선)만 담음 - 항상 맨 위에 그려져서 클릭이 잘 먹도록 마지막에 붙임
+            let dashedVisualHtml = ''; // 실제 보이는 선 중 점선만 먼저 모아둠(아래에 깔림)
+            let solidVisualHtml = ''; // 실제 보이는 선 중 실선만 모아둠 - 점선보다 나중에(위에) 그려서 겹쳤을 때 실선이 우선 보이게 함
+
+            // 겹친 선끼리는 실선이 점선보다 위에 그려지도록, 보이는 선(히트 영역 말고) 하나를
+            // 점선/실선에 따라 서로 다른 버킷에 나눠 담음
+            function pushVisual(p1, p2, style, dashed) {
+                const html = waterFlowSegmentEl(p1, p2, style, dashed);
+                if (dashed) dashedVisualHtml += html; else solidVisualHtml += html;
+            }
 
             function renderGroup(g) {
                 const isVertical = g.direction === 'down' || g.direction === 'up';
@@ -5366,7 +5375,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 // 기본 색)해서 어느 쪽도 틀린 것처럼 보이지 않게 함
                 const singleConnClickHandler = g.branches.length === 1 ? ` onclick="handleWaterFlowConnectionLineClick('${g.branches[0].connId}')"` : '';
                 const branchConns = g.branches.map(b => waterFlowConnections.find(c => c.id === b.connId)).filter(Boolean);
-                const trunkAnyDashed = branchConns.some(c => c.lineStyle === 'dashed');
+                // 실선이 점선보다 우선해서 보이도록(겹쳤을 때 실선이 이김), 형제 전부가 점선일 때만 점선으로 함
+                const trunkDashed = branchConns.length > 0 && branchConns.every(c => c.lineStyle === 'dashed');
                 const trunkColors = [...new Set(branchConns.map(c => c.color).filter(Boolean))];
                 const trunkColorStyle = trunkColors.length === 1 ? `stroke:${trunkColors[0]}` : '';
 
@@ -5379,17 +5389,17 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
                 // 구간 1: 출발 지점 → exitBend 꺾임. 출발 지점 쪽 끝은 블록에 고정된 좌표라 조정할
                 // 값이 없으므로 드래그는 지원하지 않고 클릭(단일 연결이면 편집/삭제)만 지원함
-                svgHtml += waterFlowSegmentEl(p0, p1, trunkColorStyle, trunkAnyDashed);
+                pushVisual(p0, p1, trunkColorStyle, trunkDashed);
                 svgHtml += `<polyline points="${p0.x},${p0.y} ${p1.x},${p1.y}" class="water-flow-connection-hit"${singleConnClickHandler}><title>클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>`;
 
                 // 구간 2: exitBend 꺾임 → 트렁크 꺾임. exitBend를 조정하는 손잡이
-                svgHtml += waterFlowSegmentEl(p1, p2, trunkColorStyle, trunkAnyDashed);
+                pushVisual(p1, p2, trunkColorStyle, trunkDashed);
                 svgHtml += `<polyline points="${p1.x},${p1.y} ${p2.x},${p2.y}" class="water-flow-connection-hit" style="cursor:${exitBendCursor}"
                     onpointerdown="waterFlowScalarPointerDown(event, '${connIds}', 'exitBend', '${exitBendAxis}', ${exitBend})"${singleConnClickHandler}><title>드래그로 출발 쪽 꺾임 옮기기${g.branches.length === 1 ? ' · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)' : ''}</title></polyline>`;
 
                 // 구간 3: 트렁크 꺾임 → 버스(가지들이 갈라지는 범위). 트렁크를 조정하는 손잡이
-                svgHtml += waterFlowSegmentEl(p2, p3, trunkColorStyle, trunkAnyDashed);
-                svgHtml += waterFlowSegmentEl(p3, p4, trunkColorStyle, trunkAnyDashed);
+                pushVisual(p2, p3, trunkColorStyle, trunkDashed);
+                pushVisual(p3, p4, trunkColorStyle, trunkDashed);
                 svgHtml += `<polyline points="${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y}" class="water-flow-connection-hit" style="cursor:${busCursor}"
                     onpointerdown="waterFlowScalarPointerDown(event, '${connIds}', '${busField}', '${busAxis}', ${trunk})"${singleConnClickHandler}><title>드래그로 꺾이는 위치 옮기기${g.branches.length === 1 ? ' · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)' : ''}</title></polyline>`;
 
@@ -5414,20 +5424,20 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     waterFlowScalarSnapCandidates.push({ axis: entryBendAxis, value: entryBend, connIds: [b.connId] });
 
                     // 구간 1: 트렁크 → entryBend 꺾임. 트렁크와 같은 값을 공유하므로 트렁크 손잡이와 동일하게 동작
-                    svgHtml += waterFlowSegmentEl(elbow, c1, branchColorStyle, branchDashed);
+                    pushVisual(elbow, c1, branchColorStyle, branchDashed);
                     svgHtml += `<polyline points="${elbow.x},${elbow.y} ${c1.x},${c1.y}" class="water-flow-connection-hit" style="cursor:${busCursor}"
                         onpointerdown="waterFlowScalarPointerDown(event, '${connIds}', '${busField}', '${busAxis}', ${trunk})"
                         onclick="handleWaterFlowConnectionLineClick('${b.connId}')"><title>드래그로 꺾이는 위치 옮기기 · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>`;
 
                     // 구간 2: entryBend 꺾임 → 도착 쪽 꺾임. entryBend를 조정하는 손잡이
-                    svgHtml += waterFlowSegmentEl(c1, c2, branchColorStyle, branchDashed);
+                    pushVisual(c1, c2, branchColorStyle, branchDashed);
                     svgHtml += `<polyline points="${c1.x},${c1.y} ${c2.x},${c2.y}" class="water-flow-connection-hit" style="cursor:${entryBendCursor}"
                         onpointerdown="waterFlowScalarPointerDown(event, '${b.connId}', 'entryBend', '${entryBendAxis}', ${entryBend})"
                         onclick="handleWaterFlowConnectionLineClick('${b.connId}')"><title>드래그로 이 가지만 다른 방향으로 꺾기 · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>`;
 
                     // 구간 3: 도착 쪽 꺾임 → 도착 지점. 도착 지점 쪽 끝은 블록에 고정된 좌표라 드래그는
                     // 지원하지 않고 클릭(편집/삭제)만 지원함
-                    svgHtml += waterFlowSegmentEl(c2, b.entry, branchColorStyle, branchDashed);
+                    pushVisual(c2, b.entry, branchColorStyle, branchDashed);
                     svgHtml += `<polyline points="${c2.x},${c2.y} ${b.entry.x},${b.entry.y}" class="water-flow-connection-hit" onclick="handleWaterFlowConnectionLineClick('${b.connId}')"><title>클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>`;
                 });
             }
@@ -5448,7 +5458,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             );
             Object.values(tapGroups).forEach(renderGroup);
 
-            svg.innerHTML = svgHtml;
+            // 점선을 먼저, 실선을 나중에(위에) 그려서 서로 겹칠 때 실선이 우선 보이게 하고,
+            // 클릭/드래그용 히트 영역(svgHtml)은 항상 맨 위에 둬서 클릭이 항상 잘 먹게 함
+            svg.innerHTML = dashedVisualHtml + solidVisualHtml + svgHtml;
         }
 
         let waterFlowScalarDragState = null; // { connIds, field, axis, startClientX, startClientY, startValue, moved }
