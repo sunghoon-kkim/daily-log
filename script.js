@@ -4971,6 +4971,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         // ===== 연결선 편집(선 종류/색상) 모달 =====
         let editingWaterFlowConnectionId = null;
+        // connId -> 지금 화면에 겹쳐서(같은 줄기로) 그려지고 있는 형제 연결선 id 목록(자기 자신 포함).
+        // renderWaterFlowConnections가 그릴 때마다 다시 채움 - 겹쳐 보이는 선은 스타일도 하나처럼
+        // 함께 바뀌어야 자연스러워서, 스타일 저장 시 이 목록 전체에 적용함
+        let waterFlowConnectionGroupSiblings = {};
 
         function openWaterFlowConnectionModal(connId) {
             if (!checkEditPermission()) return;
@@ -5009,8 +5013,15 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             pushWaterFlowUndoSnapshot();
             const style = document.getElementById('waterFlowConnectionStyleInput').value;
             const color = document.getElementById('waterFlowConnectionColorInput').value;
-            conn.lineStyle = style === 'dashed' ? 'dashed' : 'solid';
-            if (color) conn.color = color; else delete conn.color;
+            // 지금 겹쳐서 하나의 줄기처럼 보이는 형제 연결선들에도 같이 적용해서, 스타일이
+            // 부분적으로만 바뀌어 지저분해 보이지 않게 함(위치를 드래그로 옮길 때와 같은 방식)
+            const siblingIds = waterFlowConnectionGroupSiblings[editingWaterFlowConnectionId] || [editingWaterFlowConnectionId];
+            siblingIds.forEach(id => {
+                const c = waterFlowConnections.find(x => x.id === id);
+                if (!c) return;
+                c.lineStyle = style === 'dashed' ? 'dashed' : 'solid';
+                if (color) c.color = color; else delete c.color;
+            });
             saveWaterFlowConnectionsToStorage();
             closeWaterFlowConnectionModal();
             renderWaterFlowConnections();
@@ -5084,6 +5095,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const canvas = document.getElementById('waterFlowCanvas');
             if (!svg || !canvas) return;
 
+            waterFlowConnectionGroupSiblings = {};
+
             if (waterFlowConnections.length === 0) {
                 svg.innerHTML = '';
                 return;
@@ -5143,6 +5156,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             function renderGroup(g) {
                 const isVertical = g.direction === 'down' || g.direction === 'up';
+                const siblingIds = g.branches.map(b => b.connId);
+                siblingIds.forEach(id => { waterFlowConnectionGroupSiblings[id] = siblingIds; });
 
                 // 꺾이는 위치: 사용자가 직접 드래그해서 옮겨뒀으면 그 값을, 아니면 출발 지점과
                 // 가장 가까운 도착 지점 사이 "가운데"를 자동으로 계산해서 씀

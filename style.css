@@ -759,8 +759,8 @@ html {
             position: absolute;
             top: 0;
             left: 0;
-            width: 2400px;
-            height: 1400px;
+            width: 6000px;
+            height: 4000px;
             transform-origin: 0 0;
             /* 블록을 놓고 옮길 수 있는 실제 영역 */
             background-color: #fdfdfd;
@@ -965,8 +965,8 @@ html {
         .water-flow-block-detail {
             position: absolute;
             top: 100%;
-            left: -14px;
-            right: -14px;
+            left: 0;
+            right: 0;
             background: white;
             border-radius: 0 0 10px 10px;
             box-shadow: 0 8px 15px rgba(0,0,0,0.12);
