@@ -799,6 +799,64 @@ html {
             margin-bottom: 12px;
         }
 
+        /* 흐름도가 여러 개일 때 구분해서 보는 탭 줄 */
+        .water-flow-diagram-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .water-flow-diagram-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px 6px 14px;
+            border-radius: 20px;
+            background: #f0f0f0;
+            color: #555;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+
+        .water-flow-diagram-tab.active {
+            background: #eef0ff;
+            color: #667eea;
+            border-color: #667eea;
+        }
+
+        .water-flow-diagram-tab-edit {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.06);
+            color: inherit;
+            font-size: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .water-flow-diagram-add-btn {
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px dashed #ccc;
+            background: transparent;
+            color: #667eea;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .water-flow-diagram-add-btn:hover {
+            background: #eef0ff;
+        }
+
         .water-flow-connect-hint.active {
             display: block;
         }
@@ -3719,6 +3777,30 @@ html {
 .dark-mode .water-flow-connect-hint {
     background: #2a2a52;
     color: #a9b6ff;
+}
+
+.dark-mode .water-flow-diagram-tab {
+    background: var(--d-bg3);
+    color: var(--d-text2);
+}
+
+.dark-mode .water-flow-diagram-tab.active {
+    background: #2a2a52;
+    color: #a9b6ff;
+    border-color: #8a9bf5;
+}
+
+.dark-mode .water-flow-diagram-tab-edit {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.dark-mode .water-flow-diagram-add-btn {
+    border-color: var(--d-border);
+    color: #a9b6ff;
+}
+
+.dark-mode .water-flow-diagram-add-btn:hover {
+    background: #2a2a52;
 }
 
 .dark-mode .water-flow-connection-line {

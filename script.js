@@ -258,10 +258,17 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let trendSpec = '';    // 관리 기준 (동일)
         let maintenanceSchedule = []; // [{id, equipment, item, sop, cycle, status, lastDone, nextDue, note, ackFor, updatedAt}]
         let editingMaintenanceId = null;
-        let waterFlowBlocks = []; // [{id, title, detail, color, x, y, expanded}] - 흐름도 탭의 블록(자유 배치)
+        // 흐름도는 여러 개를 만들어 구분해서 볼 수 있음. waterFlowDiagrams가 실제 저장 단위이고,
+        // waterFlowBlocks/waterFlowConnections는 그중 지금 보고 있는(currentWaterFlowDiagramId) 흐름도의
+        // blocks/connections 배열을 그대로 가리키는 참조라서, 기존 블록/연결선 관련 코드는 그대로 두고
+        // 씀 - 다만 배열을 통째로 새로 만드는(재할당하는) 곳에서는 반드시 저장 직전에 다시 연결해줘야 함
+        let waterFlowDiagrams = []; // [{id, name, blocks: [...], connections: [...]}]
+        let currentWaterFlowDiagramId = null;
+        let waterFlowBlocks = []; // [{id, title, detail, color, x, y, expanded}] - 지금 보고 있는 흐름도의 블록(자유 배치)
         let editingWaterFlowBlockId = null;
-        let waterFlowConnections = []; // [{id, from, to}] - 블록 사이의 방향성 있는 연결선(from → to). 한 블록에서 여러 개로 연결 가능
+        let waterFlowConnections = []; // [{id, from, to}] - 지금 보고 있는 흐름도의 연결선(from → to). 한 블록에서 여러 개로 연결 가능
         let waterFlowConnectSourceId = null; // 지금 연결선을 잇는 중인 출발 블록 id (연결 모드가 아니면 null). 화면 상태값이라 저장하지 않음
+        let editingWaterFlowDiagramId = null; // 이름 변경/삭제 모달에서 대상이 되는 흐름도 id
         // 흐름도 캔버스의 현재 화면 이동/확대 상태 (빈 곳 드래그로 이동, 휠로 확대/축소). 뷰포트일 뿐
         // 데이터가 아니라서 저장하지 않고, 탭을 나갔다 들어오거나 새로고침하면 초기 상태로 돌아옴
         let waterFlowViewX = 0, waterFlowViewY = 0, waterFlowViewZoom = 1;
@@ -300,10 +307,17 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             trendSpec = localStorage.getItem('trendSpec') || '';
             const storedMaintenance = localStorage.getItem('maintenanceSchedule');
             maintenanceSchedule = storedMaintenance ? safeJsonParse(storedMaintenance, [], 'maintenanceSchedule') : [];
-            const storedWaterFlowBlocks = localStorage.getItem('waterFlowBlocks');
-            waterFlowBlocks = storedWaterFlowBlocks ? safeJsonParse(storedWaterFlowBlocks, [], 'waterFlowBlocks') : [];
-            const storedWaterFlowConnections = localStorage.getItem('waterFlowConnections');
-            waterFlowConnections = storedWaterFlowConnections ? safeJsonParse(storedWaterFlowConnections, [], 'waterFlowConnections') : [];
+            const storedWaterFlowDiagrams = localStorage.getItem('waterFlowDiagrams');
+            waterFlowDiagrams = storedWaterFlowDiagrams ? safeJsonParse(storedWaterFlowDiagrams, [], 'waterFlowDiagrams') : [];
+            currentWaterFlowDiagramId = localStorage.getItem('currentWaterFlowDiagramId') || null;
+            if (waterFlowDiagrams.length === 0) {
+                // 예전 버전(흐름도가 하나뿐이던 시절)에 저장해둔 블록/연결선이 있으면 그대로 살려서 마이그레이션함
+                const storedWaterFlowBlocks = localStorage.getItem('waterFlowBlocks');
+                const storedWaterFlowConnections = localStorage.getItem('waterFlowConnections');
+                waterFlowBlocks = storedWaterFlowBlocks ? safeJsonParse(storedWaterFlowBlocks, [], 'waterFlowBlocks') : [];
+                waterFlowConnections = storedWaterFlowConnections ? safeJsonParse(storedWaterFlowConnections, [], 'waterFlowConnections') : [];
+            }
+            ensureActiveWaterFlowDiagram();
 
             renderTabs();
             renderCategories();
@@ -320,6 +334,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             applyTrendSettings();
             setupTrendSettingsAutosave();
             renderMaintenanceSchedule();
+            renderWaterFlowDiagramTabs();
             renderWaterFlowCanvas();
             renderSettingsTab();
             applyFeatureRestrictions();
@@ -585,6 +600,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         
         // ===== Google Sheets 동기화 =====
         function getFullState() {
+            syncActiveWaterFlowDiagramData(); // 지금 보고 있는 흐름도의 최신 블록/연결선을 waterFlowDiagrams에 반영해둠
             return {
                 employeeId: currentEmployeeId,
                 passwordHash: currentPasswordHash,
@@ -610,8 +626,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 trendSubject,
                 trendSpec,
                 maintenanceSchedule,
-                waterFlowBlocks,
-                waterFlowConnections
+                waterFlowDiagrams,
+                currentWaterFlowDiagramId
             };
         }
 
@@ -636,8 +652,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             localStorage.setItem('trendSubject', trendSubject);
             localStorage.setItem('trendSpec', trendSpec);
             localStorage.setItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
-            localStorage.setItem('waterFlowBlocks', JSON.stringify(waterFlowBlocks));
-            localStorage.setItem('waterFlowConnections', JSON.stringify(waterFlowConnections));
+            syncActiveWaterFlowDiagramData();
+            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
             localStorage.setItem('accountName', currentUserName);
             localStorage.setItem('accountDepartment', currentUserDepartment);
         }
@@ -729,8 +746,14 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     trendSubject = (typeof data.trendSubject === 'string') ? data.trendSubject : '';
                     trendSpec = (typeof data.trendSpec === 'string') ? data.trendSpec : '';
                     maintenanceSchedule = Array.isArray(data.maintenanceSchedule) ? data.maintenanceSchedule : [];
-                    waterFlowBlocks = Array.isArray(data.waterFlowBlocks) ? data.waterFlowBlocks : [];
-                    waterFlowConnections = Array.isArray(data.waterFlowConnections) ? data.waterFlowConnections : [];
+                    waterFlowDiagrams = Array.isArray(data.waterFlowDiagrams) ? data.waterFlowDiagrams : [];
+                    currentWaterFlowDiagramId = data.currentWaterFlowDiagramId || null;
+                    if (waterFlowDiagrams.length === 0) {
+                        // 예전 버전(흐름도가 하나뿐이던 시절) 계정에서 넘어온 데이터를 그대로 살려서 마이그레이션함
+                        waterFlowBlocks = Array.isArray(data.waterFlowBlocks) ? data.waterFlowBlocks : [];
+                        waterFlowConnections = Array.isArray(data.waterFlowConnections) ? data.waterFlowConnections : [];
+                    }
+                    ensureActiveWaterFlowDiagram();
 
                     cacheAllToLocalStorage();
 
@@ -746,6 +769,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (typeof renderSavingsProjects === 'function') renderSavingsProjects();
                     if (typeof applyTrendSettings === 'function') applyTrendSettings();
                     if (typeof renderMaintenanceSchedule === 'function') renderMaintenanceSchedule();
+                    if (typeof renderWaterFlowDiagramTabs === 'function') renderWaterFlowDiagramTabs();
                     if (typeof renderWaterFlowCanvas === 'function') renderWaterFlowCanvas();
                     applyEditLockUI(); // 방금 받아온 이름을 상단 계정 표시에 반영
                 }
@@ -4423,19 +4447,156 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
-        // ===== 흐름도 탭 (자유 배치 블록 + 연결선) =====
+        // ===== 흐름도 탭 (여러 개의 흐름도, 각각 자유 배치 블록 + 연결선) =====
         // 블록은 캔버스 위에 절대좌표(x, y, px)로 배치되고, 클릭하면 세부 내용이 펼쳐지며,
         // 드래그(Pointer Events)로 자유롭게 위치를 옮길 수 있음. 탭 순서변경/캘린더 일정 이동과
         // 같은 방식으로 "약간이라도 움직이면 드래그, 안 움직이면 클릭"을 구분해 처리함.
         // 블록 사이의 방향성 있는 연결선(계통도처럼 흐름 표시, 한 블록에서 여러 개로 연결 가능)은
         // waterFlowConnections에 { id, from, to }로 따로 저장하고, SVG로 그려서 블록 위에 겹쳐 보여줌
+
+        // waterFlowBlocks/waterFlowConnections는 현재 보고 있는 흐름도(waterFlowDiagrams 중
+        // currentWaterFlowDiagramId)의 배열을 그대로 참조하는 변수라서, .push()나 항목의 필드를
+        // 바꾸는 것은 자동으로 반영되지만 "waterFlowBlocks = ....filter(...)"처럼 배열 자체를
+        // 새로 만드는 곳에서는 원본 diagram 항목이 그 변경을 못 보게 되므로, 저장 직전에 이 함수로
+        // 다시 연결해줘야 함(저장 함수들이 이미 항상 호출하므로 별도로 신경 쓸 필요는 없음)
+        function syncActiveWaterFlowDiagramData() {
+            const diagram = waterFlowDiagrams.find(d => d.id === currentWaterFlowDiagramId);
+            if (diagram) {
+                diagram.blocks = waterFlowBlocks;
+                diagram.connections = waterFlowConnections;
+            }
+        }
+
+        // waterFlowDiagrams가 비어있으면(첫 사용, 또는 예전 버전에서 막 넘어온 계정) 흐름도 하나를
+        // 만들어주고, currentWaterFlowDiagramId가 가리키는 흐름도가 없으면 첫 번째로 되돌린 뒤,
+        // waterFlowBlocks/waterFlowConnections가 그 흐름도의 배열을 가리키도록 다시 연결함
+        function ensureActiveWaterFlowDiagram() {
+            if (!Array.isArray(waterFlowDiagrams)) waterFlowDiagrams = [];
+            if (waterFlowDiagrams.length === 0) {
+                const hasLegacyData = (waterFlowBlocks && waterFlowBlocks.length > 0) || (waterFlowConnections && waterFlowConnections.length > 0);
+                waterFlowDiagrams.push({
+                    id: 'wfd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    name: '흐름도 1',
+                    blocks: hasLegacyData ? waterFlowBlocks : [],
+                    connections: hasLegacyData ? waterFlowConnections : []
+                });
+            }
+            let current = waterFlowDiagrams.find(d => d.id === currentWaterFlowDiagramId);
+            if (!current) {
+                current = waterFlowDiagrams[0];
+                currentWaterFlowDiagramId = current.id;
+            }
+            if (!Array.isArray(current.blocks)) current.blocks = [];
+            if (!Array.isArray(current.connections)) current.connections = [];
+            waterFlowBlocks = current.blocks;
+            waterFlowConnections = current.connections;
+        }
+
+        function renderWaterFlowDiagramTabs() {
+            const container = document.getElementById('waterFlowDiagramTabs');
+            if (!container) return;
+            container.innerHTML = waterFlowDiagrams.map(d => `
+                <div class="water-flow-diagram-tab${d.id === currentWaterFlowDiagramId ? ' active' : ''}" onclick="switchWaterFlowDiagram('${d.id}')">
+                    <span>${escapeHtml(d.name)}</span>
+                    <button class="water-flow-diagram-tab-edit" onclick="event.stopPropagation(); openWaterFlowDiagramModal('${d.id}')" title="이름 변경/삭제" aria-label="이름 변경/삭제">✏️</button>
+                </div>
+            `).join('') + '<button class="water-flow-diagram-add-btn" onclick="addWaterFlowDiagram()" title="흐름도 추가" aria-label="흐름도 추가">➕ 흐름도 추가</button>';
+        }
+
+        function switchWaterFlowDiagram(diagramId) {
+            if (diagramId === currentWaterFlowDiagramId) return;
+            cancelWaterFlowConnectMode();
+            syncActiveWaterFlowDiagramData(); // 나가기 전에 지금 보던 흐름도 내용을 확실히 반영해둠
+            currentWaterFlowDiagramId = diagramId;
+            ensureActiveWaterFlowDiagram();
+            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
+            resetWaterFlowView();
+            renderWaterFlowDiagramTabs();
+            renderWaterFlowCanvas();
+        }
+
+        function addWaterFlowDiagram() {
+            if (!checkEditPermission()) return;
+            syncActiveWaterFlowDiagramData();
+            const newDiagram = {
+                id: 'wfd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                name: '흐름도 ' + (waterFlowDiagrams.length + 1),
+                blocks: [],
+                connections: []
+            };
+            waterFlowDiagrams.push(newDiagram);
+            currentWaterFlowDiagramId = newDiagram.id;
+            waterFlowBlocks = newDiagram.blocks;
+            waterFlowConnections = newDiagram.connections;
+            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
+            queueSync();
+            resetWaterFlowView();
+            renderWaterFlowDiagramTabs();
+            renderWaterFlowCanvas();
+        }
+
+        function openWaterFlowDiagramModal(diagramId) {
+            if (!checkEditPermission()) return;
+            editingWaterFlowDiagramId = diagramId;
+            const diagram = waterFlowDiagrams.find(d => d.id === diagramId);
+            if (!diagram) return;
+            document.getElementById('waterFlowDiagramNameInput').value = diagram.name;
+            const deleteBtn = document.getElementById('deleteWaterFlowDiagramBtn');
+            deleteBtn.style.display = waterFlowDiagrams.length > 1 ? 'inline-block' : 'none'; // 마지막 하나 남은 흐름도는 지울 수 없게 함
+            document.getElementById('waterFlowDiagramModal').classList.add('active');
+            applyFormLockState();
+        }
+
+        function closeWaterFlowDiagramModal() {
+            document.getElementById('waterFlowDiagramModal').classList.remove('active');
+            editingWaterFlowDiagramId = null;
+        }
+
+        function saveWaterFlowDiagramName() {
+            if (!checkEditPermission()) return;
+            const name = document.getElementById('waterFlowDiagramNameInput').value.trim();
+            if (!name) {
+                showAppToast('흐름도 이름을 입력해주세요');
+                return;
+            }
+            const diagram = waterFlowDiagrams.find(d => d.id === editingWaterFlowDiagramId);
+            if (diagram) diagram.name = name;
+            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            queueSync();
+            closeWaterFlowDiagramModal();
+            renderWaterFlowDiagramTabs();
+        }
+
+        function deleteWaterFlowDiagram() {
+            if (!checkEditPermission()) return;
+            if (waterFlowDiagrams.length <= 1) return; // 흐름도가 하나뿐일 때는 지울 수 없음
+            const targetId = editingWaterFlowDiagramId;
+            confirmModal('이 흐름도를 삭제하시겠습니까? 안에 있는 블록과 연결선이 모두 함께 사라집니다.', () => {
+                waterFlowDiagrams = waterFlowDiagrams.filter(d => d.id !== targetId);
+                if (currentWaterFlowDiagramId === targetId) currentWaterFlowDiagramId = waterFlowDiagrams[0].id;
+                ensureActiveWaterFlowDiagram();
+                localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+                localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
+                queueSync();
+                closeWaterFlowDiagramModal();
+                resetWaterFlowView();
+                renderWaterFlowDiagramTabs();
+                renderWaterFlowCanvas();
+            });
+        }
+
         function saveWaterFlowBlocksToStorage() {
-            localStorage.setItem('waterFlowBlocks', JSON.stringify(waterFlowBlocks));
+            syncActiveWaterFlowDiagramData();
+            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
             queueSync();
         }
 
         function saveWaterFlowConnectionsToStorage() {
-            localStorage.setItem('waterFlowConnections', JSON.stringify(waterFlowConnections));
+            syncActiveWaterFlowDiagramData();
+            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
             queueSync();
         }
 
@@ -4639,14 +4800,32 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
-        // 출발 블록 아래쪽에서 세로로 내려오는 줄기(trunk)를 얼마나 짧게 뺄지 (px). 이후 이 높이에서
-        // 가로로 꺾여 각 도착 블록의 x좌표로 갈라짐
-        const WATER_FLOW_CONNECTION_DROP = 24;
+        // 두 블록 중심의 가로/세로 거리 중 더 크게 벌어진 쪽을 기준으로 연결 방향을 정함
+        // (옆으로 나란한 블록끼리는 좌우 중앙으로, 위아래로 놓인 블록끼리는 상하 중앙으로 연결됨)
+        function waterFlowConnectionDirection(rFrom, rTo) {
+            const srcCX = rFrom.left + rFrom.width / 2, srcCY = rFrom.top + rFrom.height / 2;
+            const tgtCX = rTo.left + rTo.width / 2, tgtCY = rTo.top + rTo.height / 2;
+            const dx = tgtCX - srcCX, dy = tgtCY - srcCY;
+            if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+            return dy >= 0 ? 'down' : 'up';
+        }
+
+        // 방향에 따라 블록 테두리의 연결 지점(우/좌 중앙, 하/상 중앙)을 구함
+        function waterFlowAttachPoint(rect, side) {
+            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            if (side === 'right') return { x: rect.left + rect.width, y: cy };
+            if (side === 'left') return { x: rect.left, y: cy };
+            if (side === 'down') return { x: cx, y: rect.top + rect.height };
+            return { x: cx, y: rect.top }; // 'up'
+        }
+
+        // 나가는 방향의 반대쪽이 들어오는 블록의 진입면이 됨 (오른쪽으로 나가면 상대는 왼쪽으로 받음)
+        const WATER_FLOW_ENTRY_SIDE = { right: 'left', left: 'right', down: 'up', up: 'down' };
 
         // 블록의 실제 DOM 위치/크기를 기준으로 연결선을 다시 그림. 블록을 드래그하는 동안에도
         // (전체 재렌더 없이) 매 이동마다 호출해서 선이 블록을 따라 실시간으로 움직이게 함.
-        // 화살표 없이 계통도처럼 "출발 블록 아래로 수직 → 수평 → 도착 블록 위로 수직"으로 꺾어 그리며,
-        // 같은 블록에서 나가는 연결선들은 꺾이는 높이(trunkY)를 공유해서 한 줄기에서 갈라진 것처럼 보임
+        // 화살표 없이 계통도처럼 직각으로 꺾어 그리며, 같은 출발 블록에서 같은 방향으로 나가는
+        // 연결선들은 그 사이 가운데 지점에서 갈라져(줄기 공유) 나뭇가지처럼 보이게 함
         function renderWaterFlowConnections() {
             const svg = document.getElementById('waterFlowConnectionsSvg');
             const canvas = document.getElementById('waterFlowCanvas');
@@ -4663,33 +4842,53 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (el) rects[b.id] = { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
             });
 
-            const trunkYByFrom = {};
+            const directionByConn = {};
             waterFlowConnections.forEach(conn => {
-                if (trunkYByFrom[conn.from] !== undefined) return;
+                const rFrom = rects[conn.from], rTo = rects[conn.to];
+                if (rFrom && rTo) directionByConn[conn.id] = waterFlowConnectionDirection(rFrom, rTo);
+            });
+
+            // 같은 (출발 블록, 방향) 조합끼리 줄기 위치를 공유함: 출발 지점과, 그 방향으로 나가는
+            // 형제 연결들의 도착 지점 중 가장 가까운 것과의 "가운데"에서 갈라지도록 함
+            const trunkByGroup = {};
+            waterFlowConnections.forEach(conn => {
+                const direction = directionByConn[conn.id];
+                if (!direction) return;
+                const groupKey = conn.from + '|' + direction;
+                if (trunkByGroup[groupKey] !== undefined) return;
+
                 const rFrom = rects[conn.from];
-                if (!rFrom) return;
-                const siblingTops = waterFlowConnections
-                    .filter(c => c.from === conn.from)
-                    .map(c => rects[c.to])
-                    .filter(Boolean)
-                    .map(r => r.top);
-                if (siblingTops.length === 0) return;
-                const srcY = rFrom.top + rFrom.height;
-                let trunkY = srcY + WATER_FLOW_CONNECTION_DROP;
-                trunkY = Math.min(trunkY, Math.min(...siblingTops) - 4);
-                trunkY = Math.max(trunkY, srcY + 4);
-                trunkYByFrom[conn.from] = trunkY;
+                const exit = waterFlowAttachPoint(rFrom, direction);
+                const siblingEntries = waterFlowConnections
+                    .filter(c => c.from === conn.from && directionByConn[c.id] === direction)
+                    .map(c => rects[c.to] && waterFlowAttachPoint(rects[c.to], WATER_FLOW_ENTRY_SIDE[direction]))
+                    .filter(Boolean);
+                if (siblingEntries.length === 0) return;
+
+                if (direction === 'down' || direction === 'up') {
+                    const nearestY = direction === 'down'
+                        ? Math.min(...siblingEntries.map(p => p.y))
+                        : Math.max(...siblingEntries.map(p => p.y));
+                    trunkByGroup[groupKey] = (exit.y + nearestY) / 2;
+                } else {
+                    const nearestX = direction === 'right'
+                        ? Math.min(...siblingEntries.map(p => p.x))
+                        : Math.max(...siblingEntries.map(p => p.x));
+                    trunkByGroup[groupKey] = (exit.x + nearestX) / 2;
+                }
             });
 
             const linesHtml = waterFlowConnections.map(conn => {
                 const rFrom = rects[conn.from], rTo = rects[conn.to];
                 if (!rFrom || !rTo) return ''; // 블록이 삭제되는 등으로 대상이 사라진 연결은 그리지 않음
-                const srcX = rFrom.left + rFrom.width / 2;
-                const srcY = rFrom.top + rFrom.height;
-                const tgtX = rTo.left + rTo.width / 2;
-                const tgtY = rTo.top;
-                const trunkY = trunkYByFrom[conn.from];
-                const points = `${srcX},${srcY} ${srcX},${trunkY} ${tgtX},${trunkY} ${tgtX},${tgtY}`;
+                const direction = directionByConn[conn.id];
+                const exit = waterFlowAttachPoint(rFrom, direction);
+                const entry = waterFlowAttachPoint(rTo, WATER_FLOW_ENTRY_SIDE[direction]);
+                const trunk = trunkByGroup[conn.from + '|' + direction];
+
+                const points = (direction === 'down' || direction === 'up')
+                    ? `${exit.x},${exit.y} ${exit.x},${trunk} ${entry.x},${trunk} ${entry.x},${entry.y}`
+                    : `${exit.x},${exit.y} ${trunk},${exit.y} ${trunk},${entry.y} ${entry.x},${entry.y}`;
                 return `
                     <polyline points="${points}" class="water-flow-connection-line"></polyline>
                     <polyline points="${points}" class="water-flow-connection-hit" onclick="deleteWaterFlowConnection('${conn.id}')"><title>연결 삭제</title></polyline>
@@ -7441,7 +7640,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'categoryColors', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
             'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'todoItems', 'todoNotes', 'aiTemplate',
-            'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'waterFlowBlocks', 'waterFlowConnections',
+            'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment'
         ];
 
@@ -7527,6 +7726,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'projectModal') closeProjectModal();
             else if (id === 'maintenanceModal') closeMaintenanceModal();
             else if (id === 'waterFlowBlockModal') closeWaterFlowBlockModal();
+            else if (id === 'waterFlowDiagramModal') closeWaterFlowDiagramModal();
             else if (id === 'deleteTeamReportModal') closeDeleteTeamReportModal();
             else if (id === 'signupModal') closeSignupModal();
             else if (id === 'adminEditUserModal') closeAdminEditUserModal();
