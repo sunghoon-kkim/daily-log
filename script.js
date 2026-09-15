@@ -972,6 +972,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return formatDate(d);
         }
 
+        // 일정을 드래그로 옮길 때, 기간(며칠짜리)을 유지한 채 시작일만 바꾸기 위해 씀
+        function daysBetweenDateStrs(startStr, endStr) {
+            const start = new Date(startStr + 'T00:00:00');
+            const end = new Date(endStr + 'T00:00:00');
+            return Math.round((end - start) / 86400000);
+        }
+
         // 일정 반복 등록("매월 반복")에서 씀. 31일처럼 다음 달에 없는 날짜는 Date가 자동으로
         // 그 다음 달로 넘겨버리므로(예: 1/31 + 1개월 → 3/3), 그런 경우엔 그 달의 마지막 날로 보정함
         function addMonthsToDateStr(dateStr, months) {
@@ -2345,7 +2352,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 
                 const visibleEvents = dayEvents.slice(0, 5);
                 for (const ev of visibleEvents) {
-                    planHtml += `<div class="day-plan-item" style="background:${ev.color}" title="${escapeHtml(ev.title)}" onclick="event.stopPropagation(); openEventModal('${ev.id}')">${escapeHtml(ev.title)}</div>`;
+                    planHtml += `<div class="day-plan-item" style="background:${ev.color}" title="${escapeHtml(ev.title)}" onpointerdown="event.stopPropagation(); eventPillPointerDown(event, '${ev.id}')" onclick="event.stopPropagation(); openEventModal('${ev.id}')">${escapeHtml(ev.title)}</div>`;
                 }
                 
                 if (dayEvents.length > 5) {
@@ -2355,7 +2362,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 planHtml += '</div>';
                 
                 html += `
-                    <div class="${classes}" onclick="selectDate('${dateStr}')">
+                    <div class="${classes}" data-date="${dateStr}" onclick="selectDate('${dateStr}')">
                         <button class="day-plus-btn" onclick="event.stopPropagation(); openEventModal(null, '${dateStr}')" aria-label="${dateStr} 일정 추가">+</button>
                         <div class="day-top">
                             <div class="day-number ${numClass}">${d}</div>
@@ -2422,7 +2429,106 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 dragging = false;
             });
         }
-        
+
+        // ===== 캘린더 일정 드래그앤드롭으로 날짜 옮기기 =====
+        // 네이티브 HTML5 드래그앤드롭은 터치 기기에서 동작하지 않아서, 조직도 카드 배정과 같은 방식으로
+        // Pointer Events(마우스/터치 공용)로 직접 구현함 - 일정 칩을 따라다니는 고스트를 그려서 옮기고,
+        // 손을 뗀 지점 아래에 있는 날짜 칸을 elementFromPoint로 찾아 그 날짜로 이동시킴
+        let eventDragState = null; // { eventId, originEl, pointerId, startX, startY, moved, ghostEl }
+        const EVENT_DRAG_MOVE_THRESHOLD = 6; // 이보다 적게 움직이면 그냥 클릭(일정 수정)으로 취급
+
+        function eventPillPointerDown(e, eventId) {
+            if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
+            if (!editUnlocked || document.querySelector('.modal-overlay.active')) return;
+            eventDragState = {
+                eventId,
+                originEl: e.currentTarget,
+                pointerId: e.pointerId,
+                startX: e.clientX,
+                startY: e.clientY,
+                moved: false,
+                ghostEl: null
+            };
+            document.addEventListener('pointermove', eventPillPointerMove);
+            document.addEventListener('pointerup', eventPillPointerUp);
+            document.addEventListener('pointercancel', eventPillPointerUp);
+        }
+
+        function eventPillPointerMove(e) {
+            if (!eventDragState) return;
+            const dx = e.clientX - eventDragState.startX;
+            const dy = e.clientY - eventDragState.startY;
+
+            if (!eventDragState.moved) {
+                if (Math.hypot(dx, dy) < EVENT_DRAG_MOVE_THRESHOLD) return;
+                eventDragState.moved = true;
+                eventDragState.originEl.classList.add('dragging');
+
+                const rect = eventDragState.originEl.getBoundingClientRect();
+                const ghost = eventDragState.originEl.cloneNode(true);
+                ghost.className = 'day-plan-item day-plan-item-ghost';
+                ghost.style.background = eventDragState.originEl.style.background;
+                ghost.style.width = rect.width + 'px';
+                document.body.appendChild(ghost);
+                eventDragState.ghostEl = ghost;
+            }
+
+            e.preventDefault(); // 드래그 중 터치 스크롤/텍스트 선택 방지
+            eventDragState.ghostEl.style.left = e.clientX + 'px';
+            eventDragState.ghostEl.style.top = e.clientY + 'px';
+
+            document.querySelectorAll('.day.drag-over').forEach(el => el.classList.remove('drag-over'));
+            eventDragState.ghostEl.style.display = 'none'; // elementFromPoint가 고스트 자신을 집지 않도록 잠깐 숨김
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            eventDragState.ghostEl.style.display = '';
+            const dayEl = under && under.closest('.day[data-date]');
+            if (dayEl) dayEl.classList.add('drag-over');
+        }
+
+        function eventPillPointerUp(e) {
+            if (!eventDragState) return;
+            document.removeEventListener('pointermove', eventPillPointerMove);
+            document.removeEventListener('pointerup', eventPillPointerUp);
+            document.removeEventListener('pointercancel', eventPillPointerUp);
+
+            const state = eventDragState;
+            eventDragState = null;
+
+            state.originEl.classList.remove('dragging');
+            if (state.ghostEl) state.ghostEl.remove();
+            document.querySelectorAll('.day.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+            if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 기존 onclick이 일정 수정 모달을 열도록 둠
+
+            // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 일정 수정 모달을 열지 않도록 한 번 막음.
+            // moveEventToDate가 캘린더를 다시 그려서 원래 눌렀던 요소(state.originEl)가 사라져버릴 수
+            // 있으므로, 재렌더링에도 그대로 남아있는 document에 걸어둠
+            document.addEventListener('click', function suppressClick(ev) {
+                ev.stopPropagation();
+            }, { capture: true, once: true });
+
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            const dayEl = under && under.closest('.day[data-date]');
+            if (!dayEl) return;
+
+            moveEventToDate(state.eventId, dayEl.dataset.date);
+        }
+
+        // 일정을 다른 날짜로 옮김. 여러 날짜에 걸친 일정은 그 기간(며칠짜리인지)을 그대로 유지함
+        function moveEventToDate(eventId, newStartDateStr) {
+            const ev = events.find(e => e.id === eventId);
+            if (!ev || ev.start === newStartDateStr) return;
+
+            const durationDays = daysBetweenDateStrs(ev.start, ev.end);
+            ev.start = newStartDateStr;
+            ev.end = addDaysToDateStr(newStartDateStr, durationDays);
+
+            saveEventsToStorage();
+            renderCalendar();
+            if (selectedDate) renderRecordForm();
+            showStatus('📅 일정 날짜를 옮겼습니다', 'success');
+        }
+
         // 오늘 기준으로 아직 끝나지 않은 예정 작업들을 D-day와 함께 가로 스크롤 카드로 표시
         let collapsedUpcomingCardIds = new Set(); // 접어둔 카드의 예정작업 id 목록 - 저장되어 창을 닫았다 열어도 유지됨
         let highlightedEventRange = null; // { start, end } - 다가오는 일정 카드 클릭 시 캘린더에서 강조할 기간
