@@ -5373,8 +5373,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 // 트렁크(버스)와 exitBend는 같은 출발 블록에서 나가는 형제 연결선 전체가 공유하므로,
                 // 하나라도 점선이면 그 구간도 점선으로, 색은 형제들의 색이 전부 같을 때만 표시(다르면
                 // 기본 색)해서 어느 쪽도 틀린 것처럼 보이지 않게 함
-                const singleConnClickHandler = g.branches.length === 1 ? ` onclick="handleWaterFlowConnectionLineClick('${g.branches[0].connId}')"` : '';
                 const branchConns = g.branches.map(b => waterFlowConnections.find(c => c.id === b.connId)).filter(Boolean);
+                // 형제가 여럿이라 완전히 겹쳐 보이는 구간(출발 지점~트렁크)을 클릭했을 때 어느 연결을
+                // 열지 정해야 하므로, 지금 화면에 실선으로 보이는(=우선순위가 더 높은) 연결을 고르고,
+                // 전부 점선이면 첫 번째 것을 고름 - 형제가 하나뿐이면 당연히 그 하나
+                const primaryClickConn = branchConns.find(c => c.lineStyle !== 'dashed') || branchConns[0];
+                const singleConnClickHandler = primaryClickConn ? ` onclick="handleWaterFlowConnectionLineClick('${primaryClickConn.id}')"` : '';
                 // 실선이 점선보다 우선해서 보이도록(겹쳤을 때 실선이 이김), 형제 전부가 점선일 때만 점선으로 함
                 const trunkDashed = branchConns.length > 0 && branchConns.every(c => c.lineStyle === 'dashed');
                 const trunkColors = [...new Set(branchConns.map(c => c.color).filter(Boolean))];
@@ -5388,20 +5392,27 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const p4 = isVertical ? { x: busMax, y: trunk } : { x: trunk, y: busMax };
 
                 // 구간 1: 출발 지점 → exitBend 꺾임. 출발 지점 쪽 끝은 블록에 고정된 좌표라 조정할
-                // 값이 없으므로 드래그는 지원하지 않고 클릭(단일 연결이면 편집/삭제)만 지원함
+                // 값이 없으므로 드래그는 지원하지 않고 클릭(편집/삭제)만 지원함
                 pushVisual(p0, p1, trunkColorStyle, trunkDashed);
                 svgHtml += `<polyline points="${p0.x},${p0.y} ${p1.x},${p1.y}" class="water-flow-connection-hit"${singleConnClickHandler}><title>클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>`;
 
                 // 구간 2: exitBend 꺾임 → 트렁크 꺾임. exitBend를 조정하는 손잡이
                 pushVisual(p1, p2, trunkColorStyle, trunkDashed);
                 svgHtml += `<polyline points="${p1.x},${p1.y} ${p2.x},${p2.y}" class="water-flow-connection-hit" style="cursor:${exitBendCursor}"
-                    onpointerdown="waterFlowScalarPointerDown(event, '${connIds}', 'exitBend', '${exitBendAxis}', ${exitBend})"${singleConnClickHandler}><title>드래그로 출발 쪽 꺾임 옮기기${g.branches.length === 1 ? ' · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)' : ''}</title></polyline>`;
+                    onpointerdown="waterFlowScalarPointerDown(event, '${connIds}', 'exitBend', '${exitBendAxis}', ${exitBend})"${singleConnClickHandler}><title>드래그로 출발 쪽 꺾임 옮기기 · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>`;
 
-                // 구간 3: 트렁크 꺾임 → 버스(가지들이 갈라지는 범위). 트렁크를 조정하는 손잡이
-                pushVisual(p2, p3, trunkColorStyle, trunkDashed);
-                pushVisual(p3, p4, trunkColorStyle, trunkDashed);
+                // 구간 3: 트렁크 꺾임 → 버스(가지들이 갈라지는 범위). 트렁크를 조정하는 손잡이.
+                // 버스의 보이는 선은 (형제 전체가 합의된 색/점선이 아니라) 가지마다 따로 그림 - 그래야
+                // 예를 들어 실선 가지 하나와 점선 가지 둘이 버스를 같이 쓸 때, 실선 가지가 실제로 뻗어
+                // 있는 구간만 실선으로 덮이고, 그 너머(점선 가지만 더 뻗어 있는 구간)는 점선 그대로 보임.
+                // 가지들의 구간을 모두 합치면 버스 전체(busMin~busMax)가 항상 빠짐없이 채워짐
+                g.branches.forEach(b => {
+                    const bElbow = isVertical ? { x: b.entry.x, y: trunk } : { x: trunk, y: b.entry.y };
+                    const bConn = waterFlowConnections.find(c => c.id === b.connId);
+                    pushVisual(p2, bElbow, trunkColorStyle, !!(bConn && bConn.lineStyle === 'dashed'));
+                });
                 svgHtml += `<polyline points="${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y}" class="water-flow-connection-hit" style="cursor:${busCursor}"
-                    onpointerdown="waterFlowScalarPointerDown(event, '${connIds}', '${busField}', '${busAxis}', ${trunk})"${singleConnClickHandler}><title>드래그로 꺾이는 위치 옮기기${g.branches.length === 1 ? ' · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)' : ''}</title></polyline>`;
+                    onpointerdown="waterFlowScalarPointerDown(event, '${connIds}', '${busField}', '${busAxis}', ${trunk})"${singleConnClickHandler}><title>드래그로 꺾이는 위치 옮기기 · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>`;
 
                 // 가지(트렁크 → 각 도착 지점): 연결마다 따로 그려서 클릭하면 그 연결만 편집/삭제할 수
                 // 있게 함. 도착 지점 쪽에도 트렁크와 반대 축으로 꺾을 수 있는 손잡이(entryBend)를 둬서,
