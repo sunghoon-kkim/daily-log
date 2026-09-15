@@ -4923,16 +4923,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
-        // 두 블록 중심의 가로/세로 거리 중 더 크게 벌어진 쪽을 기준으로 연결 방향을 정함
-        // (옆으로 나란한 블록끼리는 좌우 중앙으로, 위아래로 놓인 블록끼리는 상하 중앙으로 연결됨)
-        function waterFlowConnectionDirection(rFrom, rTo) {
-            const srcCX = rFrom.left + rFrom.width / 2, srcCY = rFrom.top + rFrom.height / 2;
-            const tgtCX = rTo.left + rTo.width / 2, tgtCY = rTo.top + rTo.height / 2;
-            const dx = tgtCX - srcCX, dy = tgtCY - srcCY;
-            if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
-            return dy >= 0 ? 'down' : 'up';
-        }
-
         // 방향에 따라 블록 테두리의 연결 지점(우/좌 중앙, 하/상 중앙)을 구함
         function waterFlowAttachPoint(rect, side) {
             const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
@@ -4966,25 +4956,40 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (el) rects[b.id] = { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
             });
 
-            const directionByConn = {};
+            // 같은 블록에서 나가는 연결선은 도착 블록 하나하나의 위치가 아니라, 그 도착 블록들
+            // 전체의 "평균 위치"를 기준으로 방향(상/하/좌/우)을 한 번만 정함. 개별적으로 방향을
+            // 따로 정하면 도착 블록 하나가 유독 옆으로 치우쳐 있을 때 그것만 다른 방향으로
+            // 분류돼 줄기가 안 합쳐지는 경우가 생기는데, 그런 일이 없도록 항상 하나로 묶이게 함
+            const directionByFrom = {};
             waterFlowConnections.forEach(conn => {
-                const rFrom = rects[conn.from], rTo = rects[conn.to];
-                if (rFrom && rTo) directionByConn[conn.id] = waterFlowConnectionDirection(rFrom, rTo);
+                if (directionByFrom[conn.from] !== undefined) return;
+                const rFrom = rects[conn.from];
+                if (!rFrom) return;
+                const targetRects = waterFlowConnections
+                    .filter(c => c.from === conn.from)
+                    .map(c => rects[c.to])
+                    .filter(Boolean);
+                if (targetRects.length === 0) return;
+
+                const srcCX = rFrom.left + rFrom.width / 2, srcCY = rFrom.top + rFrom.height / 2;
+                const avgCX = targetRects.reduce((sum, r) => sum + r.left + r.width / 2, 0) / targetRects.length;
+                const avgCY = targetRects.reduce((sum, r) => sum + r.top + r.height / 2, 0) / targetRects.length;
+                const dx = avgCX - srcCX, dy = avgCY - srcCY;
+                directionByFrom[conn.from] = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'down' : 'up');
             });
 
-            // (출발 블록, 방향)별로 하나의 그룹을 만들어 나가는 지점과 그 그룹에 속한 가지(도착 지점)들을 모음
-            const groups = {}; // groupKey -> { direction, exit, branches: [{connId, entry}], overrideTrunk }
+            // 출발 블록별로 하나의 그룹을 만들어 나가는 지점과 그 그룹에 속한 가지(도착 지점)들을 모음
+            const groups = {}; // fromId -> { direction, exit, branches: [{connId, entry}], overrideTrunk }
             waterFlowConnections.forEach(conn => {
-                const direction = directionByConn[conn.id];
-                if (!direction) return;
+                const direction = directionByFrom[conn.from];
                 const rFrom = rects[conn.from], rTo = rects[conn.to];
-                const groupKey = conn.from + '|' + direction;
-                if (!groups[groupKey]) {
-                    groups[groupKey] = { direction, exit: waterFlowAttachPoint(rFrom, direction), branches: [], overrideTrunk: null };
+                if (!direction || !rFrom || !rTo) return;
+                if (!groups[conn.from]) {
+                    groups[conn.from] = { direction, exit: waterFlowAttachPoint(rFrom, direction), branches: [], overrideTrunk: null };
                 }
-                groups[groupKey].branches.push({ connId: conn.id, entry: waterFlowAttachPoint(rTo, WATER_FLOW_ENTRY_SIDE[direction]) });
-                if (groups[groupKey].overrideTrunk === null && typeof conn.trunkOverride === 'number') {
-                    groups[groupKey].overrideTrunk = conn.trunkOverride;
+                groups[conn.from].branches.push({ connId: conn.id, entry: waterFlowAttachPoint(rTo, WATER_FLOW_ENTRY_SIDE[direction]) });
+                if (groups[conn.from].overrideTrunk === null && typeof conn.trunkOverride === 'number') {
+                    groups[conn.from].overrideTrunk = conn.trunkOverride;
                 }
             });
 
