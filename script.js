@@ -4667,11 +4667,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             let zoom = Math.min(availWidth / contentWidth, availHeight / contentHeight, 1); // 블록 몇 개뿐이라 확대해서 채워야 하는 경우엔 100%를 넘기지 않음
             zoom = Math.min(WATER_FLOW_ZOOM_MAX, Math.max(WATER_FLOW_ZOOM_MIN, +zoom.toFixed(2)));
 
-            const contentCenterX = minX + contentWidth / 2;
-            const contentCenterY = minY + contentHeight / 2;
+            // 가운데 정렬이 아니라 좌측 상단 기준으로 살짝 여백만 두고 붙여서 보여줌
             waterFlowViewZoom = zoom;
-            waterFlowViewX = wrapRect.width / 2 - contentCenterX * zoom;
-            waterFlowViewY = wrapRect.height / 2 - contentCenterY * zoom;
+            waterFlowViewX = WATER_FLOW_FIT_PADDING - minX * zoom;
+            waterFlowViewY = WATER_FLOW_FIT_PADDING - minY * zoom;
             applyWaterFlowViewTransform();
         }
 
@@ -4928,18 +4927,81 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const direction = directionByConn[conn.id];
                 const exit = waterFlowAttachPoint(rFrom, direction);
                 const entry = waterFlowAttachPoint(rTo, WATER_FLOW_ENTRY_SIDE[direction]);
-                const trunk = trunkByGroup[conn.from + '|' + direction];
+                // 사용자가 직접 꺾이는 위치를 드래그해서 옮겨뒀으면(trunkOverride) 그 값을 쓰고,
+                // 아니면 같은 (출발 블록, 방향) 형제들과 공유하는 자동 계산 위치를 씀
+                const trunk = (typeof conn.trunkOverride === 'number') ? conn.trunkOverride : trunkByGroup[conn.from + '|' + direction];
+                const isVertical = direction === 'down' || direction === 'up';
 
-                const points = (direction === 'down' || direction === 'up')
+                const points = isVertical
                     ? `${exit.x},${exit.y} ${exit.x},${trunk} ${entry.x},${trunk} ${entry.x},${entry.y}`
                     : `${exit.x},${exit.y} ${trunk},${exit.y} ${trunk},${entry.y} ${entry.x},${entry.y}`;
+                const dragCursor = isVertical ? 'ns-resize' : 'ew-resize';
                 return `
                     <polyline points="${points}" class="water-flow-connection-line"></polyline>
-                    <polyline points="${points}" class="water-flow-connection-hit" onclick="deleteWaterFlowConnection('${conn.id}')"><title>연결 삭제</title></polyline>
+                    <polyline points="${points}" class="water-flow-connection-hit" style="cursor:${dragCursor}"
+                        onpointerdown="waterFlowConnectionPointerDown(event, '${conn.id}', '${direction}', ${trunk})"
+                        onclick="deleteWaterFlowConnection('${conn.id}')"><title>드래그로 꺾이는 위치 옮기기 · 클릭하면 삭제</title></polyline>
                 `;
             }).join('');
 
             svg.innerHTML = linesHtml;
+        }
+
+        let waterFlowConnDragState = null; // { connId, direction, startClientX, startClientY, startTrunk, moved }
+        const WATER_FLOW_CONN_DRAG_THRESHOLD = 6;
+
+        // 연결선이 꺾이는 지점(trunk)을 드래그로 자유롭게 옮길 수 있게 함. 세로 연결(위/아래)이면
+        // 위아래로, 가로 연결(좌/우)이면 좌우로만 움직이며, 옮긴 위치는 그 연결선에 저장되어
+        // 형제 연결들과의 자동 공유 위치보다 우선함
+        function waterFlowConnectionPointerDown(e, connId, direction, startTrunk) {
+            if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
+            if (!editUnlocked) return; // 잠긴 상태에서는 옮길 수 없음(클릭해서 지우는 것도 로그인 필요 - deleteWaterFlowConnection에서 다시 확인함)
+            waterFlowConnDragState = {
+                connId, direction,
+                startClientX: e.clientX, startClientY: e.clientY,
+                startTrunk,
+                moved: false
+            };
+            document.addEventListener('pointermove', waterFlowConnectionPointerMove);
+            document.addEventListener('pointerup', waterFlowConnectionPointerUp);
+            document.addEventListener('pointercancel', waterFlowConnectionPointerUp);
+        }
+
+        function waterFlowConnectionPointerMove(e) {
+            if (!waterFlowConnDragState) return;
+            const rawDx = e.clientX - waterFlowConnDragState.startClientX;
+            const rawDy = e.clientY - waterFlowConnDragState.startClientY;
+
+            if (!waterFlowConnDragState.moved) {
+                if (Math.hypot(rawDx, rawDy) < WATER_FLOW_CONN_DRAG_THRESHOLD) return;
+                waterFlowConnDragState.moved = true;
+            }
+            e.preventDefault();
+
+            const conn = waterFlowConnections.find(c => c.id === waterFlowConnDragState.connId);
+            if (!conn) return;
+            const isVertical = waterFlowConnDragState.direction === 'down' || waterFlowConnDragState.direction === 'up';
+            const delta = (isVertical ? rawDy : rawDx) / waterFlowViewZoom; // 확대 배율만큼 보정
+            conn.trunkOverride = waterFlowConnDragState.startTrunk + delta;
+            renderWaterFlowConnections();
+        }
+
+        function waterFlowConnectionPointerUp(e) {
+            if (!waterFlowConnDragState) return;
+            document.removeEventListener('pointermove', waterFlowConnectionPointerMove);
+            document.removeEventListener('pointerup', waterFlowConnectionPointerUp);
+            document.removeEventListener('pointercancel', waterFlowConnectionPointerUp);
+
+            const state = waterFlowConnDragState;
+            waterFlowConnDragState = null;
+            if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 별도 onclick이 삭제를 처리하도록 둠
+
+            // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 연결선을 삭제하지 않도록 한 번 막음
+            document.addEventListener('click', function suppressClick(ev) {
+                ev.stopPropagation();
+            }, { capture: true, once: true });
+
+            saveWaterFlowConnectionsToStorage();
         }
 
         let waterFlowDragState = null; // { blockId, el, startClientX, startClientY, startLeft, startTop, moved, pendingX, pendingY }
