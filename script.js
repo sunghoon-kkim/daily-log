@@ -123,7 +123,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             improvement: '💡 개선/절감 과제',
             trend: '📈 설비 데이터 분석',
             maintenance: '🔧 정비계획',
-            waterFlow: '💧 흐름도',
+            waterFlow: '🔀 흐름도',
             teamReport: '📋 팀 보고',
             settings: '⚙️ 환경설정'
         };
@@ -202,9 +202,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             },
             {
                 key: 'waterFlow',
-                label: '💧 흐름도',
+                label: '🔀 흐름도',
                 features: {
-                    waterFlowDiagram: '💧 흐름도'
+                    waterFlowDiagram: '🔀 흐름도'
                 }
             },
             {
@@ -4510,9 +4510,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             currentWaterFlowDiagramId = diagramId;
             ensureActiveWaterFlowDiagram();
             localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
-            resetWaterFlowView();
             renderWaterFlowDiagramTabs();
             renderWaterFlowCanvas();
+            fitWaterFlowViewToContent(); // 블록이 다 그려진 뒤에 화면에 전부 들어오도록 맞춤
         }
 
         function addWaterFlowDiagram() {
@@ -4580,9 +4580,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
                 queueSync();
                 closeWaterFlowDiagramModal();
-                resetWaterFlowView();
                 renderWaterFlowDiagramTabs();
                 renderWaterFlowCanvas();
+                fitWaterFlowViewToContent();
             });
         }
 
@@ -4614,7 +4614,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 블록을 여러 개 만들면 화면이 좁아지므로, 빈 곳을 드래그하면 화면을 이동하고 마우스 휠로
         // 확대/축소할 수 있게 함. 블록의 x/y 좌표(데이터) 자체는 그대로 두고, 캔버스 전체에
         // CSS transform(translate+scale)만 적용해서 "보는 위치"만 바꾸는 방식이라 저장할 필요가 없음
-        const WATER_FLOW_ZOOM_MIN = 0.3;
+        const WATER_FLOW_ZOOM_MIN = 0.1;
         const WATER_FLOW_ZOOM_MAX = 2;
         const WATER_FLOW_ZOOM_STEP = 0.1;
 
@@ -4628,6 +4628,50 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             waterFlowViewX = 0;
             waterFlowViewY = 0;
             waterFlowViewZoom = 1;
+            applyWaterFlowViewTransform();
+        }
+
+        // 지금 흐름도의 블록을 전부 포함하는 범위를 구해서, 화면 안에 상하좌우 여백을 두고
+        // 한 번에 다 보이도록 화면 위치/배율을 맞춤. 흐름도 하위탭을 누를 때(전환할 때) 사용함.
+        // 블록이 실제로 그려진 다음(renderWaterFlowCanvas 이후)에 불러야 정확한 위치를 잴 수 있음
+        const WATER_FLOW_FIT_PADDING = 40; // 화면 상하좌우에 남길 여백(px, 화면 기준)
+
+        function fitWaterFlowViewToContent() {
+            const wrap = document.getElementById('waterFlowCanvasWrap');
+            const canvas = document.getElementById('waterFlowCanvas');
+            if (!wrap || !canvas || waterFlowBlocks.length === 0) {
+                resetWaterFlowView();
+                return;
+            }
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            waterFlowBlocks.forEach(b => {
+                const el = canvas.querySelector(`.water-flow-block[data-block-id="${b.id}"]`);
+                if (!el) return;
+                minX = Math.min(minX, el.offsetLeft);
+                minY = Math.min(minY, el.offsetTop);
+                maxX = Math.max(maxX, el.offsetLeft + el.offsetWidth);
+                maxY = Math.max(maxY, el.offsetTop + el.offsetHeight);
+            });
+            if (!isFinite(minX)) {
+                resetWaterFlowView();
+                return;
+            }
+
+            const contentWidth = Math.max(1, maxX - minX);
+            const contentHeight = Math.max(1, maxY - minY);
+            const wrapRect = wrap.getBoundingClientRect();
+            const availWidth = Math.max(1, wrapRect.width - WATER_FLOW_FIT_PADDING * 2);
+            const availHeight = Math.max(1, wrapRect.height - WATER_FLOW_FIT_PADDING * 2);
+
+            let zoom = Math.min(availWidth / contentWidth, availHeight / contentHeight, 1); // 블록 몇 개뿐이라 확대해서 채워야 하는 경우엔 100%를 넘기지 않음
+            zoom = Math.min(WATER_FLOW_ZOOM_MAX, Math.max(WATER_FLOW_ZOOM_MIN, +zoom.toFixed(2)));
+
+            const contentCenterX = minX + contentWidth / 2;
+            const contentCenterY = minY + contentHeight / 2;
+            waterFlowViewZoom = zoom;
+            waterFlowViewX = wrapRect.width / 2 - contentCenterX * zoom;
+            waterFlowViewY = wrapRect.height / 2 - contentCenterY * zoom;
             applyWaterFlowViewTransform();
         }
 
@@ -4936,6 +4980,69 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return { left: snapLeft, top: snapTop, guideX, guideY };
         }
 
+        // 정렬(위 함수)로 못 맞춘 축에 대해, 이웃한 블록들 사이 간격(빈틈)까지 맞춰줌.
+        // 예를 들어 A-B 간격이 40px일 때 B 옆으로 C를 끌어오면, B-C 간격도 40px에 가까워지는 순간
+        // 정확히 40px로 스냅됨(가로 방향은 세로로 겹치는 블록끼리, 세로 방향은 가로로 겹치는 블록끼리 비교)
+        function computeWaterFlowSpacingSnap(draggedRect, otherRects) {
+            let snapLeft = null, snapTop = null;
+            const draggedCenterX = draggedRect.left + draggedRect.width / 2;
+            const draggedCenterY = draggedRect.top + draggedRect.height / 2;
+
+            const rowPeers = otherRects.filter(r => r.top < draggedRect.top + draggedRect.height && r.top + r.height > draggedRect.top);
+            const beforeX = rowPeers.filter(r => r.left + r.width / 2 < draggedCenterX).sort((a, b) => (b.left + b.width) - (a.left + a.width));
+            const afterX = rowPeers.filter(r => r.left + r.width / 2 >= draggedCenterX).sort((a, b) => a.left - b.left);
+            const leftNeighbor = beforeX[0], rightNeighbor = afterX[0];
+
+            if (leftNeighbor) {
+                const leftOfLeft = beforeX.find(r => r !== leftNeighbor && (r.left + r.width) <= leftNeighbor.left);
+                if (leftOfLeft) {
+                    const refGap = leftNeighbor.left - (leftOfLeft.left + leftOfLeft.width);
+                    const curGap = draggedRect.left - (leftNeighbor.left + leftNeighbor.width);
+                    if (refGap >= 0 && Math.abs(curGap - refGap) < WATER_FLOW_SNAP_THRESHOLD) {
+                        snapLeft = leftNeighbor.left + leftNeighbor.width + refGap;
+                    }
+                }
+            }
+            if (snapLeft === null && rightNeighbor) {
+                const rightOfRight = afterX.find(r => r !== rightNeighbor && r.left >= (rightNeighbor.left + rightNeighbor.width));
+                if (rightOfRight) {
+                    const refGap = rightOfRight.left - (rightNeighbor.left + rightNeighbor.width);
+                    const curGap = rightNeighbor.left - (draggedRect.left + draggedRect.width);
+                    if (refGap >= 0 && Math.abs(curGap - refGap) < WATER_FLOW_SNAP_THRESHOLD) {
+                        snapLeft = rightNeighbor.left - draggedRect.width - refGap;
+                    }
+                }
+            }
+
+            const colPeers = otherRects.filter(r => r.left < draggedRect.left + draggedRect.width && r.left + r.width > draggedRect.left);
+            const beforeY = colPeers.filter(r => r.top + r.height / 2 < draggedCenterY).sort((a, b) => (b.top + b.height) - (a.top + a.height));
+            const afterY = colPeers.filter(r => r.top + r.height / 2 >= draggedCenterY).sort((a, b) => a.top - b.top);
+            const topNeighbor = beforeY[0], bottomNeighbor = afterY[0];
+
+            if (topNeighbor) {
+                const aboveTop = beforeY.find(r => r !== topNeighbor && (r.top + r.height) <= topNeighbor.top);
+                if (aboveTop) {
+                    const refGap = topNeighbor.top - (aboveTop.top + aboveTop.height);
+                    const curGap = draggedRect.top - (topNeighbor.top + topNeighbor.height);
+                    if (refGap >= 0 && Math.abs(curGap - refGap) < WATER_FLOW_SNAP_THRESHOLD) {
+                        snapTop = topNeighbor.top + topNeighbor.height + refGap;
+                    }
+                }
+            }
+            if (snapTop === null && bottomNeighbor) {
+                const belowBottom = afterY.find(r => r !== bottomNeighbor && r.top >= (bottomNeighbor.top + bottomNeighbor.height));
+                if (belowBottom) {
+                    const refGap = belowBottom.top - (bottomNeighbor.top + bottomNeighbor.height);
+                    const curGap = bottomNeighbor.top - (draggedRect.top + draggedRect.height);
+                    if (refGap >= 0 && Math.abs(curGap - refGap) < WATER_FLOW_SNAP_THRESHOLD) {
+                        snapTop = bottomNeighbor.top - draggedRect.height - refGap;
+                    }
+                }
+            }
+
+            return { left: snapLeft, top: snapTop };
+        }
+
         // 스냅이 적용된 위치에 빨간 안내선을 그어서, 지금 어떤 기준(좌/중앙/우, 상/중앙/하)에
         // 맞춰지고 있는지 보여줌. guideX/guideY가 null이면 해당 방향 안내선은 지움
         function updateWaterFlowSnapGuides(canvas, guideX, guideY) {
@@ -5029,6 +5136,14 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const snap = computeWaterFlowSnap(draggedRect, otherRects);
             if (snap.left !== null) newLeft = Math.max(0, snap.left);
             if (snap.top !== null) newTop = Math.max(0, snap.top);
+
+            // 좌/중앙/우, 상/중앙/하로 못 맞춘 축은 이웃 블록들 사이 간격에 맞춰봄
+            if (snap.left === null || snap.top === null) {
+                const spacingSnap = computeWaterFlowSpacingSnap({ left: newLeft, top: newTop, width: draggedRect.width, height: draggedRect.height }, otherRects);
+                if (snap.left === null && spacingSnap.left !== null) newLeft = Math.max(0, spacingSnap.left);
+                if (snap.top === null && spacingSnap.top !== null) newTop = Math.max(0, spacingSnap.top);
+            }
+
             updateWaterFlowSnapGuides(canvas, snap.guideX, snap.guideY);
 
             el.style.left = newLeft + 'px';
@@ -5073,13 +5188,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (blockId) {
                 const b = waterFlowBlocks.find(x => x.id === blockId);
                 if (!b) return;
-                title.textContent = '💧 블록 수정';
+                title.textContent = '🔀 블록 수정';
                 document.getElementById('waterFlowBlockTitleInput').value = b.title || '';
                 document.getElementById('waterFlowBlockDetailInput').value = b.detail || '';
                 pickWaterFlowBlockColor(b.color || COLOR_PALETTE[0]);
                 deleteBtn.style.display = 'inline-block';
             } else {
-                title.textContent = '💧 블록 추가';
+                title.textContent = '🔀 블록 추가';
                 document.getElementById('waterFlowBlockTitleInput').value = '';
                 document.getElementById('waterFlowBlockDetailInput').value = '';
                 pickWaterFlowBlockColor(COLOR_PALETTE[0]);
