@@ -4700,6 +4700,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         function waterFlowCanvasPointerDown(e) {
             if (e.target.closest('.water-flow-block')) return; // 블록 위 드래그는 블록 이동이 처리하므로 화면 이동을 시작하지 않음
+            if (e.target.closest('.water-flow-connection-hit')) return; // 연결선 위 드래그는 연결선 이동이 처리하므로 화면 이동을 시작하지 않음
             if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
             waterFlowPanState = {
                 startClientX: e.clientX,
