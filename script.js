@@ -4687,6 +4687,21 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return { x: startX + (idx % cols) * stepX, y: startY + Math.floor(idx / cols) * stepY };
         }
 
+        // "➕ 블록 추가" 버튼으로 만들 때, 지금 화면에 보이는(팬/줌이 적용된) 영역의 한가운데에
+        // 새 블록이 생기도록 화면 중앙의 화면 좌표를 현재 팬/줌을 거꾸로 계산해 캔버스 좌표로 바꿈
+        function waterFlowViewportCenterPosition() {
+            const wrap = document.getElementById('waterFlowCanvasWrap');
+            if (!wrap) return nextWaterFlowBlockPosition();
+            const rect = wrap.getBoundingClientRect();
+            const localX = (rect.width / 2 - waterFlowViewX) / waterFlowViewZoom;
+            const localY = (rect.height / 2 - waterFlowViewY) / waterFlowViewZoom;
+            const blockWidth = 190, approxBlockHeight = 64; // 블록의 중심이 화면 중앙에 오도록 크기의 절반만큼 보정
+            return {
+                x: Math.max(0, localX - blockWidth / 2),
+                y: Math.max(0, localY - approxBlockHeight / 2)
+            };
+        }
+
         // ===== 흐름도 캔버스 화면 이동(팬)/확대축소(줌) =====
         // 블록을 여러 개 만들면 화면이 좁아지므로, 빈 곳을 드래그하면 화면을 이동하고 마우스 휠로
         // 확대/축소할 수 있게 함. 블록의 x/y 좌표(데이터) 자체는 그대로 두고, 캔버스 전체에
@@ -5495,6 +5510,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             block.x = state.pendingX;
             block.y = state.pendingY;
             saveWaterFlowBlocksToStorage();
+        }
+
+        // "➕ 블록 추가" 버튼 전용: 지금 보이는 화면 중앙에 놓일 위치를 미리 담아두고 추가 창을 엶
+        function openAddWaterFlowBlockModalAtViewportCenter() {
+            if (!checkEditPermission()) return;
+            pendingNewWaterFlowBlockPosition = waterFlowViewportCenterPosition();
+            openWaterFlowBlockModal(null);
         }
 
         function openWaterFlowBlockModal(blockId) {
