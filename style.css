@@ -757,8 +757,10 @@ html {
 
         .water-flow-canvas {
             position: absolute;
-            top: 0;
-            left: 0;
+            /* 왼쪽/위쪽에 정렬 줄 손잡이 여백(.water-flow-row-rail/.water-flow-col-rail, 22px)을 위해
+               그만큼 안쪽으로 밀어둠 - 팬/줌은 이 위치를 기준으로 추가로 움직이는 것이라 그대로 동작함 */
+            top: 22px;
+            left: 22px;
             width: 6000px;
             height: 4000px;
             transform-origin: 0 0;
@@ -777,20 +779,43 @@ html {
             pointer-events: none;
         }
 
-        /* 블록 여러 개가 가로/세로로 정렬돼 있을 때, 그 줄 전체를 한 번에 옮길 수 있는 투명한 손잡이.
-           평소엔 안 보이다가(투명), 마우스를 올리면 아주 옅은 색으로 살짝 존재를 알려줌 */
-        .water-flow-align-strip {
+        /* 블록을 놓을 수 없는 바깥쪽 여백에 놓이는 정렬 줄 눈금. 가로줄(row-rail)은 캔버스 왼쪽에,
+           세로줄(col-rail)은 캔버스 위쪽에 두고, 그 안에 정렬된 줄마다 손잡이를 하나씩 그림 */
+        .water-flow-row-rail {
             position: absolute;
-            background: transparent;
+            left: 0;
+            top: 0;
+            width: 22px;
+            height: 100%;
+            background: #e0e6f5;
+            border-right: 1px solid #c9d3ea;
+            overflow: hidden;
+        }
+
+        .water-flow-col-rail {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 22px;
+            background: #e0e6f5;
+            border-bottom: 1px solid #c9d3ea;
+            overflow: hidden;
+        }
+
+        .water-flow-rail-handle {
+            position: absolute;
+            background: rgba(102, 126, 234, 0.35);
+            border-radius: 3px;
             cursor: grab;
             touch-action: none;
         }
 
-        .water-flow-align-strip:hover {
-            background: rgba(102, 126, 234, 0.08);
+        .water-flow-rail-handle:hover {
+            background: rgba(102, 126, 234, 0.55);
         }
 
-        .water-flow-align-strip:active {
+        .water-flow-rail-handle:active {
             cursor: grabbing;
         }
 
@@ -3794,6 +3819,12 @@ html {
     background-color: var(--d-bg1);
     background-image: radial-gradient(circle, var(--d-border) 1px, transparent 1px);
     box-shadow: 0 0 0 1px var(--d-border);
+}
+
+.dark-mode .water-flow-row-rail,
+.dark-mode .water-flow-col-rail {
+    background: var(--d-bg2);
+    border-color: var(--d-border);
 }
 
 .dark-mode .water-flow-block {

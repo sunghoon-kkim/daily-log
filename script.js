@@ -4727,6 +4727,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const canvas = document.getElementById('waterFlowCanvas');
             if (!canvas) return;
             canvas.style.transform = `translate(${waterFlowViewX}px, ${waterFlowViewY}px) scale(${waterFlowViewZoom})`;
+            // 정렬 줄 손잡이(가로/세로 눈금)는 캔버스 밖(여백)에 고정된 채로, 화면 이동/확대에 맞춰
+            // 안의 눈금 위치만 다시 계산해야 하므로, 화면 상태가 바뀔 때마다 함께 다시 그림
+            renderWaterFlowAlignRails();
         }
 
         function resetWaterFlowView() {
@@ -4740,6 +4743,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 한 번에 다 보이도록 화면 위치/배율을 맞춤. 흐름도 하위탭을 누를 때(전환할 때) 사용함.
         // 블록이 실제로 그려진 다음(renderWaterFlowCanvas 이후)에 불러야 정확한 위치를 잴 수 있음
         const WATER_FLOW_FIT_PADDING = 40; // 화면 상하좌우에 남길 여백(px, 화면 기준)
+        const WATER_FLOW_RAIL_THICKNESS = 22; // 정렬 줄 손잡이가 놓이는 여백(캔버스 왼쪽/위쪽)의 두께(px) - style.css의 .water-flow-row-rail/.water-flow-col-rail 크기와 맞춰야 함
 
         function fitWaterFlowViewToContent() {
             const wrap = document.getElementById('waterFlowCanvasWrap');
@@ -4766,8 +4770,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const contentWidth = Math.max(1, maxX - minX);
             const contentHeight = Math.max(1, maxY - minY);
             const wrapRect = wrap.getBoundingClientRect();
-            const availWidth = Math.max(1, wrapRect.width - WATER_FLOW_FIT_PADDING * 2);
-            const availHeight = Math.max(1, wrapRect.height - WATER_FLOW_FIT_PADDING * 2);
+            const availWidth = Math.max(1, wrapRect.width - WATER_FLOW_RAIL_THICKNESS - WATER_FLOW_FIT_PADDING * 2);
+            const availHeight = Math.max(1, wrapRect.height - WATER_FLOW_RAIL_THICKNESS - WATER_FLOW_FIT_PADDING * 2);
 
             let zoom = Math.min(availWidth / contentWidth, availHeight / contentHeight, 1); // 블록 몇 개뿐이라 확대해서 채워야 하는 경우엔 100%를 넘기지 않음
             zoom = Math.min(WATER_FLOW_ZOOM_MAX, Math.max(WATER_FLOW_ZOOM_MIN, +zoom.toFixed(2)));
@@ -4786,8 +4790,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const wrap = document.getElementById('waterFlowCanvasWrap');
             if (!wrap) return;
             const rect = wrap.getBoundingClientRect();
-            const cursorX = e.clientX - rect.left;
-            const cursorY = e.clientY - rect.top;
+            // 캔버스 자체가 정렬 줄 손잡이 여백(RAIL_THICKNESS)만큼 안쪽으로 밀려 있으므로, 그만큼 뺀
+            // 좌표라야 "캔버스 기준" 커서 위치가 되어 확대해도 커서 아래 지점이 그대로 유지됨
+            const cursorX = e.clientX - rect.left - WATER_FLOW_RAIL_THICKNESS;
+            const cursorY = e.clientY - rect.top - WATER_FLOW_RAIL_THICKNESS;
 
             const oldZoom = waterFlowViewZoom;
             const rawZoom = oldZoom + (e.deltaY > 0 ? -WATER_FLOW_ZOOM_STEP : WATER_FLOW_ZOOM_STEP);
@@ -4806,7 +4812,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function waterFlowCanvasPointerDown(e) {
             if (e.target.closest('.water-flow-block')) return; // 블록 위 드래그는 블록 이동이 처리하므로 화면 이동을 시작하지 않음
             if (e.target.closest('.water-flow-connection-hit')) return; // 연결선 위 드래그는 연결선 이동이 처리하므로 화면 이동을 시작하지 않음
-            if (e.target.closest('.water-flow-align-strip')) return; // 정렬 줄 손잡이 위 드래그는 그 줄 전체 이동이 처리하므로 화면 이동을 시작하지 않음
+            if (e.target.closest('.water-flow-rail-handle')) return; // 정렬 줄 손잡이 위 드래그는 그 줄 전체 이동이 처리하므로 화면 이동을 시작하지 않음
             if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
             waterFlowPanState = {
                 startClientX: e.clientX,
@@ -4869,10 +4875,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 return;
             }
 
-            // 정렬 줄 손잡이(water-flow-align-strip)는 블록들보다 먼저(= 아래) 놓여서, 블록이 있는
-            // 자리는 여전히 블록이 클릭/드래그를 가져가고, 블록들 사이 빈 틈만 손잡이가 받게 됨.
-            // 연결선(svg)은 그보다도 뒤(= 위)에 둬서, 손잡이 영역과 겹치는 연결선도 계속 클릭 가능함
-
             const blocksHtml = waterFlowBlocks.map(b => {
                 const expanded = !!b.expanded;
                 const color = b.color || COLOR_PALETTE[0];
@@ -4892,30 +4894,30 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 `;
             }).join('');
 
-            canvas.innerHTML = '<div class="water-flow-align-strips" id="waterFlowAlignStrips"></div>'
-                + '<svg class="water-flow-connections-svg" id="waterFlowConnectionsSvg"></svg>' + blocksHtml;
+            canvas.innerHTML = '<svg class="water-flow-connections-svg" id="waterFlowConnectionsSvg"></svg>' + blocksHtml;
             renderWaterFlowConnections();
-            renderWaterFlowAlignStrips();
+            renderWaterFlowAlignRails();
         }
 
         // ===== 정렬된 블록 줄(가로/세로) 전체를 한 번에 옮기는 투명 손잡이 =====
-        // 블록 여러 개가 같은 x(세로 줄) 또는 같은 y(가로 줄)에 놓여 정렬돼 있으면, 그 줄이 지나가는
-        // 자리(블록들 사이 빈 틈 포함)에 눈에 보이지 않는 띠를 깔아서, 그 띠를 드래그하면 줄에 속한
-        // 블록 전체가 서로의 간격을 유지한 채로 같이 움직이게 함. 블록 위는 항상 블록 자신이 클릭/
-        // 드래그를 먼저 받으므로(DOM에서 이 띠보다 나중에 놓임) 개별 블록 이동과는 부딪히지 않음
+        // 블록 여러 개가 같은 x(세로 줄) 또는 같은 y(가로 줄)에 놓여 정렬돼 있으면, 블록을 놓을 수 없는
+        // 바깥쪽 여백(캔버스 왼쪽의 가로줄용 눈금 / 위쪽의 세로줄용 눈금)에 그 줄 위치에 맞는 손잡이를
+        // 놓아서, 캔버스 안(블록이 있을 수 있는 자리)과 전혀 겹치지 않고도 줄 전체를 드래그로 옮길 수
+        // 있게 함. 눈금은 화면 이동/확대에 맞춰 위치가 바뀌므로 applyWaterFlowViewTransform에서도 다시 그림
         function waterFlowAlignKey(v) {
             return Math.round(v || 0); // 정수로 반올림해서 같은 줄인지 비교(스냅으로 맞춘 좌표끼리는 항상 정확히 일치함)
         }
 
-        function renderWaterFlowAlignStrips() {
-            const canvas = document.getElementById('waterFlowCanvas');
-            const container = document.getElementById('waterFlowAlignStrips');
-            if (!canvas || !container) return;
-            if (waterFlowBlocks.length < 2) { container.innerHTML = ''; return; }
+        function renderWaterFlowAlignRails() {
+            const rowRail = document.getElementById('waterFlowRowRail');
+            const colRail = document.getElementById('waterFlowColRail');
+            if (!rowRail || !colRail) return;
+            if (waterFlowBlocks.length < 2) { rowRail.innerHTML = ''; colRail.innerHTML = ''; return; }
 
+            const canvas = document.getElementById('waterFlowCanvas');
             const sizeById = {};
             waterFlowBlocks.forEach(b => {
-                const el = canvas.querySelector(`.water-flow-block[data-block-id="${b.id}"]`);
+                const el = canvas && canvas.querySelector(`.water-flow-block[data-block-id="${b.id}"]`);
                 if (el) sizeById[b.id] = { width: el.offsetWidth, height: el.offsetHeight };
             });
 
@@ -4927,27 +4929,36 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 (colMap[colKey] = colMap[colKey] || []).push(b.id);
             });
 
-            const CANVAS_W = 6000, CANVAS_H = 4000; // .water-flow-canvas의 실제 크기(style.css)와 맞춤
-            let html = '';
+            // 눈금 손잡이의 화면 위치는 캔버스 좌표(canvasY/canvasX)에 지금의 팬/줌을 그대로 적용해서
+            // 구함(캔버스 본체가 그려지는 것과 똑같은 변환) - 캔버스 자체가 여백만큼(RAIL_THICKNESS)
+            // 안쪽으로 밀려 있으므로 그만큼 더해줘야 눈금이 실제 줄과 나란히 맞음
+            let rowHtml = '';
             Object.keys(rowMap).forEach(key => {
                 const ids = rowMap[key];
                 if (ids.length < 2) return;
                 const heights = ids.map(id => sizeById[id] && sizeById[id].height).filter(h => h);
                 if (!heights.length) return;
-                const top = Number(key), height = Math.min(...heights);
-                html += `<div class="water-flow-align-strip water-flow-align-strip-row" style="left:0px; top:${top}px; width:${CANVAS_W}px; height:${height}px"
-                    onpointerdown="waterFlowAlignStripPointerDown(event, 'row', ${top})" title="정렬된 줄 전체를 함께 옮기기"></div>`;
+                const canvasY = Number(key), height = Math.min(...heights);
+                const top = WATER_FLOW_RAIL_THICKNESS + canvasY * waterFlowViewZoom + waterFlowViewY;
+                const rowHeight = height * waterFlowViewZoom;
+                rowHtml += `<div class="water-flow-rail-handle" style="left:3px; right:3px; top:${top}px; height:${rowHeight}px"
+                    onpointerdown="waterFlowAlignStripPointerDown(event, 'row', ${canvasY})" title="정렬된 가로줄 전체를 함께 옮기기"></div>`;
             });
+            rowRail.innerHTML = rowHtml;
+
+            let colHtml = '';
             Object.keys(colMap).forEach(key => {
                 const ids = colMap[key];
                 if (ids.length < 2) return;
                 const widths = ids.map(id => sizeById[id] && sizeById[id].width).filter(w => w);
                 if (!widths.length) return;
-                const left = Number(key), width = Math.min(...widths);
-                html += `<div class="water-flow-align-strip water-flow-align-strip-col" style="left:${left}px; top:0px; width:${width}px; height:${CANVAS_H}px"
-                    onpointerdown="waterFlowAlignStripPointerDown(event, 'col', ${left})" title="정렬된 줄 전체를 함께 옮기기"></div>`;
+                const canvasX = Number(key), width = Math.min(...widths);
+                const left = WATER_FLOW_RAIL_THICKNESS + canvasX * waterFlowViewZoom + waterFlowViewX;
+                const colWidth = width * waterFlowViewZoom;
+                colHtml += `<div class="water-flow-rail-handle" style="top:3px; bottom:3px; left:${left}px; width:${colWidth}px"
+                    onpointerdown="waterFlowAlignStripPointerDown(event, 'col', ${canvasX})" title="정렬된 세로줄 전체를 함께 옮기기"></div>`;
             });
-            container.innerHTML = html;
+            colRail.innerHTML = colHtml;
         }
 
         function waterFlowAlignStripPointerDown(e, axis, keyValue) {
@@ -4997,7 +5008,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (el) { el.style.left = block.x + 'px'; el.style.top = block.y + 'px'; }
             });
             renderWaterFlowConnections(); // 연결선이 실시간으로 따라오도록 함
-            renderWaterFlowAlignStrips(); // 줄 전체를 옮기는 동안 다른 블록과 새로 정렬됐을 수도 있으므로 손잡이도 함께 갱신
+            renderWaterFlowAlignRails(); // 줄 전체를 옮기는 동안 다른 블록과 새로 정렬됐을 수도 있으므로 손잡이도 함께 갱신
         }
 
         function waterFlowAlignStripPointerUp(e) {
@@ -5015,7 +5026,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }, { capture: true, once: true });
 
             saveWaterFlowBlocksToStorage();
-            renderWaterFlowAlignStrips();
+            renderWaterFlowAlignRails();
         }
 
         // 로그인하지 않은 상태(구경만 가능)에서도 펼쳐서 보는 것은 허용함 - 다가오는 일정
@@ -5111,10 +5122,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         // ===== 연결선 편집(선 종류/색상) 모달 =====
         let editingWaterFlowConnectionId = null;
-        // connId -> 지금 화면에 겹쳐서(같은 줄기로) 그려지고 있는 형제 연결선 id 목록(자기 자신 포함).
-        // renderWaterFlowConnections가 그릴 때마다 다시 채움 - 겹쳐 보이는 선은 스타일도 하나처럼
-        // 함께 바뀌어야 자연스러워서, 스타일 저장 시 이 목록 전체에 적용함
-        let waterFlowConnectionGroupSiblings = {};
         // 트렁크/exitBend/entryBend 드래그 손잡이를 다른 연결선의 같은 종류 지점 근처로 끌고 가면
         // 그 값에 딱 맞춰져(스냅) 두 선이 완전히 겹쳐 보이게 하기 위한 후보 목록.
         // renderWaterFlowConnections가 그릴 때마다 실제로 그려진 값들로 다시 채움
@@ -5158,15 +5165,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             pushWaterFlowUndoSnapshot();
             const style = document.getElementById('waterFlowConnectionStyleInput').value;
             const color = document.getElementById('waterFlowConnectionColorInput').value;
-            // 지금 겹쳐서 하나의 줄기처럼 보이는 형제 연결선들에도 같이 적용해서, 스타일이
-            // 부분적으로만 바뀌어 지저분해 보이지 않게 함(위치를 드래그로 옮길 때와 같은 방식)
-            const siblingIds = waterFlowConnectionGroupSiblings[editingWaterFlowConnectionId] || [editingWaterFlowConnectionId];
-            siblingIds.forEach(id => {
-                const c = waterFlowConnections.find(x => x.id === id);
-                if (!c) return;
-                c.lineStyle = style === 'dashed' ? 'dashed' : 'solid';
-                if (color) c.color = color; else delete c.color;
-            });
+            // 지금 편집 중인 이 연결선 하나에만 적용함. 트렁크(줄기) 구간은 형제 연결선 중
+            // 하나라도 점선이면 같이 점선으로 보이도록 렌더링 쪽에서 이미 처리하므로, 여기서
+            // 형제 전체에 강제로 같은 스타일을 밀어붙이지 않아도 가지별로 다른 스타일이 자연스럽게 됨
+            conn.lineStyle = style === 'dashed' ? 'dashed' : 'solid';
+            if (color) conn.color = color; else delete conn.color;
             saveWaterFlowConnectionsToStorage();
             closeWaterFlowConnectionModal();
             renderWaterFlowConnections();
@@ -5253,7 +5256,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const canvas = document.getElementById('waterFlowCanvas');
             if (!svg || !canvas) return;
 
-            waterFlowConnectionGroupSiblings = {};
             waterFlowScalarSnapCandidates = []; // 이번 렌더에서 실제로 그려진 꺾임 지점들로 다시 채움(드래그로 근처 연결선에 붙일 때 씀)
 
             if (waterFlowConnections.length === 0) {
@@ -5319,7 +5321,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             function renderGroup(g) {
                 const isVertical = g.direction === 'down' || g.direction === 'up';
                 const siblingIds = g.branches.map(b => b.connId);
-                siblingIds.forEach(id => { waterFlowConnectionGroupSiblings[id] = siblingIds; });
 
                 // 꺾이는 위치(트렁크): 사용자가 직접 드래그해서 옮겨뒀으면 그 값을, 아니면 출발 지점과
                 // 가장 가까운 도착 지점 사이 "가운데"를 자동으로 계산해서 씀
@@ -5767,7 +5768,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             block.x = state.pendingX;
             block.y = state.pendingY;
             saveWaterFlowBlocksToStorage();
-            renderWaterFlowAlignStrips(); // 이 블록이 새로 다른 블록과 정렬됐을 수 있으므로 줄 손잡이도 갱신
+            renderWaterFlowAlignRails(); // 이 블록이 새로 다른 블록과 정렬됐을 수 있으므로 줄 손잡이도 갱신
         }
 
         // "➕ 블록 추가" 버튼 전용: 지금 보이는 화면 중앙에 놓일 위치를 미리 담아두고 추가 창을 엶
