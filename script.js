@@ -5076,13 +5076,26 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 나가는 방향의 반대쪽이 들어오는 블록의 진입면이 됨 (오른쪽으로 나가면 상대는 왼쪽으로 받음)
         const WATER_FLOW_ENTRY_SIDE = { right: 'left', left: 'right', down: 'up', up: 'down' };
 
-        // 연결선에 사용자가 지정한 색/선 종류가 있으면 그걸 인라인 스타일로 덮어씀. 지정하지 않았으면
-        // 빈 문자열을 반환해서 CSS 기본값(다크모드 자동 대응 포함)이 그대로 적용되게 함
-        function waterFlowConnectionLineStyleAttr(conn) {
-            const parts = [];
-            if (conn && conn.color) parts.push(`stroke:${conn.color}`);
-            if (conn && conn.lineStyle === 'dashed') parts.push('stroke-dasharray:7,5');
-            return parts.join(';');
+        const WATER_FLOW_DASH_PERIOD = 12; // 점선 패턴("7,5") 한 바퀴 길이(점 7 + 칸 5)
+
+        // 구간(가로 또는 세로 직선) 하나를 SVG 엘리먼트 문자열로 만듦. 점선일 때는 그 구간의 "캔버스
+        // 절대 좌표"를 기준으로 점선이 시작되는 위치(stroke-dashoffset)를 맞춰서 그림. 이렇게 하지
+        // 않고 각 폴리라인이 자기 시작점부터 점선을 새로 세면, 서로 다른 연결선의 구간이 같은 자리에
+        // 겹칠 때 두 점선의 위상이 우연히 어긋나서 서로의 빈 칸을 채워 실선처럼 보이고, 드래그로 길이가
+        // 바뀔 때마다 그 위상차가 계속 달라져 무늬가 흔들려 보이는 문제가 있었음. 좌표를 기준으로
+        // 위상을 고정하면 어느 연결선이든 같은 자리에서는 항상 같은 무늬로 겹쳐서 이 문제가 없어짐
+        function waterFlowSegmentEl(p1, p2, styleBase, dashed) {
+            if (Math.abs(p1.x - p2.x) < 0.5 && Math.abs(p1.y - p2.y) < 0.5) return ''; // 길이 0인 구간은 그리지 않음
+            const isHorizontal = Math.abs(p1.y - p2.y) < 0.5;
+            let a = p1, b = p2;
+            if (isHorizontal ? a.x > b.x : a.y > b.y) { const t = a; a = b; b = t; }
+            let style = styleBase || '';
+            if (dashed) {
+                const ref = isHorizontal ? a.x : a.y;
+                const offset = ((ref % WATER_FLOW_DASH_PERIOD) + WATER_FLOW_DASH_PERIOD) % WATER_FLOW_DASH_PERIOD;
+                style += `;stroke-dasharray:7,5;stroke-dashoffset:${offset}`;
+            }
+            return `<polyline points="${a.x},${a.y} ${b.x},${b.y}" class="water-flow-connection-line" style="${style}"></polyline>`;
         }
 
         // 블록의 실제 DOM 위치/크기를 기준으로 연결선을 다시 그림. 블록을 드래그하는 동안에도
@@ -5125,10 +5138,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (directionByFrom[conn.from] !== undefined) return;
                     const rFrom = rects[conn.from];
                     if (!rFrom) return;
-                    // 사용자가 줄기를 드래그해서 방향(좌우↔상하)을 직접 바꿔뒀으면 그 값을 그대로 씀.
-                    // 자동 계산과 달리 블록이 옮겨져도 다시 자동으로 되돌아가지 않고 사용자가 고른 방향이 유지됨
-                    const overridden = conns.find(c => c.from === conn.from && c.dirOverride);
-                    if (overridden) { directionByFrom[conn.from] = overridden.dirOverride; return; }
                     const positions = conns.filter(c => c.from === conn.from).map(getTargetPos).filter(Boolean);
                     if (positions.length === 0) return;
                     const srcCX = rFrom.left + rFrom.width / 2, srcCY = rFrom.top + rFrom.height / 2;
@@ -5163,8 +5172,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const siblingIds = g.branches.map(b => b.connId);
                 siblingIds.forEach(id => { waterFlowConnectionGroupSiblings[id] = siblingIds; });
 
-                // 꺾이는 위치: 사용자가 직접 드래그해서 옮겨뒀으면 그 값을, 아니면 출발 지점과
-                // 가장 가까운 도착 지점 사이 "가운데"를 자동으로 계산해서 씀
+                // 꺾이는 위치(줄기): 사용자가 직접 드래그해서 옮겨뒀으면 그 값을, 아니면 출발 지점과
+                // 가장 가까운 도착 지점 사이 "가운데"를 자동으로 계산해서 씀. 세로 연결(위/아래)이면
+                // 이 값은 상하로만, 가로 연결(좌/우)이면 좌우로만 움직임
                 let trunk;
                 if (g.overrideTrunk !== null) {
                     trunk = g.overrideTrunk;
@@ -5182,43 +5192,57 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const exitCoord = isVertical ? g.exit.x : g.exit.y;
                 const busMin = Math.min(exitCoord, ...branchCoords);
                 const busMax = Math.max(exitCoord, ...branchCoords);
-                const trunkPoints = isVertical
-                    ? `${g.exit.x},${g.exit.y} ${g.exit.x},${trunk} ${busMin},${trunk} ${busMax},${trunk}`
-                    : `${g.exit.x},${g.exit.y} ${trunk},${g.exit.y} ${trunk},${busMin} ${trunk},${busMax}`;
+                const trunkPts = isVertical
+                    ? [g.exit, { x: g.exit.x, y: trunk }, { x: busMin, y: trunk }, { x: busMax, y: trunk }]
+                    : [g.exit, { x: trunk, y: g.exit.y }, { x: trunk, y: busMin }, { x: trunk, y: busMax }];
+                const trunkPoints = trunkPts.map(p => `${p.x},${p.y}`).join(' ');
                 const dragCursor = isVertical ? 'ns-resize' : 'ew-resize';
                 const connIds = g.branches.map(b => b.connId).join(',');
                 // 가지가 하나뿐이면(형제가 없으면) 줄기 자체가 곧 그 연결선 전체이므로 클릭으로도 처리할 수 있게 함.
-                // 줄기는 여러 연결선이 겹쳐서 하나로 보이는 구간이라, 첫 번째 연결선 것만 대표로 쓰면 그중
-                // 하나라도 점선인데 다른 하나가 실선이면 줄기 전체가 실선으로 보여 점선이 감춰지는 문제가
-                // 있었음. 그래서 하나라도 점선이면 줄기도 점선으로, 색은 형제들의 색이 전부 같을 때만 쓰고
-                // 다르면 기본 색(지정 안 함)으로 그려서 어느 쪽 색도 틀린 것처럼 보이지 않게 함
+                // 줄기는 여러 연결선이 겹쳐서 하나로 보이는 구간이라, 하나라도 점선이면 줄기도 점선으로,
+                // 색은 형제들의 색이 전부 같을 때만 표시(다르면 기본 색)해서 어느 쪽도 틀린 것처럼 보이지 않게 함
                 const singleConnClickHandler = g.branches.length === 1 ? ` onclick="handleWaterFlowConnectionLineClick('${g.branches[0].connId}')"` : '';
                 const branchConns = g.branches.map(b => waterFlowConnections.find(c => c.id === b.connId)).filter(Boolean);
                 const trunkAnyDashed = branchConns.some(c => c.lineStyle === 'dashed');
                 const trunkColors = [...new Set(branchConns.map(c => c.color).filter(Boolean))];
-                const trunkStyleParts = [];
-                if (trunkColors.length === 1) trunkStyleParts.push(`stroke:${trunkColors[0]}`);
-                if (trunkAnyDashed) trunkStyleParts.push('stroke-dasharray:7,5');
-                const trunkStyle = trunkStyleParts.join(';');
+                const trunkColorStyle = trunkColors.length === 1 ? `stroke:${trunkColors[0]}` : '';
+                let trunkVisual = '';
+                for (let i = 0; i < trunkPts.length - 1; i++) trunkVisual += waterFlowSegmentEl(trunkPts[i], trunkPts[i + 1], trunkColorStyle, trunkAnyDashed);
 
                 svgHtml += `
-                    <polyline points="${trunkPoints}" class="water-flow-connection-line" style="${trunkStyle}"></polyline>
+                    ${trunkVisual}
                     <polyline points="${trunkPoints}" class="water-flow-connection-hit" style="cursor:${dragCursor}"
                         onpointerdown="waterFlowConnectionPointerDown(event, '${connIds}', '${g.direction}', ${trunk})"${singleConnClickHandler}><title>드래그로 꺾이는 위치 옮기기${g.branches.length === 1 ? ' · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)' : ''}</title></polyline>
                 `;
 
                 // 가지(줄기 → 각 도착 지점)는 연결마다 따로 그려서, 클릭하면 그 연결만 편집/삭제할 수 있게 함.
-                // 이 가지의 중간 지점은 다른 블록이 이 연결선에 "이어붙을" 때 앵커로 쓰임
+                // 줄기는 상하좌우 중 한쪽으로만 움직이므로, 가지 자체도 줄기와는 다른(수직↔수평) 축으로
+                // 따로 꺾을 수 있게(entryBend) 해서 두 핸들을 합치면 이 연결선이 상하좌우 모두 자유롭게
+                // 움직일 수 있게 함. 이 가지의 (꺾이기 전) 중간 지점은 다른 블록이 이 연결선에 "이어붙을"
+                // 때 앵커로 쓰임
                 g.branches.forEach(b => {
+                    const conn = waterFlowConnections.find(c => c.id === b.connId);
                     const elbow = isVertical ? { x: b.entry.x, y: trunk } : { x: trunk, y: b.entry.y };
                     branchMidpointByConnId[b.connId] = { x: (elbow.x + b.entry.x) / 2, y: (elbow.y + b.entry.y) / 2 };
-                    const branchPoints = isVertical
-                        ? `${b.entry.x},${trunk} ${b.entry.x},${b.entry.y}`
-                        : `${trunk},${b.entry.y} ${b.entry.x},${b.entry.y}`;
-                    const branchStyle = waterFlowConnectionLineStyleAttr(waterFlowConnections.find(c => c.id === b.connId));
+
+                    const entryBendDefault = isVertical ? b.entry.x : b.entry.y;
+                    const entryBend = (conn && typeof conn.entryBend === 'number') ? conn.entryBend : entryBendDefault;
+                    const branchPts = isVertical
+                        ? [elbow, { x: entryBend, y: trunk }, { x: entryBend, y: b.entry.y }, b.entry]
+                        : [elbow, { x: trunk, y: entryBend }, { x: b.entry.x, y: entryBend }, b.entry];
+                    const branchPoints = branchPts.map(p => `${p.x},${p.y}`).join(' ');
+                    const branchColorStyle = conn && conn.color ? `stroke:${conn.color}` : '';
+                    const branchDashed = !!(conn && conn.lineStyle === 'dashed');
+                    let branchVisual = '';
+                    for (let i = 0; i < branchPts.length - 1; i++) branchVisual += waterFlowSegmentEl(branchPts[i], branchPts[i + 1], branchColorStyle, branchDashed);
+                    const branchDragAxis = isVertical ? 'x' : 'y';
+                    const branchDragCursor = isVertical ? 'ew-resize' : 'ns-resize';
+
                     svgHtml += `
-                        <polyline points="${branchPoints}" class="water-flow-connection-line" style="${branchStyle}"></polyline>
-                        <polyline points="${branchPoints}" class="water-flow-connection-hit" onclick="handleWaterFlowConnectionLineClick('${b.connId}')"><title>클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>
+                        ${branchVisual}
+                        <polyline points="${branchPoints}" class="water-flow-connection-hit" style="cursor:${branchDragCursor}"
+                            onpointerdown="waterFlowBranchPointerDown(event, '${b.connId}', '${branchDragAxis}', ${entryBend})"
+                            onclick="handleWaterFlowConnectionLineClick('${b.connId}')"><title>드래그로 이 가지를 다른 방향으로도 꺾기 · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>
                     `;
                 });
             }
@@ -5242,23 +5266,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             svg.innerHTML = svgHtml;
         }
 
-        let waterFlowConnDragState = null; // { connIds, direction, isVertical, startClientX, startClientY, startTrunk, moved }
+        let waterFlowConnDragState = null; // { connIds, isVertical, startClientX, startClientY, startTrunk, moved }
         const WATER_FLOW_CONN_DRAG_THRESHOLD = 6;
 
-        // 연결선이 꺾이는 지점(trunk)을 드래그로 자유롭게 옮길 수 있게 함. 세로 연결(위/아래)이면
-        // 위아래로, 가로 연결(좌/우)이면 좌우로만 움직이는데, 마우스를 원래 방향과 다른 쪽(수직↔수평)으로
-        // 뚜렷하게 움직이면 이 연결선의 방향 자체를 그쪽으로 바꿔서(dirOverride) 계속 그 방향을 따라가게 함.
-        // 그래서 "이 연결선은 좌우로만, 저 연결선은 상하로만 움직인다"는 제약 없이 어느 쪽으로 끌어도
-        // 항상 마우스를 따라 꺾임 위치가 움직임. 여러 갈래가 한 줄기를 공유하는 경우 connIds에 그 줄기에
-        // 속한 모든 연결의 id가 담겨 있어서, 한 번에 다 같이 옮겨져(방향도 함께 바뀌어) 계속 하나로 이어짐
-        const WATER_FLOW_CONN_AXIS_SWITCH_MARGIN = 24; // 다른 축으로 이만큼 더 움직여야 방향을 바꿈(자잘한 흔들림 방지)
-
+        // 연결선이 꺾이는 지점(trunk)을 드래그로 옮길 수 있게 함. 세로 연결(위/아래)이면 위아래로,
+        // 가로 연결(좌/우)이면 좌우로만 움직임(반대 축은 가지의 entryBend 핸들이 담당함 - 아래
+        // waterFlowBranchPointerDown 참고). 여러 갈래가 한 줄기를 공유하는 경우 connIds에 그 줄기에
+        // 속한 모든 연결의 id가 담겨 있어서, 한 번에 다 같이 옮겨져 계속 하나로 이어짐
         function waterFlowConnectionPointerDown(e, connIdsStr, direction, startTrunk) {
             if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
             if (!editUnlocked) return; // 잠긴 상태에서는 옮길 수 없음(클릭해서 지우는 것도 로그인 필요 - deleteWaterFlowConnection에서 다시 확인함)
             waterFlowConnDragState = {
                 connIds: connIdsStr.split(','),
-                direction,
                 isVertical: direction === 'down' || direction === 'up',
                 startClientX: e.clientX, startClientY: e.clientY,
                 startTrunk,
@@ -5282,31 +5301,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
             e.preventDefault();
 
-            // 지금 축과 다른 축으로 뚜렷하게 더 움직였으면 방향을 그쪽으로 바꿈. 바뀐 시점의 마우스
-            // 위치를 캔버스 기준 좌표로 환산해 새 꺾임 위치로 쓰고, 이후 델타 계산의 기준점도 여기로 다시 잡음
-            const alongAbs = Math.abs(state.isVertical ? rawDy : rawDx);
-            const acrossAbs = Math.abs(state.isVertical ? rawDx : rawDy);
-            if (acrossAbs > alongAbs + WATER_FLOW_CONN_AXIS_SWITCH_MARGIN) {
-                const canvas = document.getElementById('waterFlowCanvas');
-                const rect = canvas.getBoundingClientRect();
-                const newIsVertical = !state.isVertical;
-                const newDirection = newIsVertical ? (rawDy >= 0 ? 'down' : 'up') : (rawDx >= 0 ? 'right' : 'left');
-                const newTrunk = newIsVertical ? (e.clientY - rect.top) / waterFlowViewZoom : (e.clientX - rect.left) / waterFlowViewZoom;
-
-                state.isVertical = newIsVertical;
-                state.direction = newDirection;
-                state.startClientX = e.clientX;
-                state.startClientY = e.clientY;
-                state.startTrunk = newTrunk;
-
-                state.connIds.forEach(id => {
-                    const conn = waterFlowConnections.find(c => c.id === id);
-                    if (conn) { conn.dirOverride = newDirection; conn.trunkOverride = newTrunk; }
-                });
-                renderWaterFlowConnections();
-                return;
-            }
-
             const delta = (state.isVertical ? rawDy : rawDx) / waterFlowViewZoom; // 확대 배율만큼 보정
             const newTrunk = state.startTrunk + delta;
             state.connIds.forEach(id => {
@@ -5327,6 +5321,62 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 별도 onclick이 삭제를 처리하도록 둠
 
             // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 연결선을 삭제하지 않도록 한 번 막음
+            document.addEventListener('click', function suppressClick(ev) {
+                ev.stopPropagation();
+            }, { capture: true, once: true });
+
+            saveWaterFlowConnectionsToStorage();
+        }
+
+        let waterFlowBranchDragState = null; // { connId, axis, startClientX, startClientY, startEntryBend, moved }
+
+        // 가지(줄기 → 도착 지점)를 줄기와는 다른 축으로 드래그해서 꺾을 수 있게 함. 줄기가 좌우로만
+        // 움직이는 연결선은 가지가 상하로, 줄기가 상하로만 움직이는 연결선은 가지가 좌우로 움직여서,
+        // 두 핸들(줄기 + 가지)을 합치면 어떤 연결선이든 상하좌우 모두 자유롭게 모양을 잡을 수 있음
+        function waterFlowBranchPointerDown(e, connId, axis, startEntryBend) {
+            if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
+            if (!editUnlocked) return; // 잠긴 상태에서는 옮길 수 없음
+            waterFlowBranchDragState = {
+                connId, axis,
+                startClientX: e.clientX, startClientY: e.clientY,
+                startEntryBend,
+                moved: false
+            };
+            document.addEventListener('pointermove', waterFlowBranchPointerMove);
+            document.addEventListener('pointerup', waterFlowBranchPointerUp);
+            document.addEventListener('pointercancel', waterFlowBranchPointerUp);
+        }
+
+        function waterFlowBranchPointerMove(e) {
+            const state = waterFlowBranchDragState;
+            if (!state) return;
+            const rawDx = e.clientX - state.startClientX;
+            const rawDy = e.clientY - state.startClientY;
+
+            if (!state.moved) {
+                if (Math.hypot(rawDx, rawDy) < WATER_FLOW_CONN_DRAG_THRESHOLD) return;
+                state.moved = true;
+                pushWaterFlowUndoSnapshot();
+            }
+            e.preventDefault();
+
+            const delta = (state.axis === 'x' ? rawDx : rawDy) / waterFlowViewZoom;
+            const newEntryBend = state.startEntryBend + delta;
+            const conn = waterFlowConnections.find(c => c.id === state.connId);
+            if (conn) conn.entryBend = newEntryBend;
+            renderWaterFlowConnections();
+        }
+
+        function waterFlowBranchPointerUp(e) {
+            if (!waterFlowBranchDragState) return;
+            document.removeEventListener('pointermove', waterFlowBranchPointerMove);
+            document.removeEventListener('pointerup', waterFlowBranchPointerUp);
+            document.removeEventListener('pointercancel', waterFlowBranchPointerUp);
+
+            const state = waterFlowBranchDragState;
+            waterFlowBranchDragState = null;
+            if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 별도 onclick이 처리하도록 둠
+
             document.addEventListener('click', function suppressClick(ev) {
                 ev.stopPropagation();
             }, { capture: true, once: true });
