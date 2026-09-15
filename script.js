@@ -357,6 +357,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             applyThemeButtonLabel(); // <head>의 조기 스크립트가 이미 dark-mode 클래스를 적용해뒀으므로 버튼 표시만 맞춰줌
             setupGlobalEditLockInterceptor();
             setupModalDismissHandlers();
+            setupWaterFlowUndoRedoShortcut();
             document.addEventListener('click', function (e) {
                 if (!e.target.closest('.admin-more-wrap')) closeAllAdminMoreMenus();
             });
@@ -4492,6 +4493,79 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             waterFlowConnections = current.connections;
         }
 
+        // ===== 흐름도 되돌리기(Ctrl+Z)/다시 실행(Ctrl+Shift+Z) =====
+        // 실수로 블록을 옮기거나 지웠을 때 되돌릴 수 있도록, 블록/연결선/흐름도 목록을 바꾸는
+        // 동작 직전마다 그 시점의 전체 상태(모든 흐름도)를 스냅샷으로 남겨둠. 되돌리기는 그 스냅샷을
+        // 다시 불러오는 방식이라, 화면 이동/확대축소 같은 "보는 상태"는 대상이 아니고 실제 데이터만 대상임
+        let waterFlowUndoStack = [];
+        let waterFlowRedoStack = [];
+        const WATER_FLOW_UNDO_LIMIT = 50;
+
+        function pushWaterFlowUndoSnapshot() {
+            syncActiveWaterFlowDiagramData();
+            waterFlowUndoStack.push(JSON.stringify({ diagrams: waterFlowDiagrams, currentId: currentWaterFlowDiagramId }));
+            if (waterFlowUndoStack.length > WATER_FLOW_UNDO_LIMIT) waterFlowUndoStack.shift();
+            waterFlowRedoStack = []; // 새로 변경하면 다시 실행 내역은 의미가 없어지므로 비움
+        }
+
+        function restoreWaterFlowSnapshot(json) {
+            const state = JSON.parse(json);
+            waterFlowDiagrams = state.diagrams;
+            currentWaterFlowDiagramId = state.currentId;
+            ensureActiveWaterFlowDiagram();
+            cancelWaterFlowConnectMode();
+            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
+            queueSync();
+            renderWaterFlowDiagramTabs();
+            renderWaterFlowCanvas();
+        }
+
+        function undoWaterFlowChange() {
+            if (!checkEditPermission()) return;
+            if (waterFlowUndoStack.length === 0) {
+                showAppToast('되돌릴 변경사항이 없습니다');
+                return;
+            }
+            syncActiveWaterFlowDiagramData();
+            waterFlowRedoStack.push(JSON.stringify({ diagrams: waterFlowDiagrams, currentId: currentWaterFlowDiagramId }));
+            restoreWaterFlowSnapshot(waterFlowUndoStack.pop());
+            showAppToast('↩️ 되돌렸습니다');
+        }
+
+        function redoWaterFlowChange() {
+            if (!checkEditPermission()) return;
+            if (waterFlowRedoStack.length === 0) {
+                showAppToast('다시 실행할 변경사항이 없습니다');
+                return;
+            }
+            syncActiveWaterFlowDiagramData();
+            waterFlowUndoStack.push(JSON.stringify({ diagrams: waterFlowDiagrams, currentId: currentWaterFlowDiagramId }));
+            restoreWaterFlowSnapshot(waterFlowRedoStack.pop());
+            showAppToast('↪️ 다시 실행했습니다');
+        }
+
+        // 흐름도 탭을 보고 있을 때만 Ctrl+Z(되돌리기)/Ctrl+Shift+Z 또는 Ctrl+Y(다시 실행)를 가로챔.
+        // 모달 안 입력창/텍스트 영역에 포커스가 있을 때는 브라우저 기본 되돌리기(글자 입력 취소)가
+        // 그대로 동작하도록 손대지 않음
+        function setupWaterFlowUndoRedoShortcut() {
+            document.addEventListener('keydown', (e) => {
+                if (activeTabId !== 'waterFlow') return;
+                if (!(e.ctrlKey || e.metaKey)) return;
+                const tag = (e.target.tagName || '').toLowerCase();
+                if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+
+                const key = e.key.toLowerCase();
+                if (key === 'z' && !e.shiftKey) {
+                    e.preventDefault();
+                    undoWaterFlowChange();
+                } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+                    e.preventDefault();
+                    redoWaterFlowChange();
+                }
+            });
+        }
+
         function renderWaterFlowDiagramTabs() {
             const container = document.getElementById('waterFlowDiagramTabs');
             if (!container) return;
@@ -4517,6 +4591,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         function addWaterFlowDiagram() {
             if (!checkEditPermission()) return;
+            pushWaterFlowUndoSnapshot();
             syncActiveWaterFlowDiagramData();
             const newDiagram = {
                 id: 'wfd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -4560,6 +4635,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 showAppToast('흐름도 이름을 입력해주세요');
                 return;
             }
+            pushWaterFlowUndoSnapshot();
             const diagram = waterFlowDiagrams.find(d => d.id === editingWaterFlowDiagramId);
             if (diagram) diagram.name = name;
             localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
@@ -4573,6 +4649,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (waterFlowDiagrams.length <= 1) return; // 흐름도가 하나뿐일 때는 지울 수 없음
             const targetId = editingWaterFlowDiagramId;
             confirmModal('이 흐름도를 삭제하시겠습니까? 안에 있는 블록과 연결선이 모두 함께 사라집니다.', () => {
+                pushWaterFlowUndoSnapshot();
                 waterFlowDiagrams = waterFlowDiagrams.filter(d => d.id !== targetId);
                 if (currentWaterFlowDiagramId === targetId) currentWaterFlowDiagramId = waterFlowDiagrams[0].id;
                 ensureActiveWaterFlowDiagram();
@@ -4825,6 +4902,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 showAppToast('이미 연결되어 있습니다');
                 return;
             }
+            pushWaterFlowUndoSnapshot();
             waterFlowConnections.push({
                 id: 'wfc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
                 from: fromId,
@@ -4838,6 +4916,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function deleteWaterFlowConnection(connId) {
             if (!checkEditPermission()) return;
             confirmModal('이 연결선을 삭제하시겠습니까?', () => {
+                pushWaterFlowUndoSnapshot();
                 waterFlowConnections = waterFlowConnections.filter(c => c.id !== connId);
                 saveWaterFlowConnectionsToStorage();
                 renderWaterFlowConnections();
@@ -4991,6 +5070,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!waterFlowConnDragState.moved) {
                 if (Math.hypot(rawDx, rawDy) < WATER_FLOW_CONN_DRAG_THRESHOLD) return;
                 waterFlowConnDragState.moved = true;
+                pushWaterFlowUndoSnapshot(); // 아직 옮기기 전(원래 위치)이 저장되도록 실제로 드래그가 시작되는 순간에 한 번만 남김
             }
             e.preventDefault();
 
@@ -5192,6 +5272,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (Math.hypot(rawDx, rawDy) < WATER_FLOW_DRAG_MOVE_THRESHOLD) return;
                 waterFlowDragState.moved = true;
                 waterFlowDragState.el.classList.add('dragging');
+                pushWaterFlowUndoSnapshot(); // 아직 옮기기 전(원래 위치)이 저장되도록 실제로 드래그가 시작되는 순간에 한 번만 남김
             }
 
             e.preventDefault(); // 드래그 중 터치 스크롤/텍스트 선택 방지
@@ -5308,6 +5389,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const detail = document.getElementById('waterFlowBlockDetailInput').value.trim();
             const color = document.getElementById('waterFlowBlockColorInput').value || COLOR_PALETTE[0];
 
+            pushWaterFlowUndoSnapshot();
             if (editingWaterFlowBlockId) {
                 const b = waterFlowBlocks.find(x => x.id === editingWaterFlowBlockId);
                 if (b) { b.title = title; b.detail = detail; b.color = color; }
@@ -5328,6 +5410,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!checkEditPermission()) return;
             if (!editingWaterFlowBlockId) return;
             confirmModal('이 블록을 삭제하시겠습니까? 이 블록에 연결된 선도 함께 삭제됩니다.', () => {
+                pushWaterFlowUndoSnapshot();
                 const deletedId = editingWaterFlowBlockId;
                 waterFlowBlocks = waterFlowBlocks.filter(b => b.id !== deletedId);
                 waterFlowConnections = waterFlowConnections.filter(c => c.from !== deletedId && c.to !== deletedId);
