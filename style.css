@@ -725,7 +725,113 @@ html {
             font-size: 13px;
             padding: 10px 4px;
         }
-        
+
+        .upcoming-card-repeat-badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 800;
+            color: #667eea;
+            background: #eef0ff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-bottom: 8px;
+        }
+
+        /* 정제수&주사용수 시스템 흐름도: 블록을 자유롭게 배치하는 캔버스 */
+        .water-flow-canvas-wrap {
+            overflow: auto;
+            max-height: 65vh;
+            border: 1px solid #e5e5e5;
+            border-radius: 12px;
+            background: #fafbfc;
+        }
+
+        .water-flow-canvas {
+            position: relative;
+            min-width: 1400px;
+            min-height: 800px;
+            background-image: radial-gradient(circle, #dcdcdc 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        .water-flow-block {
+            position: absolute;
+            width: 190px;
+            background: white;
+            border-radius: 10px;
+            border-top: 5px solid #667eea;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            padding: 12px 14px;
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
+            transition: box-shadow 0.2s;
+        }
+
+        .water-flow-block:hover {
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .water-flow-block.dragging {
+            cursor: grabbing;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+            z-index: 20;
+        }
+
+        .water-flow-block-edit-btn {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: none;
+            background: #f0f0f0;
+            color: #888;
+            font-size: 11px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .water-flow-block-edit-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .water-flow-block-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+            padding-right: 20px;
+            word-break: break-word;
+        }
+
+        .water-flow-block.expanded .water-flow-block-title {
+            margin-bottom: 8px;
+        }
+
+        .water-flow-block-detail {
+            font-size: 12px;
+            color: #666;
+            line-height: 1.5;
+            border-top: 1px dashed #eee;
+            padding-top: 8px;
+            word-break: break-word;
+        }
+
+        .water-flow-block-detail-empty {
+            color: #bbb;
+            font-style: italic;
+        }
+
+        .water-flow-empty {
+            color: #999;
+            font-size: 14px;
+            padding: 40px;
+            text-align: center;
+        }
+
         .main-content {
             display: grid;
             grid-template-columns: 2.2fr 1fr;
@@ -3487,6 +3593,42 @@ html {
 
 .dark-mode .upcoming-empty {
     color: var(--d-text2);
+}
+
+.dark-mode .upcoming-card-repeat-badge {
+    background: #2a2a52;
+    color: #a9b6ff;
+}
+
+.dark-mode .water-flow-canvas-wrap {
+    background: var(--d-bg2);
+    border-color: var(--d-border);
+}
+
+.dark-mode .water-flow-canvas {
+    background-image: radial-gradient(circle, var(--d-border) 1px, transparent 1px);
+}
+
+.dark-mode .water-flow-block {
+    background: var(--d-bg1);
+}
+
+.dark-mode .water-flow-block-title {
+    color: var(--d-text1);
+}
+
+.dark-mode .water-flow-block-detail {
+    color: var(--d-text2);
+    border-top-color: var(--d-border);
+}
+
+.dark-mode .water-flow-block-edit-btn {
+    background: var(--d-bg3);
+    color: var(--d-text2);
+}
+
+.dark-mode .water-flow-empty {
+    color: var(--d-text3);
 }
 
 .dark-mode .password-toggle-btn {

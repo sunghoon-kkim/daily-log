@@ -498,7 +498,24 @@
             </div>
         </div>
 
-        <!-- 탭 9: 팀 보고 -->
+        <!-- 탭 9: 정제수&주사용수 흐름도 -->
+        <div id="waterFlow" class="tab-content">
+            <div class="ai-status" data-empty-message-group="waterFlow" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 기능이 없습니다. 관리자에게 문의해주세요.</div>
+
+            <div class="query-container" data-feature="waterFlowDiagram">
+                <div class="project-header-row">
+                    <h3>💧 정제수&주사용수 시스템 흐름도</h3>
+                    <button class="add-category-btn" onclick="openWaterFlowBlockModal(null)">➕ 블록 추가</button>
+                </div>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">블록을 자유롭게 추가하고 드래그해서 원하는 위치에 배치하세요. 블록을 클릭하면 세부 내용이 펼쳐지고, 다시 누르면 접힙니다. ✏️ 아이콘으로 제목·내용·색상을 수정할 수 있습니다.</p>
+
+                <div class="water-flow-canvas-wrap">
+                    <div class="water-flow-canvas" id="waterFlowCanvas"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 탭 10: 팀 보고 -->
         <div id="teamReport" class="tab-content">
             <div class="ai-status" data-empty-message-group="teamReport" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 팀 보고 기능이 없습니다. 관리자에게 문의해주세요.</div>
 
@@ -1009,6 +1026,39 @@
                 <button class="modal-btn modal-delete-btn" id="deleteMaintenanceBtn" onclick="deleteMaintenanceItem()" style="display:none;">삭제</button>
                 <button class="modal-btn modal-save-btn" onclick="saveMaintenanceItem()">저장</button>
                 <button class="modal-btn modal-cancel-btn" onclick="closeMaintenanceModal()">취소</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="waterFlowBlockModal" role="dialog" aria-modal="true">
+        <div class="modal-box">
+            <h3 id="waterFlowBlockModalTitle">💧 블록 추가</h3>
+
+            <div class="modal-field">
+                <label>블록 제목</label>
+                <input type="text" id="waterFlowBlockTitleInput" placeholder="예: RO(역삼투) 장치">
+            </div>
+            <div class="modal-field">
+                <label>세부 내용</label>
+                <textarea id="waterFlowBlockDetailInput" class="notes-textarea" style="min-height:100px;" placeholder="설비명, 규격, 관리기준 등 세부 내용을 자유롭게 적어주세요"></textarea>
+            </div>
+            <div class="modal-field">
+                <label>색상</label>
+                <div class="quick-preset-row" id="waterFlowBlockColorRow">
+                    <div class="color-swatch" style="background:#ff6b6b" data-color="#ff6b6b" onclick="pickWaterFlowBlockColor('#ff6b6b')"></div>
+                    <div class="color-swatch" style="background:#ff9f43" data-color="#ff9f43" onclick="pickWaterFlowBlockColor('#ff9f43')"></div>
+                    <div class="color-swatch" style="background:#feca57" data-color="#feca57" onclick="pickWaterFlowBlockColor('#feca57')"></div>
+                    <div class="color-swatch" style="background:#1dd1a1" data-color="#1dd1a1" onclick="pickWaterFlowBlockColor('#1dd1a1')"></div>
+                    <div class="color-swatch" style="background:#54a0ff" data-color="#54a0ff" onclick="pickWaterFlowBlockColor('#54a0ff')"></div>
+                    <div class="color-swatch" style="background:#5f27cd" data-color="#5f27cd" onclick="pickWaterFlowBlockColor('#5f27cd')"></div>
+                    <div class="color-swatch" style="background:#ee5a6f" data-color="#ee5a6f" onclick="pickWaterFlowBlockColor('#ee5a6f')"></div>
+                </div>
+                <input type="hidden" id="waterFlowBlockColorInput" value="#667eea">
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-delete-btn" id="deleteWaterFlowBlockBtn" onclick="deleteWaterFlowBlock()" style="display:none;">삭제</button>
+                <button class="modal-btn modal-save-btn" onclick="saveWaterFlowBlock()">저장</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeWaterFlowBlockModal()">취소</button>
             </div>
         </div>
     </div>

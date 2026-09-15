@@ -123,10 +123,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             improvement: '💡 개선/절감 과제',
             trend: '📈 설비 데이터 분석',
             maintenance: '🔧 정비계획',
+            waterFlow: '💧 정제수&주사용수 흐름도',
             teamReport: '📋 팀 보고',
             settings: '⚙️ 환경설정'
         };
-        let tabOrder = ['calendar', 'category', 'query', 'notes', 'ai', 'improvement', 'trend', 'maintenance', 'teamReport', 'settings'];
+        let tabOrder = ['calendar', 'category', 'query', 'notes', 'ai', 'improvement', 'trend', 'maintenance', 'waterFlow', 'teamReport', 'settings'];
         let activeTabId = 'calendar';
         // 환경설정에서 꺼둔(비활성화한) 탭 id 목록. 'settings'는 절대 여기 들어가지 않음(항상 표시)
         let disabledTabIds = [];
@@ -200,6 +201,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 }
             },
             {
+                key: 'waterFlow',
+                label: '💧 정제수&주사용수 흐름도',
+                features: {
+                    waterFlowDiagram: '💧 정제수&주사용수 흐름도'
+                }
+            },
+            {
                 key: 'teamReport',
                 label: '📋 팀 보고',
                 features: {
@@ -250,6 +258,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let trendSpec = '';    // 관리 기준 (동일)
         let maintenanceSchedule = []; // [{id, equipment, item, sop, cycle, status, lastDone, nextDue, note, ackFor, updatedAt}]
         let editingMaintenanceId = null;
+        let waterFlowBlocks = []; // [{id, title, detail, color, x, y, expanded}] - 정제수&주사용수 시스템 흐름도 블록(자유 배치)
+        let editingWaterFlowBlockId = null;
         let maintenanceStatusFilter = '전체'; // 정비계획 목록 상태 필터 (전체/예정/완료/보류). 화면 상태값이라 저장하지 않음
         let maintenanceViewMode = 'detail'; // 정비계획 목록 보기 모드 (detail: 자세히 보기, simple: 간단히 보기). 화면 상태값이라 저장하지 않음
         let savingsStatusFilter = '전체'; // 개선/절감 과제 목록 상태 필터. 화면 상태값이라 저장하지 않음
@@ -285,6 +295,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             trendSpec = localStorage.getItem('trendSpec') || '';
             const storedMaintenance = localStorage.getItem('maintenanceSchedule');
             maintenanceSchedule = storedMaintenance ? safeJsonParse(storedMaintenance, [], 'maintenanceSchedule') : [];
+            const storedWaterFlowBlocks = localStorage.getItem('waterFlowBlocks');
+            waterFlowBlocks = storedWaterFlowBlocks ? safeJsonParse(storedWaterFlowBlocks, [], 'waterFlowBlocks') : [];
 
             renderTabs();
             renderCategories();
@@ -301,6 +313,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             applyTrendSettings();
             setupTrendSettingsAutosave();
             renderMaintenanceSchedule();
+            renderWaterFlowCanvas();
             renderSettingsTab();
             applyFeatureRestrictions();
             setupNotesSplitResizer();
@@ -589,7 +602,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 savingsProjects,
                 trendSubject,
                 trendSpec,
-                maintenanceSchedule
+                maintenanceSchedule,
+                waterFlowBlocks
             };
         }
 
@@ -614,6 +628,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             localStorage.setItem('trendSubject', trendSubject);
             localStorage.setItem('trendSpec', trendSpec);
             localStorage.setItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
+            localStorage.setItem('waterFlowBlocks', JSON.stringify(waterFlowBlocks));
             localStorage.setItem('accountName', currentUserName);
             localStorage.setItem('accountDepartment', currentUserDepartment);
         }
@@ -705,6 +720,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     trendSubject = (typeof data.trendSubject === 'string') ? data.trendSubject : '';
                     trendSpec = (typeof data.trendSpec === 'string') ? data.trendSpec : '';
                     maintenanceSchedule = Array.isArray(data.maintenanceSchedule) ? data.maintenanceSchedule : [];
+                    waterFlowBlocks = Array.isArray(data.waterFlowBlocks) ? data.waterFlowBlocks : [];
 
                     cacheAllToLocalStorage();
 
@@ -720,6 +736,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (typeof renderSavingsProjects === 'function') renderSavingsProjects();
                     if (typeof applyTrendSettings === 'function') applyTrendSettings();
                     if (typeof renderMaintenanceSchedule === 'function') renderMaintenanceSchedule();
+                    if (typeof renderWaterFlowCanvas === 'function') renderWaterFlowCanvas();
                     applyEditLockUI(); // 방금 받아온 이름을 상단 계정 표시에 반영
                 }
 
@@ -2529,54 +2546,83 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             showStatus('📅 일정 날짜를 옮겼습니다', 'success');
         }
 
-        // 오늘 기준으로 아직 끝나지 않은 예정 작업들을 D-day와 함께 가로 스크롤 카드로 표시
-        let collapsedUpcomingCardIds = new Set(); // 접어둔 카드의 예정작업 id 목록 - 저장되어 창을 닫았다 열어도 유지됨
+        // 오늘 기준으로 아직 끝나지 않은 예정 작업들을 D-day와 함께 가로 스크롤 카드로 표시.
+        // 기본값은 자동 규칙(30일 이내는 펼침/이후는 접힘)을 따르고, 사용자가 카드를 눌러
+        // 그 규칙을 뒤집으면(이하 "flip") 그 뒤집힌 상태가 저장되어 창을 닫았다 열어도 유지됨
+        const UPCOMING_AUTO_EXPAND_DAYS = 30;
+        let collapsedUpcomingCardIds = new Set(); // 자동 규칙의 기본값을 사용자가 뒤집어둔(flip) 예정작업 id 목록
         let highlightedEventRange = null; // { start, end } - 다가오는 일정 카드 클릭 시 캘린더에서 강조할 기간
-        
+
+        // 오늘로부터 30일 이내(이미 시작해 진행 중인 경우 포함)면 기본적으로 펼쳐서 보여줌
+        function isUpcomingCardNearByDefault(ev, todayStr) {
+            if (ev.start <= todayStr) return true;
+            return daysBetweenDateStrs(todayStr, ev.start) <= UPCOMING_AUTO_EXPAND_DAYS;
+        }
+
+        function isUpcomingCardCollapsed(ev, todayStr) {
+            const defaultCollapsed = !isUpcomingCardNearByDefault(ev, todayStr);
+            const flipped = collapsedUpcomingCardIds.has(ev.id);
+            return flipped ? !defaultCollapsed : defaultCollapsed;
+        }
+
         function renderUpcomingWidget() {
             const widget = document.getElementById('upcomingWidget');
             const toggleBtn = document.getElementById('upcomingToggleBtn');
             if (!widget) return;
-            
+
             const isVisible = localStorage.getItem('upcomingWidgetVisible') !== 'false';
-            
+
             if (toggleBtn) toggleBtn.textContent = isVisible ? '숨기기' : '보이기';
-            
+
             if (!isVisible) {
                 widget.style.display = 'none';
                 return;
             }
             widget.style.display = 'flex';
-            
+
             const todayStr = formatDate(new Date());
-            
-            const upcoming = events
+
+            const upcomingAll = events
                 .filter(ev => ev.end >= todayStr)
-                .sort((a, b) => a.start.localeCompare(b.start))
-                .slice(0, 10);
-            
+                .sort((a, b) => a.start.localeCompare(b.start));
+
+            // 반복 등록된 일정(같은 repeatGroupId)은 여러 회차가 한꺼번에 다가올 수 있는데,
+            // 그걸 전부 카드로 나열하면 목록이 반복분으로 도배되므로 가장 가까운 회차 하나만 대표로 표시함
+            const seenRepeatGroups = new Set();
+            const upcoming = [];
+            for (const ev of upcomingAll) {
+                if (ev.repeatGroupId) {
+                    if (seenRepeatGroups.has(ev.repeatGroupId)) continue;
+                    seenRepeatGroups.add(ev.repeatGroupId);
+                }
+                upcoming.push(ev);
+                if (upcoming.length >= 10) break;
+            }
+
             if (upcoming.length === 0) {
                 widget.innerHTML = '<div class="upcoming-empty">📌 다가오는 일정이 없습니다</div>';
                 return;
             }
-            
+
             widget.innerHTML = upcoming.map(ev => {
                 const ddayInfo = calcDDay(todayStr, ev.start, ev.end);
-                
-                // 개별적으로 접힌 카드는 색상 막대만 표시, 클릭하면 다시 펼쳐짐 (툴팁으로 제목/D-day 확인 가능)
-                if (collapsedUpcomingCardIds.has(ev.id)) {
+                const repeatLabel = ev.repeatGroupId ? ' (반복)' : '';
+
+                // 접힌 카드는 색상 막대만 표시, 클릭하면 다시 펼쳐짐 (툴팁으로 제목/D-day 확인 가능)
+                if (isUpcomingCardCollapsed(ev, todayStr)) {
                     return `
-                        <div class="upcoming-card-mini" style="background:${ev.color}" onclick="expandUpcomingCard('${ev.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();expandUpcomingCard('${ev.id}')}" role="button" tabindex="0" title="${escapeHtml(ev.title)} (${ddayInfo})" aria-label="${escapeHtml(ev.title)} (${ddayInfo}) 펼치기"></div>
+                        <div class="upcoming-card-mini" style="background:${ev.color}" onclick="toggleUpcomingCardCollapse('${ev.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleUpcomingCardCollapse('${ev.id}')}" role="button" tabindex="0" title="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo})" aria-label="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo}) 펼치기"></div>
                     `;
                 }
-                
+
                 const dateLabel = ev.start === ev.end
                     ? formatDateLabelShort(ev.start)
                     : `${formatDateLabelShort(ev.start)} ~ ${formatDateLabelShort(ev.end)}`;
-                
+
                 return `
                     <div class="upcoming-card" style="border-left-color:${ev.color}" onclick="jumpToUpcomingDate('${ev.start}','${ev.end}')">
-                        <button class="upcoming-card-collapse-btn" onclick="event.stopPropagation(); collapseUpcomingCard('${ev.id}')" title="작게 접기" aria-label="작게 접기">−</button>
+                        <button class="upcoming-card-collapse-btn" onclick="event.stopPropagation(); toggleUpcomingCardCollapse('${ev.id}')" title="작게 접기" aria-label="작게 접기">−</button>
+                        ${ev.repeatGroupId ? '<div class="upcoming-card-repeat-badge">(반복)</div>' : ''}
                         <span class="upcoming-card-dday" style="background:${ev.color}">${ddayInfo}</span>
                         <div class="upcoming-card-title" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>
                         <div class="upcoming-card-date">${dateLabel}</div>
@@ -2584,28 +2630,22 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 `;
             }).join('');
         }
-        
+
         // 다가오는 일정 카드를 클릭하면 예정 작업 수정창을 열지 않고, 그 날짜로 이동하면서
         // 예정 작업이 걸쳐 있는 전체 기간을 캘린더에서 강조 표시함
         function jumpToUpcomingDate(startStr, endStr) {
             highlightedEventRange = { start: startStr, end: endStr || startStr };
-            
+
             const d = new Date(startStr);
             currentDate = new Date(d.getFullYear(), d.getMonth(), 1);
             renderCalendar();
             selectDate(startStr, true); // true = 지금 설정한 기간 강조를 유지한 채로 날짜만 선택
         }
-        
-        function collapseUpcomingCard(eventId) {
+
+        function toggleUpcomingCardCollapse(eventId) {
             if (!checkEditPermission()) return;
-            collapsedUpcomingCardIds.add(eventId);
-            saveCollapsedUpcomingCardsToStorage();
-            renderUpcomingWidget();
-        }
-        
-        function expandUpcomingCard(eventId) {
-            if (!checkEditPermission()) return;
-            collapsedUpcomingCardIds.delete(eventId);
+            if (collapsedUpcomingCardIds.has(eventId)) collapsedUpcomingCardIds.delete(eventId);
+            else collapsedUpcomingCardIds.add(eventId);
             saveCollapsedUpcomingCardsToStorage();
             renderUpcomingWidget();
         }
@@ -4370,6 +4410,208 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 queueSync();
                 closeMaintenanceModal();
                 renderMaintenanceSchedule();
+            });
+        }
+
+        // ===== 정제수&주사용수 시스템 흐름도 (자유 배치 블록) =====
+        // 블록은 캔버스 위에 절대좌표(x, y, px)로 배치되고, 클릭하면 세부 내용이 펼쳐지며,
+        // 드래그(Pointer Events)로 자유롭게 위치를 옮길 수 있음. 탭 순서변경/캘린더 일정 이동과
+        // 같은 방식으로 "약간이라도 움직이면 드래그, 안 움직이면 클릭"을 구분해 처리함
+        function saveWaterFlowBlocksToStorage() {
+            localStorage.setItem('waterFlowBlocks', JSON.stringify(waterFlowBlocks));
+            queueSync();
+        }
+
+        // 새 블록을 추가할 때마다 격자 형태로 위치를 배정해서, 기본 위치끼리 겹치지 않게 함
+        // (블록 폭 190px + 여백을 감안한 간격이며, 이후엔 드래그로 자유롭게 재배치하면 됨)
+        function nextWaterFlowBlockPosition() {
+            const startX = 30, startY = 30;
+            const stepX = 220, stepY = 160;
+            const cols = 5;
+            const idx = waterFlowBlocks.length;
+            return { x: startX + (idx % cols) * stepX, y: startY + Math.floor(idx / cols) * stepY };
+        }
+
+        function renderWaterFlowCanvas() {
+            const canvas = document.getElementById('waterFlowCanvas');
+            if (!canvas) return;
+
+            if (waterFlowBlocks.length === 0) {
+                canvas.innerHTML = '<div class="water-flow-empty">➕ "블록 추가" 버튼을 눌러 흐름도를 만들어보세요</div>';
+                return;
+            }
+
+            canvas.innerHTML = waterFlowBlocks.map(b => {
+                const expanded = !!b.expanded;
+                const color = b.color || COLOR_PALETTE[0];
+                const detailHtml = escapeHtml(b.detail || '').replace(/\n/g, '<br>');
+                return `
+                    <div class="water-flow-block${expanded ? ' expanded' : ''}" data-block-id="${b.id}"
+                         style="left:${b.x || 0}px; top:${b.y || 0}px; border-top-color:${color}"
+                         onpointerdown="waterFlowBlockPointerDown(event, '${b.id}')"
+                         onclick="toggleWaterFlowBlockExpand('${b.id}')">
+                        <button class="water-flow-block-edit-btn" onclick="event.stopPropagation(); openWaterFlowBlockModal('${b.id}')" title="블록 수정" aria-label="블록 수정">✏️</button>
+                        <div class="water-flow-block-title">${escapeHtml(b.title)}</div>
+                        ${expanded ? `<div class="water-flow-block-detail">${detailHtml || '<span class="water-flow-block-detail-empty">세부 내용이 없습니다</span>'}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 로그인하지 않은 상태(구경만 가능)에서도 펼쳐서 보는 것은 허용함 - 다가오는 일정
+        // 카드와 같은 방식(누르면 세부 내용, 옮기기/수정/삭제만 로그인 필요)
+        function toggleWaterFlowBlockExpand(blockId) {
+            const b = waterFlowBlocks.find(x => x.id === blockId);
+            if (!b) return;
+            b.expanded = !b.expanded;
+            saveWaterFlowBlocksToStorage();
+            renderWaterFlowCanvas();
+        }
+
+        let waterFlowDragState = null; // { blockId, el, startClientX, startClientY, startLeft, startTop, moved, pendingX, pendingY }
+        const WATER_FLOW_DRAG_MOVE_THRESHOLD = 6;
+
+        function waterFlowBlockPointerDown(e, blockId) {
+            if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
+            if (!editUnlocked) return; // 잠긴 상태에서는 위치를 옮길 수 없음(펼쳐보는 클릭은 별도 onclick으로 그대로 동작)
+            if (e.target.closest('.water-flow-block-edit-btn')) return;
+            const block = waterFlowBlocks.find(b => b.id === blockId);
+            if (!block) return;
+
+            waterFlowDragState = {
+                blockId,
+                el: e.currentTarget,
+                startClientX: e.clientX,
+                startClientY: e.clientY,
+                startLeft: block.x || 0,
+                startTop: block.y || 0,
+                moved: false,
+                pendingX: block.x || 0,
+                pendingY: block.y || 0
+            };
+            document.addEventListener('pointermove', waterFlowBlockPointerMove);
+            document.addEventListener('pointerup', waterFlowBlockPointerUp);
+            document.addEventListener('pointercancel', waterFlowBlockPointerUp);
+        }
+
+        function waterFlowBlockPointerMove(e) {
+            if (!waterFlowDragState) return;
+            const dx = e.clientX - waterFlowDragState.startClientX;
+            const dy = e.clientY - waterFlowDragState.startClientY;
+
+            if (!waterFlowDragState.moved) {
+                if (Math.hypot(dx, dy) < WATER_FLOW_DRAG_MOVE_THRESHOLD) return;
+                waterFlowDragState.moved = true;
+                waterFlowDragState.el.classList.add('dragging');
+            }
+
+            e.preventDefault(); // 드래그 중 터치 스크롤/텍스트 선택 방지
+            const newLeft = Math.max(0, waterFlowDragState.startLeft + dx);
+            const newTop = Math.max(0, waterFlowDragState.startTop + dy);
+            waterFlowDragState.el.style.left = newLeft + 'px';
+            waterFlowDragState.el.style.top = newTop + 'px';
+            waterFlowDragState.pendingX = newLeft;
+            waterFlowDragState.pendingY = newTop;
+        }
+
+        function waterFlowBlockPointerUp(e) {
+            if (!waterFlowDragState) return;
+            document.removeEventListener('pointermove', waterFlowBlockPointerMove);
+            document.removeEventListener('pointerup', waterFlowBlockPointerUp);
+            document.removeEventListener('pointercancel', waterFlowBlockPointerUp);
+
+            const state = waterFlowDragState;
+            waterFlowDragState = null;
+            state.el.classList.remove('dragging');
+
+            if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 별도 onclick이 펼치기/접기를 처리하도록 둠
+
+            // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 펼치기/접기를 토글하지 않도록 한 번 막음
+            document.addEventListener('click', function suppressClick(ev) {
+                ev.stopPropagation();
+            }, { capture: true, once: true });
+
+            const block = waterFlowBlocks.find(b => b.id === state.blockId);
+            if (!block) return;
+            block.x = state.pendingX;
+            block.y = state.pendingY;
+            saveWaterFlowBlocksToStorage();
+        }
+
+        function openWaterFlowBlockModal(blockId) {
+            if (!checkEditPermission()) return;
+            editingWaterFlowBlockId = blockId;
+            const modal = document.getElementById('waterFlowBlockModal');
+            const title = document.getElementById('waterFlowBlockModalTitle');
+            const deleteBtn = document.getElementById('deleteWaterFlowBlockBtn');
+
+            if (blockId) {
+                const b = waterFlowBlocks.find(x => x.id === blockId);
+                if (!b) return;
+                title.textContent = '💧 블록 수정';
+                document.getElementById('waterFlowBlockTitleInput').value = b.title || '';
+                document.getElementById('waterFlowBlockDetailInput').value = b.detail || '';
+                pickWaterFlowBlockColor(b.color || COLOR_PALETTE[0]);
+                deleteBtn.style.display = 'inline-block';
+            } else {
+                title.textContent = '💧 블록 추가';
+                document.getElementById('waterFlowBlockTitleInput').value = '';
+                document.getElementById('waterFlowBlockDetailInput').value = '';
+                pickWaterFlowBlockColor(COLOR_PALETTE[0]);
+                deleteBtn.style.display = 'none';
+            }
+
+            modal.classList.add('active');
+            applyFormLockState(); // 위 각 input.value 설정 뒤에도 잠금 상태(readOnly)가 유지되도록 재적용
+        }
+
+        function pickWaterFlowBlockColor(color) {
+            document.getElementById('waterFlowBlockColorInput').value = color;
+            document.querySelectorAll('#waterFlowBlockColorRow .color-swatch').forEach(sw => {
+                sw.classList.toggle('selected', sw.dataset.color === color);
+            });
+        }
+
+        function closeWaterFlowBlockModal() {
+            document.getElementById('waterFlowBlockModal').classList.remove('active');
+            editingWaterFlowBlockId = null;
+        }
+
+        function saveWaterFlowBlock() {
+            if (!checkEditPermission()) return;
+
+            const title = document.getElementById('waterFlowBlockTitleInput').value.trim();
+            if (!title) {
+                showAppToast('블록 제목을 입력해주세요');
+                return;
+            }
+            const detail = document.getElementById('waterFlowBlockDetailInput').value.trim();
+            const color = document.getElementById('waterFlowBlockColorInput').value || COLOR_PALETTE[0];
+
+            if (editingWaterFlowBlockId) {
+                const b = waterFlowBlocks.find(x => x.id === editingWaterFlowBlockId);
+                if (b) { b.title = title; b.detail = detail; b.color = color; }
+            } else {
+                const pos = nextWaterFlowBlockPosition();
+                waterFlowBlocks.push({
+                    id: 'wfb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    title, detail, color, x: pos.x, y: pos.y, expanded: true
+                });
+            }
+
+            saveWaterFlowBlocksToStorage();
+            closeWaterFlowBlockModal();
+            renderWaterFlowCanvas();
+        }
+
+        function deleteWaterFlowBlock() {
+            if (!checkEditPermission()) return;
+            if (!editingWaterFlowBlockId) return;
+            confirmModal('이 블록을 삭제하시겠습니까?', () => {
+                waterFlowBlocks = waterFlowBlocks.filter(b => b.id !== editingWaterFlowBlockId);
+                saveWaterFlowBlocksToStorage();
+                closeWaterFlowBlockModal();
+                renderWaterFlowCanvas();
             });
         }
 
@@ -6870,7 +7112,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'categoryColors', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
             'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'todoItems', 'todoNotes', 'aiTemplate',
-            'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule',
+            'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'waterFlowBlocks',
             'accountName', 'accountDepartment'
         ];
 
@@ -6955,6 +7197,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'eventModal') closeEventModal();
             else if (id === 'projectModal') closeProjectModal();
             else if (id === 'maintenanceModal') closeMaintenanceModal();
+            else if (id === 'waterFlowBlockModal') closeWaterFlowBlockModal();
             else if (id === 'deleteTeamReportModal') closeDeleteTeamReportModal();
             else if (id === 'signupModal') closeSignupModal();
             else if (id === 'adminEditUserModal') closeAdminEditUserModal();
