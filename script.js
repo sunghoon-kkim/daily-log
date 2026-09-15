@@ -985,6 +985,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return formatDate(d);
         }
 
+        function isWeekendDateStr(dateStr) {
+            const day = new Date(dateStr + 'T00:00:00').getDay();
+            return day === 0 || day === 6;
+        }
+
         // "9.8 ~ 9.14 (이번주)"처럼, 지금 실제 주와의 관계를 함께 보여주는 주 라벨
         function getTeamReportWeekLabel(weekStart) {
             if (!weekStart) return '';
@@ -3230,6 +3235,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         if (repeatInterval === 'month') {
                             occStart = addMonthsToDateStr(start, i);
                             occEnd = addMonthsToDateStr(end, i);
+                            // 처음 고른 날짜가 평일이었는데 같은 날짜가 주말로 넘어가는 달이 있으면
+                            // (당직/근무일처럼 평일에만 의미가 있는 일정이 대부분이라) 직전 금요일로 당김
+                            if (!isWeekendDateStr(start)) {
+                                const day = new Date(occStart + 'T00:00:00').getDay();
+                                const pullBackDays = day === 0 ? 2 : (day === 6 ? 1 : 0);
+                                if (pullBackDays > 0) {
+                                    occStart = addDaysToDateStr(occStart, -pullBackDays);
+                                    occEnd = addDaysToDateStr(occEnd, -pullBackDays);
+                                }
+                            }
                         } else {
                             const offsetDays = parseInt(repeatInterval, 10) * i;
                             occStart = addDaysToDateStr(start, offsetDays);
