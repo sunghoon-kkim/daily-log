@@ -754,6 +754,47 @@ html {
             background-size: 24px 24px;
         }
 
+        .water-flow-connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            overflow: visible;
+            pointer-events: none;
+        }
+
+        .water-flow-connection-line {
+            stroke: #667eea;
+            stroke-width: 2.5;
+            fill: none;
+        }
+
+        .water-flow-connection-hit {
+            stroke: transparent;
+            stroke-width: 14;
+            fill: none;
+            cursor: pointer;
+            pointer-events: stroke;
+        }
+
+        .water-flow-arrow-head {
+            fill: #667eea;
+        }
+
+        .water-flow-connect-hint {
+            display: none;
+            font-size: 13px;
+            font-weight: 600;
+            color: #667eea;
+            background: #eef0ff;
+            border-radius: 8px;
+            padding: 8px 14px;
+            margin-bottom: 12px;
+        }
+
+        .water-flow-connect-hint.active {
+            display: block;
+        }
+
         .water-flow-block {
             position: absolute;
             width: 190px;
@@ -761,7 +802,7 @@ html {
             border-radius: 10px;
             border-top: 5px solid #667eea;
             box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            padding: 12px 14px;
+            padding: 32px 14px 12px;
             cursor: grab;
             user-select: none;
             touch-action: none;
@@ -778,10 +819,14 @@ html {
             z-index: 20;
         }
 
-        .water-flow-block-edit-btn {
+        .water-flow-block.connect-source {
+            box-shadow: 0 0 0 3px #667eea, 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .water-flow-block-edit-btn,
+        .water-flow-block-connect-btn {
             position: absolute;
             top: 6px;
-            right: 6px;
             width: 22px;
             height: 22px;
             border-radius: 50%;
@@ -795,7 +840,17 @@ html {
             justify-content: center;
         }
 
-        .water-flow-block-edit-btn:hover {
+        .water-flow-block-edit-btn {
+            right: 6px;
+        }
+
+        .water-flow-block-connect-btn {
+            left: 6px;
+            color: #667eea;
+        }
+
+        .water-flow-block-edit-btn:hover,
+        .water-flow-block-connect-btn:hover {
             background: #e0e0e0;
         }
 
@@ -803,7 +858,6 @@ html {
             font-size: 14px;
             font-weight: 700;
             color: #333;
-            padding-right: 20px;
             word-break: break-word;
         }
 
@@ -3627,8 +3681,26 @@ html {
     color: var(--d-text2);
 }
 
+.dark-mode .water-flow-block-connect-btn {
+    background: var(--d-bg3);
+    color: #a9b6ff;
+}
+
 .dark-mode .water-flow-empty {
     color: var(--d-text3);
+}
+
+.dark-mode .water-flow-connect-hint {
+    background: #2a2a52;
+    color: #a9b6ff;
+}
+
+.dark-mode .water-flow-connection-line {
+    stroke: #8a9bf5;
+}
+
+.dark-mode .water-flow-arrow-head {
+    fill: #8a9bf5;
 }
 
 .dark-mode .password-toggle-btn {
