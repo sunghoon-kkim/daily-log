@@ -5125,6 +5125,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (directionByFrom[conn.from] !== undefined) return;
                     const rFrom = rects[conn.from];
                     if (!rFrom) return;
+                    // 사용자가 줄기를 드래그해서 방향(좌우↔상하)을 직접 바꿔뒀으면 그 값을 그대로 씀.
+                    // 자동 계산과 달리 블록이 옮겨져도 다시 자동으로 되돌아가지 않고 사용자가 고른 방향이 유지됨
+                    const overridden = conns.find(c => c.from === conn.from && c.dirOverride);
+                    if (overridden) { directionByFrom[conn.from] = overridden.dirOverride; return; }
                     const positions = conns.filter(c => c.from === conn.from).map(getTargetPos).filter(Boolean);
                     if (positions.length === 0) return;
                     const srcCX = rFrom.left + rFrom.width / 2, srcCY = rFrom.top + rFrom.height / 2;
@@ -5184,9 +5188,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const dragCursor = isVertical ? 'ns-resize' : 'ew-resize';
                 const connIds = g.branches.map(b => b.connId).join(',');
                 // 가지가 하나뿐이면(형제가 없으면) 줄기 자체가 곧 그 연결선 전체이므로 클릭으로도 처리할 수 있게 함.
-                // 줄기의 선 스타일(색/실선-점선)은 그 줄기를 공유하는 첫 번째 연결선 것을 대표로 씀
+                // 줄기는 여러 연결선이 겹쳐서 하나로 보이는 구간이라, 첫 번째 연결선 것만 대표로 쓰면 그중
+                // 하나라도 점선인데 다른 하나가 실선이면 줄기 전체가 실선으로 보여 점선이 감춰지는 문제가
+                // 있었음. 그래서 하나라도 점선이면 줄기도 점선으로, 색은 형제들의 색이 전부 같을 때만 쓰고
+                // 다르면 기본 색(지정 안 함)으로 그려서 어느 쪽 색도 틀린 것처럼 보이지 않게 함
                 const singleConnClickHandler = g.branches.length === 1 ? ` onclick="handleWaterFlowConnectionLineClick('${g.branches[0].connId}')"` : '';
-                const trunkStyle = waterFlowConnectionLineStyleAttr(waterFlowConnections.find(c => c.id === g.branches[0].connId));
+                const branchConns = g.branches.map(b => waterFlowConnections.find(c => c.id === b.connId)).filter(Boolean);
+                const trunkAnyDashed = branchConns.some(c => c.lineStyle === 'dashed');
+                const trunkColors = [...new Set(branchConns.map(c => c.color).filter(Boolean))];
+                const trunkStyleParts = [];
+                if (trunkColors.length === 1) trunkStyleParts.push(`stroke:${trunkColors[0]}`);
+                if (trunkAnyDashed) trunkStyleParts.push('stroke-dasharray:7,5');
+                const trunkStyle = trunkStyleParts.join(';');
 
                 svgHtml += `
                     <polyline points="${trunkPoints}" class="water-flow-connection-line" style="${trunkStyle}"></polyline>
@@ -5229,18 +5242,24 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             svg.innerHTML = svgHtml;
         }
 
-        let waterFlowConnDragState = null; // { connIds, direction, startClientX, startClientY, startTrunk, moved }
+        let waterFlowConnDragState = null; // { connIds, direction, isVertical, startClientX, startClientY, startTrunk, moved }
         const WATER_FLOW_CONN_DRAG_THRESHOLD = 6;
 
         // 연결선이 꺾이는 지점(trunk)을 드래그로 자유롭게 옮길 수 있게 함. 세로 연결(위/아래)이면
-        // 위아래로, 가로 연결(좌/우)이면 좌우로만 움직임. 여러 갈래가 한 줄기를 공유하는 경우
-        // connIds에 그 줄기에 속한 모든 연결의 id가 담겨 있어서, 한 번에 다 같이 옮겨져 계속 하나로 이어짐
+        // 위아래로, 가로 연결(좌/우)이면 좌우로만 움직이는데, 마우스를 원래 방향과 다른 쪽(수직↔수평)으로
+        // 뚜렷하게 움직이면 이 연결선의 방향 자체를 그쪽으로 바꿔서(dirOverride) 계속 그 방향을 따라가게 함.
+        // 그래서 "이 연결선은 좌우로만, 저 연결선은 상하로만 움직인다"는 제약 없이 어느 쪽으로 끌어도
+        // 항상 마우스를 따라 꺾임 위치가 움직임. 여러 갈래가 한 줄기를 공유하는 경우 connIds에 그 줄기에
+        // 속한 모든 연결의 id가 담겨 있어서, 한 번에 다 같이 옮겨져(방향도 함께 바뀌어) 계속 하나로 이어짐
+        const WATER_FLOW_CONN_AXIS_SWITCH_MARGIN = 24; // 다른 축으로 이만큼 더 움직여야 방향을 바꿈(자잘한 흔들림 방지)
+
         function waterFlowConnectionPointerDown(e, connIdsStr, direction, startTrunk) {
             if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
             if (!editUnlocked) return; // 잠긴 상태에서는 옮길 수 없음(클릭해서 지우는 것도 로그인 필요 - deleteWaterFlowConnection에서 다시 확인함)
             waterFlowConnDragState = {
                 connIds: connIdsStr.split(','),
                 direction,
+                isVertical: direction === 'down' || direction === 'up',
                 startClientX: e.clientX, startClientY: e.clientY,
                 startTrunk,
                 moved: false
@@ -5251,21 +5270,46 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         function waterFlowConnectionPointerMove(e) {
-            if (!waterFlowConnDragState) return;
-            const rawDx = e.clientX - waterFlowConnDragState.startClientX;
-            const rawDy = e.clientY - waterFlowConnDragState.startClientY;
+            const state = waterFlowConnDragState;
+            if (!state) return;
+            const rawDx = e.clientX - state.startClientX;
+            const rawDy = e.clientY - state.startClientY;
 
-            if (!waterFlowConnDragState.moved) {
+            if (!state.moved) {
                 if (Math.hypot(rawDx, rawDy) < WATER_FLOW_CONN_DRAG_THRESHOLD) return;
-                waterFlowConnDragState.moved = true;
+                state.moved = true;
                 pushWaterFlowUndoSnapshot(); // 아직 옮기기 전(원래 위치)이 저장되도록 실제로 드래그가 시작되는 순간에 한 번만 남김
             }
             e.preventDefault();
 
-            const isVertical = waterFlowConnDragState.direction === 'down' || waterFlowConnDragState.direction === 'up';
-            const delta = (isVertical ? rawDy : rawDx) / waterFlowViewZoom; // 확대 배율만큼 보정
-            const newTrunk = waterFlowConnDragState.startTrunk + delta;
-            waterFlowConnDragState.connIds.forEach(id => {
+            // 지금 축과 다른 축으로 뚜렷하게 더 움직였으면 방향을 그쪽으로 바꿈. 바뀐 시점의 마우스
+            // 위치를 캔버스 기준 좌표로 환산해 새 꺾임 위치로 쓰고, 이후 델타 계산의 기준점도 여기로 다시 잡음
+            const alongAbs = Math.abs(state.isVertical ? rawDy : rawDx);
+            const acrossAbs = Math.abs(state.isVertical ? rawDx : rawDy);
+            if (acrossAbs > alongAbs + WATER_FLOW_CONN_AXIS_SWITCH_MARGIN) {
+                const canvas = document.getElementById('waterFlowCanvas');
+                const rect = canvas.getBoundingClientRect();
+                const newIsVertical = !state.isVertical;
+                const newDirection = newIsVertical ? (rawDy >= 0 ? 'down' : 'up') : (rawDx >= 0 ? 'right' : 'left');
+                const newTrunk = newIsVertical ? (e.clientY - rect.top) / waterFlowViewZoom : (e.clientX - rect.left) / waterFlowViewZoom;
+
+                state.isVertical = newIsVertical;
+                state.direction = newDirection;
+                state.startClientX = e.clientX;
+                state.startClientY = e.clientY;
+                state.startTrunk = newTrunk;
+
+                state.connIds.forEach(id => {
+                    const conn = waterFlowConnections.find(c => c.id === id);
+                    if (conn) { conn.dirOverride = newDirection; conn.trunkOverride = newTrunk; }
+                });
+                renderWaterFlowConnections();
+                return;
+            }
+
+            const delta = (state.isVertical ? rawDy : rawDx) / waterFlowViewZoom; // 확대 배율만큼 보정
+            const newTrunk = state.startTrunk + delta;
+            state.connIds.forEach(id => {
                 const conn = waterFlowConnections.find(c => c.id === id);
                 if (conn) conn.trunkOverride = newTrunk;
             });
