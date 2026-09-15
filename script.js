@@ -4590,6 +4590,78 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         let waterFlowDragState = null; // { blockId, el, startClientX, startClientY, startLeft, startTop, moved, pendingX, pendingY }
         const WATER_FLOW_DRAG_MOVE_THRESHOLD = 6;
+        const WATER_FLOW_SNAP_THRESHOLD = 8; // 이 거리(px) 안으로 들어오면 다른 블록에 맞춰 자동 정렬함
+
+        // 드래그 중인 블록의 좌/중앙/우, 상/중앙/하 기준선이 다른 블록의 같은 기준선과 가까우면
+        // 그 위치에 딱 맞춰지도록(스냅) 보정값을 계산함. 가로(x)와 세로(y)는 서로 독립적으로 스냅됨
+        function computeWaterFlowSnap(draggedRect, otherRects) {
+            let snapLeft = null, guideX = null, bestXDelta = WATER_FLOW_SNAP_THRESHOLD;
+            let snapTop = null, guideY = null, bestYDelta = WATER_FLOW_SNAP_THRESHOLD;
+
+            const dLeft = draggedRect.left, dCenterX = draggedRect.left + draggedRect.width / 2, dRight = draggedRect.left + draggedRect.width;
+            const dTop = draggedRect.top, dCenterY = draggedRect.top + draggedRect.height / 2, dBottom = draggedRect.top + draggedRect.height;
+
+            otherRects.forEach(r => {
+                const oLeft = r.left, oCenterX = r.left + r.width / 2, oRight = r.left + r.width;
+                const oTop = r.top, oCenterY = r.top + r.height / 2, oBottom = r.top + r.height;
+
+                [[dLeft, oLeft, 0], [dCenterX, oCenterX, draggedRect.width / 2], [dRight, oRight, draggedRect.width]].forEach(([dVal, oVal, offset]) => {
+                    const delta = Math.abs(dVal - oVal);
+                    if (delta < bestXDelta) {
+                        bestXDelta = delta;
+                        snapLeft = oVal - offset;
+                        guideX = oVal;
+                    }
+                });
+                [[dTop, oTop, 0], [dCenterY, oCenterY, draggedRect.height / 2], [dBottom, oBottom, draggedRect.height]].forEach(([dVal, oVal, offset]) => {
+                    const delta = Math.abs(dVal - oVal);
+                    if (delta < bestYDelta) {
+                        bestYDelta = delta;
+                        snapTop = oVal - offset;
+                        guideY = oVal;
+                    }
+                });
+            });
+
+            return { left: snapLeft, top: snapTop, guideX, guideY };
+        }
+
+        // 스냅이 적용된 위치에 빨간 안내선을 그어서, 지금 어떤 기준(좌/중앙/우, 상/중앙/하)에
+        // 맞춰지고 있는지 보여줌. guideX/guideY가 null이면 해당 방향 안내선은 지움
+        function updateWaterFlowSnapGuides(canvas, guideX, guideY) {
+            let vEl = document.getElementById('waterFlowSnapGuideV');
+            if (guideX !== null) {
+                if (!vEl) {
+                    vEl = document.createElement('div');
+                    vEl.id = 'waterFlowSnapGuideV';
+                    vEl.className = 'water-flow-snap-guide water-flow-snap-guide-v';
+                    canvas.appendChild(vEl);
+                }
+                vEl.style.left = guideX + 'px';
+                vEl.style.height = canvas.scrollHeight + 'px';
+            } else if (vEl) {
+                vEl.remove();
+            }
+
+            let hEl = document.getElementById('waterFlowSnapGuideH');
+            if (guideY !== null) {
+                if (!hEl) {
+                    hEl = document.createElement('div');
+                    hEl.id = 'waterFlowSnapGuideH';
+                    hEl.className = 'water-flow-snap-guide water-flow-snap-guide-h';
+                    canvas.appendChild(hEl);
+                }
+                hEl.style.top = guideY + 'px';
+                hEl.style.width = canvas.scrollWidth + 'px';
+            } else if (hEl) {
+                hEl.remove();
+            }
+        }
+
+        function clearWaterFlowSnapGuides() {
+            document.getElementById('waterFlowSnapGuideV')?.remove();
+            document.getElementById('waterFlowSnapGuideH')?.remove();
+        }
 
         function waterFlowBlockPointerDown(e, blockId) {
             if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
@@ -4626,10 +4698,27 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
 
             e.preventDefault(); // 드래그 중 터치 스크롤/텍스트 선택 방지
-            const newLeft = Math.max(0, waterFlowDragState.startLeft + dx);
-            const newTop = Math.max(0, waterFlowDragState.startTop + dy);
-            waterFlowDragState.el.style.left = newLeft + 'px';
-            waterFlowDragState.el.style.top = newTop + 'px';
+            const canvas = document.getElementById('waterFlowCanvas');
+            let newLeft = Math.max(0, waterFlowDragState.startLeft + dx);
+            let newTop = Math.max(0, waterFlowDragState.startTop + dy);
+
+            // 다른 블록들과 가로/세로로 맞춰지도록(좌/중앙/우, 상/중앙/하 기준) 스냅 보정
+            const el = waterFlowDragState.el;
+            const draggedRect = { left: newLeft, top: newTop, width: el.offsetWidth, height: el.offsetHeight };
+            const otherRects = waterFlowBlocks
+                .filter(b => b.id !== waterFlowDragState.blockId)
+                .map(b => {
+                    const oEl = canvas.querySelector(`.water-flow-block[data-block-id="${b.id}"]`);
+                    return oEl ? { left: oEl.offsetLeft, top: oEl.offsetTop, width: oEl.offsetWidth, height: oEl.offsetHeight } : null;
+                })
+                .filter(Boolean);
+            const snap = computeWaterFlowSnap(draggedRect, otherRects);
+            if (snap.left !== null) newLeft = Math.max(0, snap.left);
+            if (snap.top !== null) newTop = Math.max(0, snap.top);
+            updateWaterFlowSnapGuides(canvas, snap.guideX, snap.guideY);
+
+            el.style.left = newLeft + 'px';
+            el.style.top = newTop + 'px';
             waterFlowDragState.pendingX = newLeft;
             waterFlowDragState.pendingY = newTop;
             renderWaterFlowConnections(); // 연결선이 드래그 중인 블록을 실시간으로 따라오도록 함
@@ -4644,6 +4733,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const state = waterFlowDragState;
             waterFlowDragState = null;
             state.el.classList.remove('dragging');
+            clearWaterFlowSnapGuides();
 
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 별도 onclick이 펼치기/접기를 처리하도록 둠
 

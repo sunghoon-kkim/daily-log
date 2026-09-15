@@ -795,6 +795,24 @@ html {
             display: block;
         }
 
+        /* 블록 드래그 중 다른 블록과 가로/세로로 맞춰질 때 나타나는 빨간 안내선 */
+        .water-flow-snap-guide {
+            position: absolute;
+            background: #ff4757;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        .water-flow-snap-guide-v {
+            top: 0;
+            width: 1px;
+        }
+
+        .water-flow-snap-guide-h {
+            left: 0;
+            height: 1px;
+        }
+
         .water-flow-block {
             position: absolute;
             width: 190px;
