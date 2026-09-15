@@ -5277,42 +5277,41 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const tapConns = waterFlowConnections.filter(c => c.toConnectionId);
             const branchMidpointByConnId = {};
 
-            // 같은 블록에서 나가는 연결선이라도, 도착 지점이 서로 완전히 다른 방향(예: 하나는
-            // 오른쪽, 하나는 훨씬 아래쪽)이면 하나의 줄기로 억지로 묶지 않고 방향별로 따로 묶음.
-            // (예전엔 전체 도착 지점의 "평균 위치"로 방향을 한 번만 정해서 전부 하나로 묶었는데,
-            // 그러면 유독 멀리 떨어진 도착 지점 하나 때문에 평균이 엉뚱한 쪽으로 쏠려서, 가까운
-            // 다른 연결들까지 전부 그 먼 지점 근처까지 돌아갔다가 다시 자기 도착점을 찾아가는
-            // 것처럼 보이는(선이 크게 꼬여 보이는) 문제가 있었음. 방향이 같은 연결끼리는 여전히
-            // 하나로 묶여서 나뭇가지처럼 보이고, 방향이 다른 연결만 자연스럽게 갈라져 나감)
+            // 같은 블록에서 나가는 연결선은 도착 지점 하나하나가 아니라 그 지점들 전체의 "평균 위치"를
+            // 기준으로 방향(상/하/좌/우)을 한 번만 정함. 개별적으로 정하면 도착 지점 하나가 유독
+            // 옆으로 치우쳐 있을 때 그것만 다른 방향으로 분류돼 줄기가 안 합쳐지는 경우가 생기는데,
+            // 그런 일이 없도록 항상 하나로 묶이게 함
             function buildGroups(conns, getTargetPos, getEntryPoint) {
-                const directionByConnId = {};
+                const directionByFrom = {};
                 conns.forEach(conn => {
+                    if (directionByFrom[conn.from] !== undefined) return;
                     const rFrom = rects[conn.from];
                     if (!rFrom) return;
-                    const pos = getTargetPos(conn);
-                    if (!pos) return;
+                    const positions = conns.filter(c => c.from === conn.from).map(getTargetPos).filter(Boolean);
+                    if (positions.length === 0) return;
                     const srcCX = rFrom.left + rFrom.width / 2, srcCY = rFrom.top + rFrom.height / 2;
-                    const dx = pos.x - srcCX, dy = pos.y - srcCY;
-                    directionByConnId[conn.id] = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'down' : 'up');
+                    const avgCX = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+                    const avgCY = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+                    const dx = avgCX - srcCX, dy = avgCY - srcCY;
+                    directionByFrom[conn.from] = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'down' : 'up');
                 });
 
-                const groups = {}; // "fromId|방향" -> { direction, exit, branches: [{connId, entry}], overrideTrunk, overrideExitBend }
+                const groups = {}; // fromId -> { direction, exit, branches: [{connId, entry}], overrideTrunk, overrideExitBend }
                 conns.forEach(conn => {
-                    const direction = directionByConnId[conn.id];
+                    const direction = directionByFrom[conn.from];
                     const rFrom = rects[conn.from];
                     if (!direction || !rFrom) return;
                     const entry = getEntryPoint(conn, direction);
                     if (!entry) return;
-                    const groupKey = conn.from + '|' + direction;
-                    if (!groups[groupKey]) {
-                        groups[groupKey] = { direction, exit: waterFlowAttachPoint(rFrom, direction), branches: [], overrideTrunk: null, overrideExitBend: null };
+                    if (!groups[conn.from]) {
+                        groups[conn.from] = { direction, exit: waterFlowAttachPoint(rFrom, direction), branches: [], overrideTrunk: null, overrideExitBend: null };
                     }
-                    groups[groupKey].branches.push({ connId: conn.id, entry });
-                    if (groups[groupKey].overrideTrunk === null && typeof conn.trunkOverride === 'number') {
-                        groups[groupKey].overrideTrunk = conn.trunkOverride;
+                    groups[conn.from].branches.push({ connId: conn.id, entry });
+                    if (groups[conn.from].overrideTrunk === null && typeof conn.trunkOverride === 'number') {
+                        groups[conn.from].overrideTrunk = conn.trunkOverride;
                     }
-                    if (groups[groupKey].overrideExitBend === null && typeof conn.exitBend === 'number') {
-                        groups[groupKey].overrideExitBend = conn.exitBend;
+                    if (groups[conn.from].overrideExitBend === null && typeof conn.exitBend === 'number') {
+                        groups[conn.from].overrideExitBend = conn.exitBend;
                     }
                 });
                 return groups;
