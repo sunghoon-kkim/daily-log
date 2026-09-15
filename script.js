@@ -5176,26 +5176,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             renderWaterFlowConnections();
         }
 
-        // 박스를 옮기거나 간격을 조절하다 보면, 드래그로 손봐둔 트렁크/exitBend/entryBend 값이
-        // 새 박스 위치와 안 맞아서 선이 어색하게 꺾여 보이는 경우가 생김. 이 버튼은 그 값들을 모두
-        // 지워서 다시 "출발/도착 위치로부터 자동 계산된" 원래 모양으로 되돌림. 트렁크/exitBend는
-        // 같은 블록에서 나가는 형제 연결선 전체가 값을 공유하므로, 그 형제들 것도 함께 지워야
-        // 실제로 모양이 바뀜(하나만 지워도 형제 중 하나가 남은 값을 계속 쓰면 그대로 보임)
-        function resetWaterFlowConnectionShape() {
-            if (!checkEditPermission()) return;
-            const conn = waterFlowConnections.find(c => c.id === editingWaterFlowConnectionId);
-            if (!conn) return;
-            pushWaterFlowUndoSnapshot();
-            delete conn.entryBend;
-            waterFlowConnections.forEach(c => {
-                if (c.from === conn.from) { delete c.trunkOverride; delete c.exitBend; }
-            });
-            saveWaterFlowConnectionsToStorage();
-            closeWaterFlowConnectionModal();
-            renderWaterFlowConnections();
-            showAppToast('↺ 연결선 모양을 자동으로 되돌렸습니다');
-        }
-
         function deleteWaterFlowConnectionFromModal() {
             const connId = editingWaterFlowConnectionId;
             closeWaterFlowConnectionModal();
