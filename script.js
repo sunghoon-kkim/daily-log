@@ -4851,6 +4851,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                          onpointerdown="waterFlowBlockPointerDown(event, '${b.id}')"
                          onclick="toggleWaterFlowBlockExpand('${b.id}')">
                         <button class="water-flow-block-connect-btn" onclick="event.stopPropagation(); startWaterFlowConnect('${b.id}')" title="다른 블록과 화살표로 연결" aria-label="다른 블록과 화살표로 연결">🔗</button>
+                        <button class="water-flow-block-delete-btn" onclick="event.stopPropagation(); deleteWaterFlowBlockDirect('${b.id}')" title="블록 삭제" aria-label="블록 삭제">🗑️</button>
                         <button class="water-flow-block-edit-btn" onclick="event.stopPropagation(); openWaterFlowBlockModal('${b.id}')" title="블록 수정" aria-label="블록 수정">✏️</button>
                         <div class="water-flow-block-title">${escapeHtml(b.title)}</div>
                         ${expanded ? `<div class="water-flow-block-detail">${detailHtml || '<span class="water-flow-block-detail-empty">세부 내용이 없습니다</span>'}</div>` : ''}
@@ -4950,6 +4951,59 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 renderWaterFlowCanvas();
                 return;
             }
+            openWaterFlowConnectionModal(connId);
+        }
+
+        // ===== 연결선 편집(선 종류/색상) 모달 =====
+        let editingWaterFlowConnectionId = null;
+
+        function openWaterFlowConnectionModal(connId) {
+            if (!checkEditPermission()) return;
+            const conn = waterFlowConnections.find(c => c.id === connId);
+            if (!conn) return;
+            editingWaterFlowConnectionId = connId;
+            pickWaterFlowConnectionStyle(conn.lineStyle === 'dashed' ? 'dashed' : 'solid');
+            pickWaterFlowConnectionColor(conn.color || '');
+            document.getElementById('waterFlowConnectionModal').classList.add('active');
+            applyFormLockState();
+        }
+
+        function closeWaterFlowConnectionModal() {
+            document.getElementById('waterFlowConnectionModal').classList.remove('active');
+            editingWaterFlowConnectionId = null;
+        }
+
+        function pickWaterFlowConnectionStyle(style) {
+            document.getElementById('waterFlowConnectionStyleInput').value = style;
+            document.querySelectorAll('#waterFlowConnectionStyleRow .quick-preset-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.style === style);
+            });
+        }
+
+        function pickWaterFlowConnectionColor(color) {
+            document.getElementById('waterFlowConnectionColorInput').value = color;
+            document.querySelectorAll('#waterFlowConnectionColorRow .color-swatch').forEach(sw => {
+                sw.classList.toggle('selected', sw.dataset.color === color);
+            });
+        }
+
+        function saveWaterFlowConnectionStyle() {
+            if (!checkEditPermission()) return;
+            const conn = waterFlowConnections.find(c => c.id === editingWaterFlowConnectionId);
+            if (!conn) return;
+            pushWaterFlowUndoSnapshot();
+            const style = document.getElementById('waterFlowConnectionStyleInput').value;
+            const color = document.getElementById('waterFlowConnectionColorInput').value;
+            conn.lineStyle = style === 'dashed' ? 'dashed' : 'solid';
+            if (color) conn.color = color; else delete conn.color;
+            saveWaterFlowConnectionsToStorage();
+            closeWaterFlowConnectionModal();
+            renderWaterFlowConnections();
+        }
+
+        function deleteWaterFlowConnectionFromModal() {
+            const connId = editingWaterFlowConnectionId;
+            closeWaterFlowConnectionModal();
             deleteWaterFlowConnection(connId);
         }
 
@@ -4995,6 +5049,15 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         // 나가는 방향의 반대쪽이 들어오는 블록의 진입면이 됨 (오른쪽으로 나가면 상대는 왼쪽으로 받음)
         const WATER_FLOW_ENTRY_SIDE = { right: 'left', left: 'right', down: 'up', up: 'down' };
+
+        // 연결선에 사용자가 지정한 색/선 종류가 있으면 그걸 인라인 스타일로 덮어씀. 지정하지 않았으면
+        // 빈 문자열을 반환해서 CSS 기본값(다크모드 자동 대응 포함)이 그대로 적용되게 함
+        function waterFlowConnectionLineStyleAttr(conn) {
+            const parts = [];
+            if (conn && conn.color) parts.push(`stroke:${conn.color}`);
+            if (conn && conn.lineStyle === 'dashed') parts.push('stroke-dasharray:7,5');
+            return parts.join(';');
+        }
 
         // 블록의 실제 DOM 위치/크기를 기준으로 연결선을 다시 그림. 블록을 드래그하는 동안에도
         // (전체 재렌더 없이) 매 이동마다 호출해서 선이 블록을 따라 실시간으로 움직이게 함.
@@ -5090,16 +5153,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     : `${g.exit.x},${g.exit.y} ${trunk},${g.exit.y} ${trunk},${busMin} ${trunk},${busMax}`;
                 const dragCursor = isVertical ? 'ns-resize' : 'ew-resize';
                 const connIds = g.branches.map(b => b.connId).join(',');
-                // 가지가 하나뿐이면(형제가 없으면) 줄기 자체가 곧 그 연결선 전체이므로 클릭으로도 처리할 수 있게 함
+                // 가지가 하나뿐이면(형제가 없으면) 줄기 자체가 곧 그 연결선 전체이므로 클릭으로도 처리할 수 있게 함.
+                // 줄기의 선 스타일(색/실선-점선)은 그 줄기를 공유하는 첫 번째 연결선 것을 대표로 씀
                 const singleConnClickHandler = g.branches.length === 1 ? ` onclick="handleWaterFlowConnectionLineClick('${g.branches[0].connId}')"` : '';
+                const trunkStyle = waterFlowConnectionLineStyleAttr(waterFlowConnections.find(c => c.id === g.branches[0].connId));
 
                 svgHtml += `
-                    <polyline points="${trunkPoints}" class="water-flow-connection-line"></polyline>
+                    <polyline points="${trunkPoints}" class="water-flow-connection-line" style="${trunkStyle}"></polyline>
                     <polyline points="${trunkPoints}" class="water-flow-connection-hit" style="cursor:${dragCursor}"
-                        onpointerdown="waterFlowConnectionPointerDown(event, '${connIds}', '${g.direction}', ${trunk})"${singleConnClickHandler}><title>드래그로 꺾이는 위치 옮기기${g.branches.length === 1 ? ' · 클릭하면 삭제(연결 모드 중이면 여기로 이어붙이기)' : ''}</title></polyline>
+                        onpointerdown="waterFlowConnectionPointerDown(event, '${connIds}', '${g.direction}', ${trunk})"${singleConnClickHandler}><title>드래그로 꺾이는 위치 옮기기${g.branches.length === 1 ? ' · 클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)' : ''}</title></polyline>
                 `;
 
-                // 가지(줄기 → 각 도착 지점)는 연결마다 따로 그려서, 클릭하면 그 연결만 삭제되게 함.
+                // 가지(줄기 → 각 도착 지점)는 연결마다 따로 그려서, 클릭하면 그 연결만 편집/삭제할 수 있게 함.
                 // 이 가지의 중간 지점은 다른 블록이 이 연결선에 "이어붙을" 때 앵커로 쓰임
                 g.branches.forEach(b => {
                     const elbow = isVertical ? { x: b.entry.x, y: trunk } : { x: trunk, y: b.entry.y };
@@ -5107,9 +5172,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     const branchPoints = isVertical
                         ? `${b.entry.x},${trunk} ${b.entry.x},${b.entry.y}`
                         : `${trunk},${b.entry.y} ${b.entry.x},${b.entry.y}`;
+                    const branchStyle = waterFlowConnectionLineStyleAttr(waterFlowConnections.find(c => c.id === b.connId));
                     svgHtml += `
-                        <polyline points="${branchPoints}" class="water-flow-connection-line"></polyline>
-                        <polyline points="${branchPoints}" class="water-flow-connection-hit" onclick="handleWaterFlowConnectionLineClick('${b.connId}')"><title>클릭하면 삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>
+                        <polyline points="${branchPoints}" class="water-flow-connection-line" style="${branchStyle}"></polyline>
+                        <polyline points="${branchPoints}" class="water-flow-connection-hit" onclick="handleWaterFlowConnectionLineClick('${b.connId}')"><title>클릭하면 편집/삭제(연결 모드 중이면 여기로 이어붙이기)</title></polyline>
                     `;
                 });
             }
@@ -5335,7 +5401,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function waterFlowBlockPointerDown(e, blockId) {
             if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
             if (!editUnlocked) return; // 잠긴 상태에서는 위치를 옮길 수 없음(펼쳐보는 클릭은 별도 onclick으로 그대로 동작)
-            if (e.target.closest('.water-flow-block-edit-btn') || e.target.closest('.water-flow-block-connect-btn')) return;
+            if (e.target.closest('.water-flow-block-edit-btn') || e.target.closest('.water-flow-block-connect-btn') || e.target.closest('.water-flow-block-delete-btn')) return;
             const block = waterFlowBlocks.find(b => b.id === blockId);
             if (!block) return;
 
@@ -5468,7 +5534,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function closeWaterFlowBlockModal() {
             document.getElementById('waterFlowBlockModal').classList.remove('active');
             editingWaterFlowBlockId = null;
+            pendingNewWaterFlowBlockPosition = null; // 취소했으면 더블클릭으로 찍어둔 위치도 함께 버림
         }
+
+        // 빈 곳을 더블클릭해서 블록을 추가할 때, 그 클릭한 위치에 새 블록을 놓기 위해 잠깐 담아두는 값.
+        // "➕ 블록 추가" 버튼으로 추가할 때는 이 값이 없어서 기존처럼 격자 위치에 놓임
+        let pendingNewWaterFlowBlockPosition = null;
 
         function saveWaterFlowBlock() {
             if (!checkEditPermission()) return;
@@ -5486,7 +5557,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const b = waterFlowBlocks.find(x => x.id === editingWaterFlowBlockId);
                 if (b) { b.title = title; b.detail = detail; b.color = color; }
             } else {
-                const pos = nextWaterFlowBlockPosition();
+                const pos = pendingNewWaterFlowBlockPosition || nextWaterFlowBlockPosition();
+                pendingNewWaterFlowBlockPosition = null;
                 waterFlowBlocks.push({
                     id: 'wfb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
                     title, detail, color, x: pos.x, y: pos.y, expanded: true
@@ -5513,6 +5585,26 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 closeWaterFlowBlockModal();
                 renderWaterFlowCanvas();
             });
+        }
+
+        // 수정 모달을 거치지 않고 블록 카드에서 바로 삭제(확인은 그대로 거침)
+        function deleteWaterFlowBlockDirect(blockId) {
+            if (!checkEditPermission()) return;
+            editingWaterFlowBlockId = blockId;
+            deleteWaterFlowBlock();
+        }
+
+        // 빈 곳(블록/연결선이 아닌 곳)을 더블클릭하면 그 위치에 새 블록을 추가하는 창을 바로 띄움
+        function waterFlowCanvasDoubleClick(e) {
+            if (e.target !== e.currentTarget) return;
+            if (!checkEditPermission()) return;
+            const canvas = document.getElementById('waterFlowCanvas');
+            const rect = canvas.getBoundingClientRect();
+            pendingNewWaterFlowBlockPosition = {
+                x: Math.max(0, (e.clientX - rect.left) / waterFlowViewZoom),
+                y: Math.max(0, (e.clientY - rect.top) / waterFlowViewZoom)
+            };
+            openWaterFlowBlockModal(null);
         }
 
         // ===== AI 월별 피드백 요약 =====
@@ -8099,6 +8191,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'maintenanceModal') closeMaintenanceModal();
             else if (id === 'waterFlowBlockModal') closeWaterFlowBlockModal();
             else if (id === 'waterFlowDiagramModal') closeWaterFlowDiagramModal();
+            else if (id === 'waterFlowConnectionModal') closeWaterFlowConnectionModal();
             else if (id === 'deleteTeamReportModal') closeDeleteTeamReportModal();
             else if (id === 'signupModal') closeSignupModal();
             else if (id === 'adminEditUserModal') closeAdminEditUserModal();

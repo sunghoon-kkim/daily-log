@@ -745,7 +745,8 @@ html {
             height: 65vh;
             border: 1px solid #e5e5e5;
             border-radius: 12px;
-            background: #fafbfc;
+            /* 블록을 놓을 수 없는 바깥쪽 영역 - 안쪽(캔버스)과 색을 다르게 줘서 이동 가능 범위를 구분함 */
+            background: #e8edf7;
             cursor: grab;
             touch-action: none;
         }
@@ -761,8 +762,11 @@ html {
             width: 2400px;
             height: 1400px;
             transform-origin: 0 0;
+            /* 블록을 놓고 옮길 수 있는 실제 영역 */
+            background-color: #fdfdfd;
             background-image: radial-gradient(circle, #dcdcdc 1px, transparent 1px);
             background-size: 24px 24px;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
         }
 
         .water-flow-connections-svg {
@@ -908,7 +912,8 @@ html {
         }
 
         .water-flow-block-edit-btn,
-        .water-flow-block-connect-btn {
+        .water-flow-block-connect-btn,
+        .water-flow-block-delete-btn {
             position: absolute;
             top: 6px;
             width: 22px;
@@ -928,6 +933,10 @@ html {
             right: 6px;
         }
 
+        .water-flow-block-delete-btn {
+            right: 32px;
+        }
+
         .water-flow-block-connect-btn {
             left: 6px;
             color: #667eea;
@@ -938,6 +947,11 @@ html {
             background: #e0e0e0;
         }
 
+        .water-flow-block-delete-btn:hover {
+            background: #ffdede;
+            color: #e74c3c;
+        }
+
         .water-flow-block-title {
             font-size: 14px;
             font-weight: 700;
@@ -945,16 +959,22 @@ html {
             word-break: break-word;
         }
 
-        .water-flow-block.expanded .water-flow-block-title {
-            margin-bottom: 8px;
-        }
-
+        /* 세부 내용은 블록 안에 끼워 넣지 않고, 블록 바로 아래에 겹쳐 보이는 패널로 띄움.
+           이렇게 해야 펼치고 접어도 블록 자체의 높이(→ 연결선이 붙는 위치)가 그대로 유지되어,
+           블록을 누를 때마다 연결선 위치가 흔들리지 않음 */
         .water-flow-block-detail {
+            position: absolute;
+            top: 100%;
+            left: -14px;
+            right: -14px;
+            background: white;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.12);
             font-size: 12px;
             color: #666;
             line-height: 1.5;
             border-top: 1px dashed #eee;
-            padding-top: 8px;
+            padding: 8px 14px 12px;
             word-break: break-word;
         }
 
@@ -3029,6 +3049,16 @@ html {
             transform: scale(1.15);
         }
 
+        /* 흐름도 연결선 편집 모달의 "기본색(자동)" 스와치 - 실제 색이 아니라 되돌리기 아이콘을 보여줌 */
+        .water-flow-connection-default-swatch {
+            background: #eee;
+            color: #888;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         /* 브라우저마다 input[type=color]의 네모난 스와치를 완전히 동그랗게 다듬기 어려워서,
            실제로 보여지는 무지개색 원은 이 래퍼가 그리고, input 자체는 그 위에 투명하게 덮어서
            클릭만 받게 함 (네이티브 색상 선택 창은 그대로 열림) */
@@ -3744,7 +3774,9 @@ html {
 }
 
 .dark-mode .water-flow-canvas {
+    background-color: var(--d-bg1);
     background-image: radial-gradient(circle, var(--d-border) 1px, transparent 1px);
+    box-shadow: 0 0 0 1px var(--d-border);
 }
 
 .dark-mode .water-flow-block {
@@ -3756,6 +3788,7 @@ html {
 }
 
 .dark-mode .water-flow-block-detail {
+    background: var(--d-bg1);
     color: var(--d-text2);
     border-top-color: var(--d-border);
 }
@@ -3768,6 +3801,16 @@ html {
 .dark-mode .water-flow-block-connect-btn {
     background: var(--d-bg3);
     color: #a9b6ff;
+}
+
+.dark-mode .water-flow-block-delete-btn {
+    background: var(--d-bg3);
+    color: #ff9b9b;
+}
+
+.dark-mode .water-flow-block-delete-btn:hover {
+    background: #4a2020;
+    color: #ff9b9b;
 }
 
 .dark-mode .water-flow-empty {
@@ -3801,6 +3844,11 @@ html {
 
 .dark-mode .water-flow-diagram-add-btn:hover {
     background: #2a2a52;
+}
+
+.dark-mode .water-flow-connection-default-swatch {
+    background: var(--d-bg3);
+    color: var(--d-text2);
 }
 
 .dark-mode .water-flow-connection-line {

@@ -512,14 +512,14 @@
                         <button class="add-category-btn" onclick="openWaterFlowBlockModal(null)">➕ 블록 추가</button>
                     </div>
                 </div>
-                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">블록을 자유롭게 추가하고 드래그해서 원하는 위치에 배치하세요(다른 블록과 가까우면 자동으로 정렬됩니다). 블록을 클릭하면 세부 내용이 펼쳐지고, 다시 누르면 접힙니다. 🔗 아이콘으로 다른 블록과 선으로 연결할 수 있고(하나에서 여러 개로 갈라지는 연결도 가능, 이미 있는 연결선에 이어붙이는 것도 가능), 연결선을 클릭하면 삭제됩니다. ✏️ 아이콘으로 제목·내용·색상을 수정할 수 있습니다. 빈 곳을 드래그하면 화면을 이동할 수 있고, 마우스 휠로 확대·축소할 수 있습니다. 실수로 옮기거나 지웠다면 되돌리기(Ctrl+Z)로 복구할 수 있습니다.</p>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">블록을 자유롭게 추가하고 드래그해서 원하는 위치에 배치하세요(다른 블록과 가까우면 자동으로 정렬됩니다). 빈 곳을 더블클릭해도 그 자리에 블록을 추가할 수 있습니다. 블록을 클릭하면 세부 내용이 펼쳐지고, 다시 누르면 접힙니다. 🔗 아이콘으로 다른 블록과 선으로 연결할 수 있고(하나에서 여러 개로 갈라지는 연결도 가능, 이미 있는 연결선에 이어붙이는 것도 가능), ✏️ 아이콘으로 제목·내용·색상을, 🗑️ 아이콘으로 바로 삭제할 수 있습니다. 연결선을 클릭하면 선 종류·색상을 바꾸거나 삭제할 수 있는 창이 뜹니다. 빈 곳을 드래그하면 화면을 이동할 수 있고, 마우스 휠로 확대·축소할 수 있습니다. 흰색 영역 안에서만 블록을 놓을 수 있습니다. 실수로 옮기거나 지웠다면 되돌리기(Ctrl+Z)로 복구할 수 있습니다.</p>
 
                 <div class="water-flow-diagram-tabs" id="waterFlowDiagramTabs"></div>
 
                 <div class="water-flow-connect-hint" id="waterFlowConnectHint">🔗 연결할 블록이나 연결선을 클릭하세요. (취소하려면 출발 블록의 🔗를 다시 누르거나 빈 곳을 클릭하세요)</div>
 
                 <div class="water-flow-canvas-wrap" id="waterFlowCanvasWrap" onwheel="waterFlowCanvasWheel(event)" onpointerdown="waterFlowCanvasPointerDown(event)">
-                    <div class="water-flow-canvas" id="waterFlowCanvas" onclick="if(event.target===this) cancelWaterFlowConnectMode()"></div>
+                    <div class="water-flow-canvas" id="waterFlowCanvas" onclick="if(event.target===this) cancelWaterFlowConnectMode()" ondblclick="waterFlowCanvasDoubleClick(event)"></div>
                 </div>
             </div>
         </div>
@@ -1084,6 +1084,40 @@
                 <button class="modal-btn modal-delete-btn" id="deleteWaterFlowDiagramBtn" onclick="deleteWaterFlowDiagram()">삭제</button>
                 <button class="modal-btn modal-save-btn" onclick="saveWaterFlowDiagramName()">저장</button>
                 <button class="modal-btn modal-cancel-btn" onclick="closeWaterFlowDiagramModal()">취소</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="waterFlowConnectionModal" role="dialog" aria-modal="true">
+        <div class="modal-box">
+            <h3>🔀 연결선 편집</h3>
+
+            <div class="modal-field">
+                <label>선 종류</label>
+                <div class="quick-preset-row" id="waterFlowConnectionStyleRow">
+                    <button type="button" class="quick-preset-btn" data-style="solid" onclick="pickWaterFlowConnectionStyle('solid')">━ 실선</button>
+                    <button type="button" class="quick-preset-btn" data-style="dashed" onclick="pickWaterFlowConnectionStyle('dashed')">┅ 점선</button>
+                </div>
+                <input type="hidden" id="waterFlowConnectionStyleInput" value="solid">
+            </div>
+            <div class="modal-field">
+                <label>선 색상</label>
+                <div class="quick-preset-row" id="waterFlowConnectionColorRow">
+                    <div class="color-swatch water-flow-connection-default-swatch" data-color="" onclick="pickWaterFlowConnectionColor('')" title="기본색(자동)">↺</div>
+                    <div class="color-swatch" style="background:#667eea" data-color="#667eea" onclick="pickWaterFlowConnectionColor('#667eea')"></div>
+                    <div class="color-swatch" style="background:#ff6b6b" data-color="#ff6b6b" onclick="pickWaterFlowConnectionColor('#ff6b6b')"></div>
+                    <div class="color-swatch" style="background:#ff9f43" data-color="#ff9f43" onclick="pickWaterFlowConnectionColor('#ff9f43')"></div>
+                    <div class="color-swatch" style="background:#feca57" data-color="#feca57" onclick="pickWaterFlowConnectionColor('#feca57')"></div>
+                    <div class="color-swatch" style="background:#1dd1a1" data-color="#1dd1a1" onclick="pickWaterFlowConnectionColor('#1dd1a1')"></div>
+                    <div class="color-swatch" style="background:#5f27cd" data-color="#5f27cd" onclick="pickWaterFlowConnectionColor('#5f27cd')"></div>
+                    <div class="color-swatch" style="background:#ee5a6f" data-color="#ee5a6f" onclick="pickWaterFlowConnectionColor('#ee5a6f')"></div>
+                </div>
+                <input type="hidden" id="waterFlowConnectionColorInput" value="">
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-delete-btn" onclick="deleteWaterFlowConnectionFromModal()">삭제</button>
+                <button class="modal-btn modal-save-btn" onclick="saveWaterFlowConnectionStyle()">저장</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeWaterFlowConnectionModal()">취소</button>
             </div>
         </div>
     </div>
