@@ -1091,6 +1091,21 @@
             </div>
         </div>
     </div>
+    <div class="modal-overlay" id="categoryRenameModal" role="dialog" aria-modal="true">
+        <div class="modal-box">
+            <h3>✏️ 카테고리 이름 변경</h3>
+
+            <div class="modal-field">
+                <label>카테고리 이름</label>
+                <input type="text" id="categoryRenameInput" placeholder="예: 수처리">
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-save-btn" onclick="saveCategoryRename()">저장</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeCategoryRenameModal()">취소</button>
+            </div>
+        </div>
+    </div>
     <div class="modal-overlay" id="freeNotesPageModal" role="dialog" aria-modal="true">
         <div class="modal-box">
             <h3>📝 메모장 이름 변경</h3>

@@ -2059,18 +2059,37 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         // 카테고리 이름은 여러 곳(색상/박스높이/실제 기록/날짜별 숨김·순서/조회탭 선택/접기상태)에
         // 키로 쓰이고 있어서, 이름 하나 바꿀 때 그 흔적을 전부 옛 이름 → 새 이름으로 옮겨줘야 함
+        // 카테고리 이름 변경 모달에서 대상이 되는 원래 이름
+        let editingCategoryName = null;
+
+        // 흐름도/메모장 이름변경과 마찬가지로 브라우저 네이티브 prompt() 대신 앱 자체 모달을 씀
+        // (prompt는 스타일링이 안 되고 모바일에서 특히 어색해 보임)
         function renameCategory(oldName) {
             if (!checkEditPermission()) return;
-            const input = prompt('새 카테고리 이름을 입력하세요', oldName);
-            if (input === null) return; // 취소
+            editingCategoryName = oldName;
+            document.getElementById('categoryRenameInput').value = oldName;
+            document.getElementById('categoryRenameModal').classList.add('active');
+            applyFormLockState();
+            setTimeout(() => document.getElementById('categoryRenameInput').focus(), 50);
+        }
 
-            const newName = input.trim();
+        function closeCategoryRenameModal() {
+            document.getElementById('categoryRenameModal').classList.remove('active');
+            editingCategoryName = null;
+        }
+
+        function saveCategoryRename() {
+            if (!checkEditPermission()) return;
+            const oldName = editingCategoryName;
+            if (!oldName) return;
+
+            const newName = document.getElementById('categoryRenameInput').value.trim();
             if (!newName) { showAppToast('카테고리 이름을 입력해주세요'); return; }
-            if (newName === oldName) return;
+            if (newName === oldName) { closeCategoryRenameModal(); return; }
             if (categories.includes(newName)) { showAppToast('이미 존재하는 카테고리입니다'); return; }
 
             const idx = categories.indexOf(oldName);
-            if (idx === -1) return;
+            if (idx === -1) { closeCategoryRenameModal(); return; }
             categories[idx] = newName;
 
             if (Object.prototype.hasOwnProperty.call(categoryColors, oldName)) {
@@ -2131,6 +2150,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             renderCategorySelector();
             if (selectedDate) renderRecordForm();
             renderCalendar();
+            closeCategoryRenameModal();
         }
 
         function renderCategories() {
