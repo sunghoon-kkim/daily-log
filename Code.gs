@@ -31,6 +31,10 @@ const TRASH_RETENTION_DAYS = 7;
 const LOGIN_FAIL_LIMIT = 5;
 const LOGIN_LOCK_MINUTES = 15;
 
+// 이 기간(일) 넘게 로그인하지 않은 계정은 autoDisableInactiveAccounts()가 자동으로 비활성화함.
+// (관리자 계정, 이미 비활성화/휴지통/승인대기 상태인 계정은 대상에서 제외)
+const AUTO_DISABLE_INACTIVE_DAYS = 5;
+
 // ===== SHA-256 해시 생성 함수 (웹 프론트엔드의 sha256Hex와 100% 호환) =====
 function computeSha256(text) {
   const rawHash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
@@ -609,6 +613,12 @@ function handleLogin(employeeId, passwordHash) {
   if (denialMessage) {
     return jsonResponse({ status: "error", message: denialMessage });
   }
+
+  // 자동 로그인 없이 매번 직접 로그인해야 하므로(resetToLoggedOutState 참고), 이 시각이 곧
+  // "이 계정을 마지막으로 실제 사용한 시각"과 거의 같음 - autoDisableInactiveAccounts()가 이 값으로
+  // 장기 미접속 계정을 판단함
+  parsedData.lastLoginAt = new Date().toISOString();
+  sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
 
   parsedData.records = loadMergedRecords(employeeId, parsedData);
   // 프론트엔드는 더 이상 관리자 사번을 직접 알지 못하므로(공개 저장소 노출 방지), 이 계정이
@@ -1219,6 +1229,75 @@ function handleAdminSetUserDisabled(data) {
   return jsonResponse({ status: "success" });
 }
 
+// Users 시트의 "마지막 저장"(4열)/"계정 생성일"(5열)은 new Date().toLocaleString('ko-KR') 형식
+// ("2024. 1. 15. 오후 3:45:30")으로 저장돼 있어서 new Date(문자열)로는 못 알아듣고 Invalid Date가
+// 됨(V8 런타임 기준). autoDisableInactiveAccounts()가 lastLoginAt이 아직 없는 예전 계정도 판단할
+// 수 있도록, 이 형식만 직접 정규식으로 분해해서 Date로 되돌려줌. 형식이 안 맞으면 null을 돌려줌
+function parseKoreanLocaleDate(str) {
+  if (!str) return null;
+  const m = String(str).match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?\s*(오전|오후)?\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+  if (!m) return null;
+  let hour = parseInt(m[5], 10);
+  if (m[4] === '오후' && hour < 12) hour += 12;
+  if (m[4] === '오전' && hour === 12) hour = 0;
+  const date = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10), hour, parseInt(m[6], 10), m[7] ? parseInt(m[7], 10) : 0);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+// 이 계정을 마지막으로 실제 사용한 시각을 추정함. profile.lastLoginAt(이 기능 도입 이후의 로그인,
+// ISO 문자열)을 최우선으로 쓰고, 아직 한 번도 새로 로그인한 적 없는 예전 계정은 시트의
+// "마지막 저장" → "계정 생성일" 순으로 대신 씀. 셋 다 없거나 못 알아보는 형식이면 null(판단 보류)
+function getLastActiveDate(profile, userRow) {
+  if (profile.lastLoginAt) {
+    const d = new Date(profile.lastLoginAt);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return parseKoreanLocaleDate(userRow[3]) || parseKoreanLocaleDate(userRow[4]) || null;
+}
+
+// AUTO_DISABLE_INACTIVE_DAYS일 넘게 로그인하지 않은 계정을 자동으로 비활성화함. 관리자 계정,
+// 이미 비활성화됐거나 휴지통에 있거나 승인 대기 중인 계정은 건드리지 않음(이미 접근이 막혀있거나
+// 별도 절차로 다뤄야 하는 상태라서). 시간 기반 트리거로 매일 실행되도록
+// setupAutoDisableInactiveAccountsTrigger()를 Apps Script 편집기에서 한 번 실행해둬야 함
+function autoDisableInactiveAccounts() {
+  const sheet = getUsersSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const rows = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  const thresholdMs = AUTO_DISABLE_INACTIVE_DAYS * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  rows.forEach(function(row, i) {
+    const employeeId = String(row[0]).trim();
+    if (!employeeId || employeeId === ADMIN_EMPLOYEE_ID) return;
+
+    const profile = parseUserJson(row[2]);
+    if (profile.disabled || profile.deletedAt || profile.pending) return;
+
+    const lastActive = getLastActiveDate(profile, row);
+    if (!lastActive) return; // 마지막 활동 시각을 전혀 알 수 없으면 건드리지 않음(안전 우선)
+    if (now - lastActive.getTime() < thresholdMs) return;
+
+    profile.disabled = true;
+    sheet.getRange(i + 2, 3).setValue(JSON.stringify(profile));
+  });
+}
+
+// Apps Script 편집기에서 이 함수를 딱 한 번 직접 실행(▶ 실행)해두면, 매일 새벽 3시경 자동으로
+// autoDisableInactiveAccounts()가 돌면서 5일 이상 미접속 계정을 비활성화함. 이미 등록돼 있으면
+// 중복 등록을 막기 위해 기존 트리거를 지우고 새로 만듦(설정을 바꿔 다시 실행해도 안전함)
+function setupAutoDisableInactiveAccountsTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'autoDisableInactiveAccounts') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('autoDisableInactiveAccounts')
+    .timeBased()
+    .everyDays(1)
+    .atHour(3)
+    .create();
+}
+
 // 관리자 화면: 팀 보고 계층에서의 역할(팀원/파트장/팀장) 지정. 팀원이 제출할 때는 파트장·팀장 중에서,
 // 파트장이 제출할 때는 팀장 중에서만 제출 대상을 고를 수 있게 되는 기준이 되는 값 (role이 빈 문자열이면 미지정으로 되돌림)
 function handleAdminSetTeamReportRole(data) {
@@ -1427,9 +1506,10 @@ function handleSaveState(data, rawBody) {
     for (const key in data) {
       if (key !== 'employeeId' && key !== 'passwordHash' && key !== 'records') dataToSave[key] = data[key];
     }
-    // deletedAt(휴지통)/disabled(비활성화)/isTeamLead(예전 팀장 지정)/teamReportRole(팀 보고 역할)는
-    // 관리자만 관리하는 필드라 클라이언트가 보내는 getFullState()에는 포함되지 않음 - 그대로 두면
-    // 다음 자동저장 때 사라지므로 여기서 되살려줌
+    // deletedAt(휴지통)/disabled(비활성화)/isTeamLead(예전 팀장 지정)/teamReportRole(팀 보고 역할)/
+    // lastLoginAt(마지막 로그인, 자동 비활성화 판단용)은 서버(관리자 기능 또는 로그인 처리)만 관리하는
+    // 필드라 클라이언트가 보내는 getFullState()에는 포함되지 않음 - 그대로 두면 다음 자동저장 때
+    // 사라지므로 여기서 되살려줌
     if (existingProfile.deletedAt) dataToSave.deletedAt = existingProfile.deletedAt;
     if (existingProfile.disabled) dataToSave.disabled = existingProfile.disabled;
     if (existingProfile.isTeamLead) dataToSave.isTeamLead = existingProfile.isTeamLead;
@@ -1437,6 +1517,7 @@ function handleSaveState(data, rawBody) {
     if (existingProfile.pending) dataToSave.pending = existingProfile.pending;
     if (existingProfile.requestedAt) dataToSave.requestedAt = existingProfile.requestedAt;
     if (existingProfile.disabledFeatures) dataToSave.disabledFeatures = existingProfile.disabledFeatures;
+    if (existingProfile.lastLoginAt) dataToSave.lastLoginAt = existingProfile.lastLoginAt;
     // records는 더 이상 프로필 셀에 저장하지 않음 - Records 시트로 따로 저장함 (아래 saveRecordsForUser)
     const jsonToSave = JSON.stringify(dataToSave);
 
