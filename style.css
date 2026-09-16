@@ -2547,6 +2547,29 @@ html {
             padding: 4px 0 6px;
         }
 
+        .todo-item-wrap.dragging {
+            opacity: 0.4;
+        }
+
+        .todo-item-wrap.drag-over {
+            outline: 2px dashed #667eea;
+            outline-offset: -2px;
+        }
+
+        /* 드래그 중 커서/손가락을 따라다니는 할 일 항목 복제본 */
+        .todo-item-ghost {
+            position: fixed;
+            top: 0;
+            left: 0;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 9999;
+            cursor: grabbing;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(45, 55, 90, 0.25);
+        }
+
         .todo-item {
             display: flex;
             align-items: center;
@@ -2554,11 +2577,27 @@ html {
             padding: 4px 4px;
         }
 
+        .todo-drag-handle {
+            flex: 0 0 auto;
+            width: 16px;
+            text-align: center;
+            color: #ccc;
+            font-size: 14px;
+            line-height: 1;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .todo-drag-handle:active {
+            cursor: grabbing;
+        }
+
         .todo-memo-input {
             display: block;
             width: 100%;
             margin-top: 2px;
-            padding: 4px 4px 4px 30px;
+            padding: 4px 4px 4px 56px;
             border: none;
             background: transparent;
             font-size: 12px;
@@ -4066,6 +4105,14 @@ html {
 
 .dark-mode .todo-item-wrap {
     border-color: var(--d-border);
+}
+
+.dark-mode .todo-drag-handle {
+    color: #55556a;
+}
+
+.dark-mode .todo-item-ghost {
+    background: var(--d-bg1);
 }
 
 .dark-mode .todo-section-done {

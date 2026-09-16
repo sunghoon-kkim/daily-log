@@ -3877,6 +3877,97 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
         }
 
+        // 해야 할 일 목록 순서 변경 드래그: 탭/카테고리 순서 변경과 같은 이유로 네이티브 HTML5
+        // 드래그앤드롭 대신 Pointer Events로 구현함(트랙패드/터치 호환). "해야 할 일"과 "완료"는
+        // 화면에서도 분리된 별개의 목록이라, 드래그는 같은 완료 상태를 가진 항목끼리만 허용함
+        let todoItemDragState = null; // { id, done, originEl, startX, startY, moved, ghostEl }
+        const TODO_ITEM_DRAG_MOVE_THRESHOLD = 6;
+
+        function todoItemPointerDown(e, id) {
+            if (!editUnlocked) return;
+            if (e.button !== undefined && e.button !== 0) return;
+            const item = todoItems.find(t => t.id === id);
+            if (!item) return;
+            todoItemDragState = {
+                id,
+                done: !!item.done,
+                originEl: e.currentTarget.closest('.todo-item-wrap'),
+                startX: e.clientX,
+                startY: e.clientY,
+                moved: false,
+                ghostEl: null
+            };
+            document.addEventListener('pointermove', todoItemPointerMove);
+            document.addEventListener('pointerup', todoItemPointerUp);
+            document.addEventListener('pointercancel', todoItemPointerUp);
+        }
+
+        function todoItemPointerMove(e) {
+            if (!todoItemDragState) return;
+            const dx = e.clientX - todoItemDragState.startX;
+            const dy = e.clientY - todoItemDragState.startY;
+
+            if (!todoItemDragState.moved) {
+                if (Math.hypot(dx, dy) < TODO_ITEM_DRAG_MOVE_THRESHOLD) return;
+                todoItemDragState.moved = true;
+                todoItemDragState.originEl.classList.add('dragging');
+
+                const rect = todoItemDragState.originEl.getBoundingClientRect();
+                const ghost = todoItemDragState.originEl.cloneNode(true);
+                ghost.className = 'todo-item-wrap todo-item-ghost';
+                ghost.style.width = rect.width + 'px';
+                document.body.appendChild(ghost);
+                todoItemDragState.ghostEl = ghost;
+            }
+
+            e.preventDefault();
+            todoItemDragState.ghostEl.style.left = e.clientX + 'px';
+            todoItemDragState.ghostEl.style.top = e.clientY + 'px';
+
+            document.querySelectorAll('.todo-item-wrap.drag-over').forEach(el => el.classList.remove('drag-over'));
+            todoItemDragState.ghostEl.style.display = 'none';
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            todoItemDragState.ghostEl.style.display = '';
+            const targetWrap = under && under.closest('.todo-item-wrap');
+            if (targetWrap && targetWrap.dataset.id !== todoItemDragState.id) {
+                const targetItem = todoItems.find(t => t.id === targetWrap.dataset.id);
+                if (targetItem && !!targetItem.done === todoItemDragState.done) targetWrap.classList.add('drag-over');
+            }
+        }
+
+        function todoItemPointerUp(e) {
+            if (!todoItemDragState) return;
+            document.removeEventListener('pointermove', todoItemPointerMove);
+            document.removeEventListener('pointerup', todoItemPointerUp);
+            document.removeEventListener('pointercancel', todoItemPointerUp);
+
+            const state = todoItemDragState;
+            todoItemDragState = null;
+
+            state.originEl.classList.remove('dragging');
+            if (state.ghostEl) state.ghostEl.remove();
+            document.querySelectorAll('.todo-item-wrap.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+            if (!state.moved) return;
+
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            const targetWrap = under && under.closest('.todo-item-wrap');
+            if (!targetWrap) return;
+            const targetId = targetWrap.dataset.id;
+            if (!targetId || targetId === state.id) return;
+            const targetItem = todoItems.find(t => t.id === targetId);
+            if (!targetItem || !!targetItem.done !== state.done) return; // 완료/미완료 목록을 넘나드는 이동은 막음
+
+            const fromIndex = todoItems.findIndex(t => t.id === state.id);
+            const toIndex = todoItems.findIndex(t => t.id === targetId);
+            if (fromIndex === -1 || toIndex === -1) return;
+            const [moved] = todoItems.splice(fromIndex, 1);
+            todoItems.splice(toIndex, 0, moved);
+
+            saveTodoItems();
+            renderTodoList();
+        }
+
         function buildTodoItemRow(item) {
             const wrap = document.createElement('div');
             wrap.className = 'todo-item-wrap';
@@ -3884,6 +3975,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             const row = document.createElement('div');
             row.className = 'todo-item' + (item.done ? ' done' : '');
+
+            const dragHandle = document.createElement('span');
+            dragHandle.className = 'todo-drag-handle';
+            dragHandle.title = '드래그해서 순서 변경';
+            dragHandle.textContent = '⠿';
+            dragHandle.addEventListener('pointerdown', (e) => todoItemPointerDown(e, item.id));
+            row.appendChild(dragHandle);
 
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
