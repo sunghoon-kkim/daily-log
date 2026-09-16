@@ -252,6 +252,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
 ② 개선·보완 계획
 `;
+        // 메모장도 흐름도처럼 여러 개 만들어 구분해서 쓸 수 있음. freeNotesPages가 실제 저장 단위이고,
+        // notesContent는 그중 지금 보고 있는(currentFreeNotesPageId) 메모장의 내용을 담아두는 변수라서,
+        // 페이지를 전환/추가/삭제하기 직전마다 syncActiveFreeNotesPageData()로 반영해줘야 함
+        let freeNotesPages = []; // [{id, name, content}]
+        let currentFreeNotesPageId = null;
+        let editingFreeNotesPageId = null; // 이름 변경/삭제 모달에서 대상이 되는 메모장 id
         let aiTemplateContent = '';
         let savingsProjects = []; // [{id, title, month, targetAmount, actualAmount, status, note}] - 에너지/비용절감 과제 트래커
         let trendSubject = ''; // 설비·측정 항목 (매번 같은 값을 다시 적지 않도록 저장)
@@ -300,6 +306,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             loadPersonalAiApiKey();
             loadDisabledFeatures();
             notesContent = localStorage.getItem('freeNotes') || '';
+            const storedFreeNotesPages = localStorage.getItem('freeNotesPages');
+            freeNotesPages = storedFreeNotesPages ? safeJsonParse(storedFreeNotesPages, [], 'freeNotesPages') : [];
+            currentFreeNotesPageId = localStorage.getItem('currentFreeNotesPageId') || null;
+            ensureActiveFreeNotesPage(); // freeNotesPages가 비어있으면 위 notesContent(예전 버전 단일 메모장)를 그대로 살려서 첫 메모장으로 마이그레이션함
             currentUserName = localStorage.getItem('accountName') || '';
             currentUserDepartment = localStorage.getItem('accountDepartment') || '';
             loadTodoItems();
@@ -605,6 +615,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // ===== Google Sheets 동기화 =====
         function getFullState() {
             syncActiveWaterFlowDiagramData(); // 지금 보고 있는 흐름도의 최신 블록/연결선을 waterFlowDiagrams에 반영해둠
+            syncActiveFreeNotesPageData(); // 지금 보고 있는 메모장의 최신 내용을 freeNotesPages에 반영해둠
             return {
                 employeeId: currentEmployeeId,
                 passwordHash: currentPasswordHash,
@@ -623,7 +634,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 disabledTabIds,
                 aiApiKey: personalAiApiKey,
                 disabledFeatures,
-                notes: notesContent,
+                freeNotesPages,
+                currentFreeNotesPageId,
                 todo: todoItems,
                 aiTemplate: aiTemplateContent,
                 savingsProjects,
@@ -649,7 +661,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             localStorage.setItem('disabledTabIds', JSON.stringify(disabledTabIds));
             localStorage.setItem('personalAiApiKey', personalAiApiKey);
             localStorage.setItem('disabledFeatures', JSON.stringify(disabledFeatures));
-            localStorage.setItem('freeNotes', notesContent);
+            syncActiveFreeNotesPageData();
+            localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
+            localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
             localStorage.setItem('todoItems', JSON.stringify(todoItems));
             localStorage.setItem('aiTemplate', aiTemplateContent);
             localStorage.setItem('savingsProjects', JSON.stringify(savingsProjects));
@@ -737,7 +751,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     personalAiApiKey = (typeof data.aiApiKey === 'string') ? data.aiApiKey : '';
                     disabledFeatures = Array.isArray(data.disabledFeatures) ? data.disabledFeatures : [];
                     currentUserTeamReportRole = computeEffectiveTeamReportRole(data);
-                    notesContent = (typeof data.notes === 'string') ? data.notes : '';
+                    freeNotesPages = Array.isArray(data.freeNotesPages) ? data.freeNotesPages : [];
+                    currentFreeNotesPageId = data.currentFreeNotesPageId || null;
+                    if (freeNotesPages.length === 0) {
+                        // 예전 버전(메모장이 하나뿐이던 시절) 계정에서 넘어온 데이터를 그대로 살려서 마이그레이션함
+                        notesContent = (typeof data.notes === 'string') ? data.notes : '';
+                    }
+                    ensureActiveFreeNotesPage();
                     if (Array.isArray(data.todo)) {
                         todoItems = data.todo;
                     } else if (typeof data.todo === 'string' && data.todo) {
@@ -3598,8 +3618,123 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             setInterval(tick, 1000);
         }
 
-        // ===== 메모장 (날짜와 무관한 자유 메모) =====
+        // ===== 메모장 (날짜와 무관한 자유 메모, 흐름도처럼 여러 개 만들어 구분해서 쓸 수 있음) =====
+
+        // notesContent는 현재 보고 있는(currentFreeNotesPageId) 메모장의 내용을 담아두는 변수일 뿐이라,
+        // 페이지를 전환/추가/삭제하기 직전마다 이 함수로 지금까지 쓴 내용을 freeNotesPages에 반영해줘야 함
+        function syncActiveFreeNotesPageData() {
+            const page = freeNotesPages.find(p => p.id === currentFreeNotesPageId);
+            if (page) page.content = notesContent;
+        }
+
+        // freeNotesPages가 비어있으면(첫 사용, 또는 예전 버전에서 막 넘어온 계정) notesContent(그 시점의
+        // 예전 단일 메모장 내용)를 그대로 살려서 메모장 하나를 만들어주고, currentFreeNotesPageId가
+        // 가리키는 메모장이 없으면 첫 번째로 되돌린 뒤, notesContent가 그 메모장의 내용을 담도록 함
+        function ensureActiveFreeNotesPage() {
+            if (!Array.isArray(freeNotesPages)) freeNotesPages = [];
+            if (freeNotesPages.length === 0) {
+                freeNotesPages.push({
+                    id: 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    name: '메모장 1',
+                    content: notesContent || ''
+                });
+            }
+            let current = freeNotesPages.find(p => p.id === currentFreeNotesPageId);
+            if (!current) {
+                current = freeNotesPages[0];
+                currentFreeNotesPageId = current.id;
+            }
+            if (typeof current.content !== 'string') current.content = '';
+            notesContent = current.content;
+        }
+
+        function renderFreeNotesPageTabs() {
+            const container = document.getElementById('freeNotesPageTabs');
+            if (!container) return;
+            container.innerHTML = freeNotesPages.map(p => `
+                <div class="free-notes-page-tab${p.id === currentFreeNotesPageId ? ' active' : ''}" onclick="switchFreeNotesPage('${p.id}')">
+                    <span>${escapeHtml(p.name)}</span>
+                    <button class="free-notes-page-tab-edit" onclick="event.stopPropagation(); openFreeNotesPageModal('${p.id}')" title="이름 변경/삭제" aria-label="이름 변경/삭제">✏️</button>
+                </div>
+            `).join('') + '<button class="free-notes-page-add-btn" onclick="addFreeNotesPage()" title="메모장 추가" aria-label="메모장 추가">➕ 메모장 추가</button>';
+        }
+
+        function switchFreeNotesPage(pageId) {
+            if (pageId === currentFreeNotesPageId) return;
+            syncActiveFreeNotesPageData(); // 나가기 전에 지금 보던 메모장 내용을 확실히 반영해둠
+            currentFreeNotesPageId = pageId;
+            ensureActiveFreeNotesPage();
+            localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId);
+            applyNotesContent();
+        }
+
+        function addFreeNotesPage() {
+            if (!checkEditPermission()) return;
+            syncActiveFreeNotesPageData();
+            const newPage = {
+                id: 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                name: '메모장 ' + (freeNotesPages.length + 1),
+                content: ''
+            };
+            freeNotesPages.push(newPage);
+            currentFreeNotesPageId = newPage.id;
+            notesContent = newPage.content;
+            localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
+            localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId);
+            queueSync();
+            applyNotesContent();
+        }
+
+        function openFreeNotesPageModal(pageId) {
+            if (!checkEditPermission()) return;
+            editingFreeNotesPageId = pageId;
+            const page = freeNotesPages.find(p => p.id === pageId);
+            if (!page) return;
+            document.getElementById('freeNotesPageNameInput').value = page.name;
+            const deleteBtn = document.getElementById('deleteFreeNotesPageBtn');
+            deleteBtn.style.display = freeNotesPages.length > 1 ? 'inline-block' : 'none'; // 마지막 하나 남은 메모장은 지울 수 없게 함
+            document.getElementById('freeNotesPageModal').classList.add('active');
+            applyFormLockState();
+        }
+
+        function closeFreeNotesPageModal() {
+            document.getElementById('freeNotesPageModal').classList.remove('active');
+            editingFreeNotesPageId = null;
+        }
+
+        function saveFreeNotesPageName() {
+            if (!checkEditPermission()) return;
+            const name = document.getElementById('freeNotesPageNameInput').value.trim();
+            if (!name) {
+                showAppToast('메모장 이름을 입력해주세요');
+                return;
+            }
+            const page = freeNotesPages.find(p => p.id === editingFreeNotesPageId);
+            if (page) page.name = name;
+            localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
+            queueSync();
+            closeFreeNotesPageModal();
+            renderFreeNotesPageTabs();
+        }
+
+        function deleteFreeNotesPage() {
+            if (!checkEditPermission()) return;
+            if (freeNotesPages.length <= 1) return; // 메모장이 하나뿐일 때는 지울 수 없음
+            const targetId = editingFreeNotesPageId;
+            confirmModal('이 메모장을 삭제하시겠습니까? 안에 있는 내용이 모두 함께 사라집니다.', () => {
+                freeNotesPages = freeNotesPages.filter(p => p.id !== targetId);
+                if (currentFreeNotesPageId === targetId) currentFreeNotesPageId = freeNotesPages[0].id;
+                ensureActiveFreeNotesPage();
+                localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
+                localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId);
+                queueSync();
+                closeFreeNotesPageModal();
+                applyNotesContent();
+            });
+        }
+
         function applyNotesContent() {
+            renderFreeNotesPageTabs();
             document.getElementById('notesTextarea').value = notesContent;
             renderTodoList();
         }
@@ -3614,7 +3749,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 clearTimeout(saveTimeout);
                 saveTimeout = setTimeout(() => {
                     notesContent = textarea.value;
-                    localStorage.setItem('freeNotes', notesContent);
+                    syncActiveFreeNotesPageData();
+                    localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
+                    localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
                     queueSync();
                     indicator.classList.add('show');
                     setTimeout(() => indicator.classList.remove('show'), 1500);
@@ -3842,7 +3979,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const memoPad = (parseFloat(memoStyle.paddingTop) || 0) + (parseFloat(memoStyle.paddingBottom) || 0);
             const memoHeaderEl = memoPane.querySelector('.notes-header');
             const memoDescEl = memoPane.querySelector('p');
-            const memoOverhead = (memoHeaderEl ? memoHeaderEl.offsetHeight + 15 : 0) + (memoDescEl ? memoDescEl.offsetHeight + 12 : 0);
+            const memoTabsEl = memoPane.querySelector('#freeNotesPageTabs');
+            const memoOverhead = (memoHeaderEl ? memoHeaderEl.offsetHeight + 15 : 0) + (memoDescEl ? memoDescEl.offsetHeight + 12 : 0) + (memoTabsEl ? memoTabsEl.offsetHeight + 12 : 0);
             const memoNeededTotal = memoPad + memoOverhead + notesTextarea.scrollHeight + 4;
 
             let neededHeight = Math.ceil(Math.max(todoNeededTotal, memoNeededTotal));
@@ -8426,7 +8564,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'activityRecords', 'calendarEvents', 'activityCategories',
             'categoryColors', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
-            'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'todoItems', 'todoNotes', 'aiTemplate',
+            'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment'
         ];

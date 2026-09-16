@@ -213,6 +213,7 @@
                         <span class="notes-save-indicator" id="notesSaveIndicator">✓ 저장됨</span>
                     </div>
                     <p style="color: #666; font-size: 13px; margin-bottom: 12px;">날짜와 상관없이 자유롭게 쓰는 메모장입니다. 날짜가 지나도 내용이 사라지지 않습니다.</p>
+                    <div class="free-notes-page-tabs" id="freeNotesPageTabs"></div>
                     <textarea class="notes-textarea" id="notesTextarea" placeholder="자유롭게 메모를 작성하세요..."></textarea>
                 </div>
             </div>
@@ -1086,6 +1087,22 @@
                 <button class="modal-btn modal-delete-btn" id="deleteWaterFlowDiagramBtn" onclick="deleteWaterFlowDiagram()">삭제</button>
                 <button class="modal-btn modal-save-btn" onclick="saveWaterFlowDiagramName()">저장</button>
                 <button class="modal-btn modal-cancel-btn" onclick="closeWaterFlowDiagramModal()">취소</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="freeNotesPageModal" role="dialog" aria-modal="true">
+        <div class="modal-box">
+            <h3>📝 메모장 이름 변경</h3>
+
+            <div class="modal-field">
+                <label>메모장 이름</label>
+                <input type="text" id="freeNotesPageNameInput" placeholder="예: 개인 메모">
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-delete-btn" id="deleteFreeNotesPageBtn" onclick="deleteFreeNotesPage()">삭제</button>
+                <button class="modal-btn modal-save-btn" onclick="saveFreeNotesPageName()">저장</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeFreeNotesPageModal()">취소</button>
             </div>
         </div>
     </div>

@@ -903,6 +903,64 @@ html {
             background: #eef0ff;
         }
 
+        /* 메모장이 여러 개일 때 구분해서 보는 탭 줄 (흐름도 탭과 동일한 방식) */
+        .free-notes-page-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .free-notes-page-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px 6px 14px;
+            border-radius: 20px;
+            background: #f0f0f0;
+            color: #555;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+
+        .free-notes-page-tab.active {
+            background: #eef0ff;
+            color: #667eea;
+            border-color: #667eea;
+        }
+
+        .free-notes-page-tab-edit {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.06);
+            color: inherit;
+            font-size: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .free-notes-page-add-btn {
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px dashed #ccc;
+            background: transparent;
+            color: #667eea;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .free-notes-page-add-btn:hover {
+            background: #eef0ff;
+        }
+
         .water-flow-connect-hint.active {
             display: block;
         }
@@ -3899,6 +3957,30 @@ html {
 }
 
 .dark-mode .water-flow-diagram-add-btn:hover {
+    background: #2a2a52;
+}
+
+.dark-mode .free-notes-page-tab {
+    background: var(--d-bg3);
+    color: var(--d-text2);
+}
+
+.dark-mode .free-notes-page-tab.active {
+    background: #2a2a52;
+    color: #a9b6ff;
+    border-color: #8a9bf5;
+}
+
+.dark-mode .free-notes-page-tab-edit {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.dark-mode .free-notes-page-add-btn {
+    border-color: var(--d-border);
+    color: #a9b6ff;
+}
+
+.dark-mode .free-notes-page-add-btn:hover {
     background: #2a2a52;
 }
 
