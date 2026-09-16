@@ -2058,7 +2058,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function renderCategories() {
             const container = document.getElementById('categoriesList');
             container.innerHTML = categories.map(category => `
-                <div class="category-tag">
+                <div class="category-tag" data-category="${escapeHtml(category)}">
+                    <span class="category-tag-drag-handle" title="드래그해서 순서 변경" onpointerdown="categoryTagPointerDown(event, '${escapeForOnclickArg(category)}')">⠿</span>
                     <span class="category-tag-name">${escapeHtml(category)}</span>
                     <div class="category-tag-actions">
                         <input type="color" class="category-color-input" value="${categoryColors[category] || '#667eea'}"
@@ -2070,6 +2071,92 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             `).join('');
 
             if (typeof applyFormLockState === 'function') applyFormLockState();
+        }
+
+        // 카테고리 관리 카드 순서 변경 드래그: 탭 순서 변경(tabPointerDown 등)과 같은 이유로
+        // 네이티브 HTML5 드래그앤드롭 대신 Pointer Events로 구현함(트랙패드/터치 호환).
+        // categories 배열 순서를 바로 바꾸는 것이라, 날짜별로 순서를 따로 바꾼 적 없는 날짜는
+        // 달력&활동기록 탭에서도 이 순서 그대로 반영됨(getCategoryOrderForDate의 categories.slice() 참고)
+        let categoryTagDragState = null; // { category, originEl, startX, startY, moved, ghostEl }
+        const CATEGORY_TAG_DRAG_MOVE_THRESHOLD = 6;
+
+        function categoryTagPointerDown(e, category) {
+            if (!editUnlocked) return;
+            if (e.button !== undefined && e.button !== 0) return;
+            categoryTagDragState = {
+                category,
+                originEl: e.currentTarget.closest('.category-tag'),
+                startX: e.clientX,
+                startY: e.clientY,
+                moved: false,
+                ghostEl: null
+            };
+            document.addEventListener('pointermove', categoryTagPointerMove);
+            document.addEventListener('pointerup', categoryTagPointerUp);
+            document.addEventListener('pointercancel', categoryTagPointerUp);
+        }
+
+        function categoryTagPointerMove(e) {
+            if (!categoryTagDragState) return;
+            const dx = e.clientX - categoryTagDragState.startX;
+            const dy = e.clientY - categoryTagDragState.startY;
+
+            if (!categoryTagDragState.moved) {
+                if (Math.hypot(dx, dy) < CATEGORY_TAG_DRAG_MOVE_THRESHOLD) return;
+                categoryTagDragState.moved = true;
+                categoryTagDragState.originEl.classList.add('dragging');
+
+                const rect = categoryTagDragState.originEl.getBoundingClientRect();
+                const ghost = categoryTagDragState.originEl.cloneNode(true);
+                ghost.className = 'category-tag category-tag-ghost';
+                ghost.style.width = rect.width + 'px';
+                document.body.appendChild(ghost);
+                categoryTagDragState.ghostEl = ghost;
+            }
+
+            e.preventDefault();
+            categoryTagDragState.ghostEl.style.left = e.clientX + 'px';
+            categoryTagDragState.ghostEl.style.top = e.clientY + 'px';
+
+            document.querySelectorAll('.category-tag.drag-over').forEach(el => el.classList.remove('drag-over'));
+            categoryTagDragState.ghostEl.style.display = 'none';
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            categoryTagDragState.ghostEl.style.display = '';
+            const targetTag = under && under.closest('.category-tag');
+            if (targetTag && targetTag.dataset.category !== categoryTagDragState.category) targetTag.classList.add('drag-over');
+        }
+
+        function categoryTagPointerUp(e) {
+            if (!categoryTagDragState) return;
+            document.removeEventListener('pointermove', categoryTagPointerMove);
+            document.removeEventListener('pointerup', categoryTagPointerUp);
+            document.removeEventListener('pointercancel', categoryTagPointerUp);
+
+            const state = categoryTagDragState;
+            categoryTagDragState = null;
+
+            state.originEl.classList.remove('dragging');
+            if (state.ghostEl) state.ghostEl.remove();
+            document.querySelectorAll('.category-tag.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+            if (!state.moved) return;
+
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            const targetTag = under && under.closest('.category-tag');
+            if (!targetTag) return;
+            const targetCategory = targetTag.dataset.category;
+            if (!targetCategory || targetCategory === state.category) return;
+
+            const fromIndex = categories.indexOf(state.category);
+            const toIndex = categories.indexOf(targetCategory);
+            if (fromIndex === -1 || toIndex === -1) return;
+            categories.splice(fromIndex, 1);
+            categories.splice(toIndex, 0, state.category);
+
+            saveCategoriesToStorage();
+            renderCategories();
+            renderCategorySelector();
+            if (selectedDate) renderRecordForm();
         }
         
         function renderCategorySelector() {

@@ -1974,7 +1974,45 @@ html {
         .category-tag-edit:hover {
             background: #e0e2fa;
         }
-        
+
+        /* 카테고리 관리 탭에서 카드를 드래그해서 순서를 바꿀 때 쓰는 손잡이.
+           이 순서가 곧 categories 배열 순서라, 아직 날짜별로 순서를 따로 바꾼 적 없는 날짜는
+           달력&활동기록 탭에서도 이 순서 그대로 세로로 배치됨(getCategoryOrderForDate 참고) */
+        .category-tag-drag-handle {
+            color: #ccc;
+            font-size: 15px;
+            line-height: 1;
+            user-select: none;
+            cursor: grab;
+            touch-action: none;
+            flex-shrink: 0;
+        }
+
+        .category-tag-drag-handle:active {
+            cursor: grabbing;
+        }
+
+        .category-tag.dragging {
+            opacity: 0.4;
+        }
+
+        .category-tag.drag-over {
+            outline: 2px dashed #667eea;
+            outline-offset: -2px;
+        }
+
+        /* 드래그 중 커서/손가락을 따라다니는 카테고리 카드 복제본 */
+        .category-tag-ghost {
+            position: fixed;
+            top: 0;
+            left: 0;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 9999;
+            cursor: grabbing;
+            box-shadow: 0 6px 20px rgba(45, 55, 90, 0.25);
+        }
+
         /* 탭 3: 조회 */
         .query-container {
             background: #f9f9f9;
@@ -4089,6 +4127,14 @@ html {
 
 .dark-mode .category-drag-handle {
     color: #55556a;
+}
+
+.dark-mode .category-tag-drag-handle {
+    color: #55556a;
+}
+
+.dark-mode .category-tag-ghost {
+    background: var(--d-bg1);
 }
 
 .dark-mode ::placeholder {
