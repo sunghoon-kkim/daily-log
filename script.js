@@ -907,7 +907,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             container.innerHTML = visibleTabOrder.map(tabId => {
                 const activeClass = tabId === activeTabId ? ' active' : '';
-                return `<div class="tab${activeClass}" data-tab-id="${tabId}" onpointerdown="tabPointerDown(event, '${tabId}')">${TAB_LABELS[tabId]}</div>`;
+                return `<div class="tab${activeClass}" data-tab-id="${tabId}" tabindex="0" role="button" aria-label="${escapeHtml(TAB_LABELS[tabId])} (화살표 키로 순서 변경, Enter로 이동)" onpointerdown="tabPointerDown(event, '${tabId}')" onkeydown="tabKeyDown(event, '${tabId}')">${TAB_LABELS[tabId]}</div>`;
             }).join('');
 
             container.querySelectorAll('.tab').forEach(tabEl => {
@@ -916,89 +916,168 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
-        // 탭 순서 변경 드래그: 조직도 카드와 마찬가지로 네이티브 HTML5 드래그앤드롭 대신
-        // Pointer Events로 구현함 (트랙패드/브라우저별로 잘 안 먹거나 버벅이고, 터치 기기에서는
-        // 아예 동작하지 않는 문제가 있었음). 손을 뗀 지점 아래의 탭을 elementFromPoint로 찾아
-        // 그 자리로 옮김
-        let tabDragState = null; // { tabId, originEl, startX, startY, moved, ghostEl }
-        const TAB_DRAG_MOVE_THRESHOLD = 6; // 이보다 적게 움직이면 그냥 클릭으로 취급(드래그로 안 침)
+        // 목록 순서 변경을 위한 공통 드래그(+화살표 키) 헬퍼. 탭 순서/카테고리 순서/할일 순서가
+        // 각자 따로 구현했던 사실상 동일한 Pointer Events(pointerdown/move/up + 고스트 엘리먼트)
+        // 로직을 하나로 묶음. 네이티브 HTML5 드래그앤드롭 대신 Pointer Events를 쓰는 이유는
+        // 트랙패드/브라우저별로 잘 안 먹거나 버벅이고, 터치 기기에서는 아예 동작하지 않기 때문.
+        // 마우스/터치가 없는 사용자를 위해 화살표 키로도 항목을 앞/뒤로 옮길 수 있게 keyDown도 제공함.
+        //
+        // options:
+        //   itemClass: 드래그 가능한 항목 하나를 감싸는 요소의 클래스 이름(점 없이) - 예: 'tab'
+        //   ghostClass: 드래그 중 커서를 따라다니는 복제본에 추가로 붙일 클래스 이름
+        //   getId(itemEl): 그 항목 요소의 식별자 문자열을 돌려줌
+        //   canDrop(fromId, toId): 이 조합의 드롭을 허용할지(생략하면 항상 허용)
+        //   onReorder(fromId, toId): 실제로 배열을 재배열 + 저장 + 재렌더링하는 콜백
+        //   checkPermission(): 드래그/키보드 이동 시작을 허용할지(생략하면 항상 허용)
+        //   handleSelector: 항목 안에서 재렌더링 후 포커스를 되돌릴 손잡이를 찾는 셀렉터(생략하면 항목 자신)
+        function createDragReorder(options) {
+            const itemSelector = '.' + options.itemClass;
+            const MOVE_THRESHOLD = 6; // 이보다 적게 움직이면 그냥 클릭으로 취급(드래그로 안 침)
+            let state = null; // { id, originEl, startX, startY, moved, ghostEl }
 
-        function tabPointerDown(e, tabId) {
-            if (!editUnlocked) return; // 잠긴 상태에서는 순서 변경을 못 하게 막되, 클릭(탭 전환)은 그대로 동작함
-            if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
-            tabDragState = {
-                tabId,
-                originEl: e.currentTarget,
-                startX: e.clientX,
-                startY: e.clientY,
-                moved: false,
-                ghostEl: null
-            };
-            document.addEventListener('pointermove', tabPointerMove);
-            document.addEventListener('pointerup', tabPointerUp);
-            document.addEventListener('pointercancel', tabPointerUp);
-        }
-
-        function tabPointerMove(e) {
-            if (!tabDragState) return;
-            const dx = e.clientX - tabDragState.startX;
-            const dy = e.clientY - tabDragState.startY;
-
-            if (!tabDragState.moved) {
-                if (Math.hypot(dx, dy) < TAB_DRAG_MOVE_THRESHOLD) return;
-                tabDragState.moved = true;
-                tabDragState.originEl.classList.add('dragging');
-
-                const rect = tabDragState.originEl.getBoundingClientRect();
-                const ghost = tabDragState.originEl.cloneNode(true);
-                ghost.className = 'tab tab-ghost';
-                ghost.style.width = rect.width + 'px';
-                document.body.appendChild(ghost);
-                tabDragState.ghostEl = ghost;
+            function clearDragOver() {
+                document.querySelectorAll(itemSelector + '.drag-over').forEach(el => el.classList.remove('drag-over'));
             }
 
-            e.preventDefault(); // 드래그 중 터치 스크롤/텍스트 선택 방지
-            tabDragState.ghostEl.style.left = e.clientX + 'px';
-            tabDragState.ghostEl.style.top = e.clientY + 'px';
+            function pointerDown(e, id) {
+                if (options.checkPermission && !options.checkPermission()) return;
+                if (e.button !== undefined && e.button !== 0) return; // 마우스면 왼쪽 버튼만
+                state = {
+                    id,
+                    originEl: e.currentTarget.closest(itemSelector),
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    moved: false,
+                    ghostEl: null
+                };
+                document.addEventListener('pointermove', pointerMove);
+                document.addEventListener('pointerup', pointerUp);
+                document.addEventListener('pointercancel', pointerUp);
+            }
 
-            document.querySelectorAll('.tab.drag-over').forEach(el => el.classList.remove('drag-over'));
-            tabDragState.ghostEl.style.display = 'none'; // elementFromPoint가 고스트 자신을 집지 않도록 잠깐 숨김
-            const under = document.elementFromPoint(e.clientX, e.clientY);
-            tabDragState.ghostEl.style.display = '';
-            const targetTab = under && under.closest('.tab');
-            if (targetTab && targetTab.dataset.tabId !== tabDragState.tabId) targetTab.classList.add('drag-over');
+            function pointerMove(e) {
+                if (!state) return;
+                const dx = e.clientX - state.startX;
+                const dy = e.clientY - state.startY;
+
+                if (!state.moved) {
+                    if (Math.hypot(dx, dy) < MOVE_THRESHOLD) return;
+                    state.moved = true;
+                    state.originEl.classList.add('dragging');
+
+                    const rect = state.originEl.getBoundingClientRect();
+                    const ghost = state.originEl.cloneNode(true);
+                    ghost.className = 'drag-ghost ' + options.itemClass + ' ' + options.ghostClass;
+                    ghost.style.width = rect.width + 'px';
+                    document.body.appendChild(ghost);
+                    state.ghostEl = ghost;
+                }
+
+                e.preventDefault(); // 드래그 중 터치 스크롤/텍스트 선택 방지
+                state.ghostEl.style.left = e.clientX + 'px';
+                state.ghostEl.style.top = e.clientY + 'px';
+
+                clearDragOver();
+                state.ghostEl.style.display = 'none'; // elementFromPoint가 고스트 자신을 집지 않도록 잠깐 숨김
+                const under = document.elementFromPoint(e.clientX, e.clientY);
+                state.ghostEl.style.display = '';
+                const targetEl = under && under.closest(itemSelector);
+                if (targetEl) {
+                    const targetId = options.getId(targetEl);
+                    if (targetId && targetId !== state.id && (!options.canDrop || options.canDrop(state.id, targetId))) {
+                        targetEl.classList.add('drag-over');
+                    }
+                }
+            }
+
+            function pointerUp(e) {
+                if (!state) return;
+                document.removeEventListener('pointermove', pointerMove);
+                document.removeEventListener('pointerup', pointerUp);
+                document.removeEventListener('pointercancel', pointerUp);
+
+                const finished = state;
+                state = null;
+
+                finished.originEl.classList.remove('dragging');
+                if (finished.ghostEl) finished.ghostEl.remove();
+                clearDragOver();
+
+                if (!finished.moved) return; // 움직임 없이 그냥 눌렀다 뗀 경우는 클릭으로 처리되게 둠
+
+                const under = document.elementFromPoint(e.clientX, e.clientY);
+                const targetEl = under && under.closest(itemSelector);
+                if (!targetEl) return;
+                const targetId = options.getId(targetEl);
+                if (!targetId || targetId === finished.id) return;
+                if (options.canDrop && !options.canDrop(finished.id, targetId)) return;
+
+                options.onReorder(finished.id, targetId);
+            }
+
+            // 마우스/터치 없이 화살표 키만으로 항목을 앞/뒤로 옮김. 손잡이(또는 항목 자신)에
+            // tabindex="0"과 이 함수를 연결한 keydown 리스너가 있어야 동작함
+            function keyDown(e, id) {
+                let direction = 0;
+                if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') direction = -1;
+                else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') direction = 1;
+                else return;
+                if (options.checkPermission && !options.checkPermission()) return;
+
+                const itemEl = e.currentTarget.closest(itemSelector);
+                const container = itemEl && itemEl.parentElement;
+                if (!container) return;
+                const items = Array.from(container.querySelectorAll(itemSelector));
+                const currentIndex = items.findIndex(el => options.getId(el) === id);
+                if (currentIndex === -1) return;
+                const targetIndex = currentIndex + direction;
+                if (targetIndex < 0 || targetIndex >= items.length) return;
+                const targetId = options.getId(items[targetIndex]);
+                if (options.canDrop && !options.canDrop(id, targetId)) return;
+
+                e.preventDefault();
+                options.onReorder(id, targetId);
+
+                // 재렌더링된 뒤에도 방금 옮긴 항목의 손잡이에 포커스가 남아있어야 화살표를
+                // 연달아 눌러서 계속 옮길 수 있음
+                const newItemEl = Array.from(container.querySelectorAll(itemSelector)).find(el => options.getId(el) === id);
+                const newHandle = newItemEl && (options.handleSelector ? newItemEl.querySelector(options.handleSelector) : newItemEl);
+                if (newHandle) newHandle.focus();
+            }
+
+            return { pointerDown, keyDown };
         }
 
-        function tabPointerUp(e) {
-            if (!tabDragState) return;
-            document.removeEventListener('pointermove', tabPointerMove);
-            document.removeEventListener('pointerup', tabPointerUp);
-            document.removeEventListener('pointercancel', tabPointerUp);
+        const tabDragReorder = createDragReorder({
+            itemClass: 'tab',
+            ghostClass: 'tab-ghost',
+            checkPermission: () => editUnlocked, // 잠긴 상태에서는 순서 변경을 못 하게 막되, 클릭(탭 전환)은 그대로 동작함
+            getId: el => el.dataset.tabId,
+            onReorder: (fromId, toId) => {
+                const fromIndex = tabOrder.indexOf(fromId);
+                const toIndex = tabOrder.indexOf(toId);
+                if (fromIndex === -1 || toIndex === -1) return;
+                tabOrder.splice(fromIndex, 1);
+                tabOrder.splice(toIndex, 0, fromId);
+                saveTabOrderToStorage();
+                renderTabs();
+                if (typeof renderSettingsTab === 'function') renderSettingsTab();
+            }
+        });
 
-            const state = tabDragState;
-            tabDragState = null;
+        function tabPointerDown(e, tabId) {
+            tabDragReorder.pointerDown(e, tabId);
+        }
 
-            state.originEl.classList.remove('dragging');
-            if (state.ghostEl) state.ghostEl.remove();
-            document.querySelectorAll('.tab.drag-over').forEach(el => el.classList.remove('drag-over'));
-
-            if (!state.moved) return; // 움직임 없이 그냥 눌렀다 뗀 경우는 클릭으로 처리되게 둠(별도 click 리스너)
-
-            const under = document.elementFromPoint(e.clientX, e.clientY);
-            const targetTab = under && under.closest('.tab');
-            if (!targetTab) return;
-            const targetTabId = targetTab.dataset.tabId;
-            if (!targetTabId || targetTabId === state.tabId) return;
-
-            const fromIndex = tabOrder.indexOf(state.tabId);
-            const toIndex = tabOrder.indexOf(targetTabId);
-            if (fromIndex === -1 || toIndex === -1) return;
-            tabOrder.splice(fromIndex, 1);
-            tabOrder.splice(toIndex, 0, state.tabId);
-
-            saveTabOrderToStorage();
-            renderTabs();
-            if (typeof renderSettingsTab === 'function') renderSettingsTab();
+        // 화살표 키로 순서 변경 + Enter/Space로 탭 전환(포커스만으로는 아무 것도 못 누르는 상태를
+        // 피하려고, 포커스 가능하게 만든 김에 최소한의 키보드 활성화도 함께 지원함)
+        function tabKeyDown(e, tabId) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                switchTab(tabId);
+                return;
+            }
+            tabDragReorder.keyDown(e, tabId);
         }
         
         function switchTab(tabName, options) {
@@ -2058,7 +2137,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const container = document.getElementById('categoriesList');
             container.innerHTML = categories.map(category => `
                 <div class="category-tag" data-category="${escapeHtml(category)}">
-                    <span class="category-tag-drag-handle" title="드래그해서 순서 변경" onpointerdown="categoryTagPointerDown(event, '${escapeForOnclickArg(category)}')">⠿</span>
+                    <span class="category-tag-drag-handle" title="드래그하거나 화살표 키로 순서 변경" tabindex="0" role="button" aria-label="${escapeHtml(category)} 순서 변경 (화살표 키 사용 가능)" onpointerdown="categoryTagPointerDown(event, '${escapeForOnclickArg(category)}')" onkeydown="categoryTagKeyDown(event, '${escapeForOnclickArg(category)}')">⠿</span>
                     <span class="category-tag-name">${escapeHtml(category)}</span>
                     <div class="category-tag-actions">
                         <input type="color" class="category-color-input" value="${categoryColors[category] || '#667eea'}"
@@ -2072,90 +2151,36 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (typeof applyFormLockState === 'function') applyFormLockState();
         }
 
-        // 카테고리 관리 카드 순서 변경 드래그: 탭 순서 변경(tabPointerDown 등)과 같은 이유로
-        // 네이티브 HTML5 드래그앤드롭 대신 Pointer Events로 구현함(트랙패드/터치 호환).
-        // categories 배열 순서를 바로 바꾸는 것이라, 날짜별로 순서를 따로 바꾼 적 없는 날짜는
-        // 달력&활동기록 탭에서도 이 순서 그대로 반영됨(getCategoryOrderForDate의 categories.slice() 참고)
-        let categoryTagDragState = null; // { category, originEl, startX, startY, moved, ghostEl }
-        const CATEGORY_TAG_DRAG_MOVE_THRESHOLD = 6;
+        // 카테고리 관리 카드 순서 변경: categories 배열 순서를 바로 바꾸는 것이라, 날짜별로 순서를
+        // 따로 바꾼 적 없는 날짜는 달력&활동기록 탭에서도 이 순서 그대로 반영됨
+        // (getCategoryOrderForDate의 categories.slice() 참고). 드래그/화살표 키 공통 로직은
+        // createDragReorder(탭 순서 변경 바로 위 참고)를 그대로 씀
+        const categoryTagDragReorder = createDragReorder({
+            itemClass: 'category-tag',
+            ghostClass: 'category-tag-ghost',
+            checkPermission: () => editUnlocked,
+            getId: el => el.dataset.category,
+            handleSelector: '.category-tag-drag-handle',
+            onReorder: (fromCategory, toCategory) => {
+                const fromIndex = categories.indexOf(fromCategory);
+                const toIndex = categories.indexOf(toCategory);
+                if (fromIndex === -1 || toIndex === -1) return;
+                categories.splice(fromIndex, 1);
+                categories.splice(toIndex, 0, fromCategory);
+
+                saveCategoriesToStorage();
+                renderCategories();
+                renderCategorySelector();
+                if (selectedDate) renderRecordForm();
+            }
+        });
 
         function categoryTagPointerDown(e, category) {
-            if (!editUnlocked) return;
-            if (e.button !== undefined && e.button !== 0) return;
-            categoryTagDragState = {
-                category,
-                originEl: e.currentTarget.closest('.category-tag'),
-                startX: e.clientX,
-                startY: e.clientY,
-                moved: false,
-                ghostEl: null
-            };
-            document.addEventListener('pointermove', categoryTagPointerMove);
-            document.addEventListener('pointerup', categoryTagPointerUp);
-            document.addEventListener('pointercancel', categoryTagPointerUp);
+            categoryTagDragReorder.pointerDown(e, category);
         }
 
-        function categoryTagPointerMove(e) {
-            if (!categoryTagDragState) return;
-            const dx = e.clientX - categoryTagDragState.startX;
-            const dy = e.clientY - categoryTagDragState.startY;
-
-            if (!categoryTagDragState.moved) {
-                if (Math.hypot(dx, dy) < CATEGORY_TAG_DRAG_MOVE_THRESHOLD) return;
-                categoryTagDragState.moved = true;
-                categoryTagDragState.originEl.classList.add('dragging');
-
-                const rect = categoryTagDragState.originEl.getBoundingClientRect();
-                const ghost = categoryTagDragState.originEl.cloneNode(true);
-                ghost.className = 'category-tag category-tag-ghost';
-                ghost.style.width = rect.width + 'px';
-                document.body.appendChild(ghost);
-                categoryTagDragState.ghostEl = ghost;
-            }
-
-            e.preventDefault();
-            categoryTagDragState.ghostEl.style.left = e.clientX + 'px';
-            categoryTagDragState.ghostEl.style.top = e.clientY + 'px';
-
-            document.querySelectorAll('.category-tag.drag-over').forEach(el => el.classList.remove('drag-over'));
-            categoryTagDragState.ghostEl.style.display = 'none';
-            const under = document.elementFromPoint(e.clientX, e.clientY);
-            categoryTagDragState.ghostEl.style.display = '';
-            const targetTag = under && under.closest('.category-tag');
-            if (targetTag && targetTag.dataset.category !== categoryTagDragState.category) targetTag.classList.add('drag-over');
-        }
-
-        function categoryTagPointerUp(e) {
-            if (!categoryTagDragState) return;
-            document.removeEventListener('pointermove', categoryTagPointerMove);
-            document.removeEventListener('pointerup', categoryTagPointerUp);
-            document.removeEventListener('pointercancel', categoryTagPointerUp);
-
-            const state = categoryTagDragState;
-            categoryTagDragState = null;
-
-            state.originEl.classList.remove('dragging');
-            if (state.ghostEl) state.ghostEl.remove();
-            document.querySelectorAll('.category-tag.drag-over').forEach(el => el.classList.remove('drag-over'));
-
-            if (!state.moved) return;
-
-            const under = document.elementFromPoint(e.clientX, e.clientY);
-            const targetTag = under && under.closest('.category-tag');
-            if (!targetTag) return;
-            const targetCategory = targetTag.dataset.category;
-            if (!targetCategory || targetCategory === state.category) return;
-
-            const fromIndex = categories.indexOf(state.category);
-            const toIndex = categories.indexOf(targetCategory);
-            if (fromIndex === -1 || toIndex === -1) return;
-            categories.splice(fromIndex, 1);
-            categories.splice(toIndex, 0, state.category);
-
-            saveCategoriesToStorage();
-            renderCategories();
-            renderCategorySelector();
-            if (selectedDate) renderRecordForm();
+        function categoryTagKeyDown(e, category) {
+            categoryTagDragReorder.keyDown(e, category);
         }
         
         function renderCategorySelector() {
@@ -3876,95 +3901,38 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
         }
 
-        // 해야 할 일 목록 순서 변경 드래그: 탭/카테고리 순서 변경과 같은 이유로 네이티브 HTML5
-        // 드래그앤드롭 대신 Pointer Events로 구현함(트랙패드/터치 호환). "해야 할 일"과 "완료"는
-        // 화면에서도 분리된 별개의 목록이라, 드래그는 같은 완료 상태를 가진 항목끼리만 허용함
-        let todoItemDragState = null; // { id, done, originEl, startX, startY, moved, ghostEl }
-        const TODO_ITEM_DRAG_MOVE_THRESHOLD = 6;
+        // 해야 할 일 목록 순서 변경: "해야 할 일"과 "완료"는 화면에서도 분리된 별개의 목록이라,
+        // 같은 완료 상태를 가진 항목끼리만 순서 변경을 허용함. 드래그/화살표 키 공통 로직은
+        // createDragReorder(탭 순서 변경 위쪽 참고)를 그대로 씀
+        const todoItemDragReorder = createDragReorder({
+            itemClass: 'todo-item-wrap',
+            ghostClass: 'todo-item-ghost',
+            checkPermission: () => editUnlocked,
+            getId: el => el.dataset.id,
+            handleSelector: '.todo-drag-handle',
+            canDrop: (fromId, toId) => {
+                const fromItem = todoItems.find(t => t.id === fromId);
+                const toItem = todoItems.find(t => t.id === toId);
+                return !!fromItem && !!toItem && !!fromItem.done === !!toItem.done;
+            },
+            onReorder: (fromId, toId) => {
+                const fromIndex = todoItems.findIndex(t => t.id === fromId);
+                const toIndex = todoItems.findIndex(t => t.id === toId);
+                if (fromIndex === -1 || toIndex === -1) return;
+                const [moved] = todoItems.splice(fromIndex, 1);
+                todoItems.splice(toIndex, 0, moved);
+
+                saveTodoItems();
+                renderTodoList();
+            }
+        });
 
         function todoItemPointerDown(e, id) {
-            if (!editUnlocked) return;
-            if (e.button !== undefined && e.button !== 0) return;
-            const item = todoItems.find(t => t.id === id);
-            if (!item) return;
-            todoItemDragState = {
-                id,
-                done: !!item.done,
-                originEl: e.currentTarget.closest('.todo-item-wrap'),
-                startX: e.clientX,
-                startY: e.clientY,
-                moved: false,
-                ghostEl: null
-            };
-            document.addEventListener('pointermove', todoItemPointerMove);
-            document.addEventListener('pointerup', todoItemPointerUp);
-            document.addEventListener('pointercancel', todoItemPointerUp);
+            todoItemDragReorder.pointerDown(e, id);
         }
 
-        function todoItemPointerMove(e) {
-            if (!todoItemDragState) return;
-            const dx = e.clientX - todoItemDragState.startX;
-            const dy = e.clientY - todoItemDragState.startY;
-
-            if (!todoItemDragState.moved) {
-                if (Math.hypot(dx, dy) < TODO_ITEM_DRAG_MOVE_THRESHOLD) return;
-                todoItemDragState.moved = true;
-                todoItemDragState.originEl.classList.add('dragging');
-
-                const rect = todoItemDragState.originEl.getBoundingClientRect();
-                const ghost = todoItemDragState.originEl.cloneNode(true);
-                ghost.className = 'todo-item-wrap todo-item-ghost';
-                ghost.style.width = rect.width + 'px';
-                document.body.appendChild(ghost);
-                todoItemDragState.ghostEl = ghost;
-            }
-
-            e.preventDefault();
-            todoItemDragState.ghostEl.style.left = e.clientX + 'px';
-            todoItemDragState.ghostEl.style.top = e.clientY + 'px';
-
-            document.querySelectorAll('.todo-item-wrap.drag-over').forEach(el => el.classList.remove('drag-over'));
-            todoItemDragState.ghostEl.style.display = 'none';
-            const under = document.elementFromPoint(e.clientX, e.clientY);
-            todoItemDragState.ghostEl.style.display = '';
-            const targetWrap = under && under.closest('.todo-item-wrap');
-            if (targetWrap && targetWrap.dataset.id !== todoItemDragState.id) {
-                const targetItem = todoItems.find(t => t.id === targetWrap.dataset.id);
-                if (targetItem && !!targetItem.done === todoItemDragState.done) targetWrap.classList.add('drag-over');
-            }
-        }
-
-        function todoItemPointerUp(e) {
-            if (!todoItemDragState) return;
-            document.removeEventListener('pointermove', todoItemPointerMove);
-            document.removeEventListener('pointerup', todoItemPointerUp);
-            document.removeEventListener('pointercancel', todoItemPointerUp);
-
-            const state = todoItemDragState;
-            todoItemDragState = null;
-
-            state.originEl.classList.remove('dragging');
-            if (state.ghostEl) state.ghostEl.remove();
-            document.querySelectorAll('.todo-item-wrap.drag-over').forEach(el => el.classList.remove('drag-over'));
-
-            if (!state.moved) return;
-
-            const under = document.elementFromPoint(e.clientX, e.clientY);
-            const targetWrap = under && under.closest('.todo-item-wrap');
-            if (!targetWrap) return;
-            const targetId = targetWrap.dataset.id;
-            if (!targetId || targetId === state.id) return;
-            const targetItem = todoItems.find(t => t.id === targetId);
-            if (!targetItem || !!targetItem.done !== state.done) return; // 완료/미완료 목록을 넘나드는 이동은 막음
-
-            const fromIndex = todoItems.findIndex(t => t.id === state.id);
-            const toIndex = todoItems.findIndex(t => t.id === targetId);
-            if (fromIndex === -1 || toIndex === -1) return;
-            const [moved] = todoItems.splice(fromIndex, 1);
-            todoItems.splice(toIndex, 0, moved);
-
-            saveTodoItems();
-            renderTodoList();
+        function todoItemKeyDown(e, id) {
+            todoItemDragReorder.keyDown(e, id);
         }
 
         function buildTodoItemRow(item) {
@@ -3977,9 +3945,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             const dragHandle = document.createElement('span');
             dragHandle.className = 'todo-drag-handle';
-            dragHandle.title = '드래그해서 순서 변경';
+            dragHandle.title = '드래그하거나 화살표 키로 순서 변경';
             dragHandle.textContent = '⠿';
+            dragHandle.tabIndex = 0;
+            dragHandle.setAttribute('role', 'button');
+            dragHandle.setAttribute('aria-label', (item.text || '할 일') + ' 순서 변경 (화살표 키 사용 가능)');
             dragHandle.addEventListener('pointerdown', (e) => todoItemPointerDown(e, item.id));
+            dragHandle.addEventListener('keydown', (e) => todoItemKeyDown(e, item.id));
             row.appendChild(dragHandle);
 
             const checkbox = document.createElement('input');
