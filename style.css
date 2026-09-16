@@ -2416,7 +2416,7 @@ html {
         }
 
         .todo-section {
-            flex: 1 1 0;
+            flex: 0 0 auto;
             min-height: 60px;
             display: flex;
             flex-direction: column;
