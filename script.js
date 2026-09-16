@@ -3406,9 +3406,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function showCategoryForDate(category) {
             if (!checkEditPermission()) return;
             if (!selectedDate) return;
-            
+
             if (hiddenCategoriesByDate[selectedDate]) {
                 hiddenCategoriesByDate[selectedDate] = hiddenCategoriesByDate[selectedDate].filter(c => c !== category);
+                // 이 날짜에서 마지막으로 숨겨뒀던 카테고리까지 다시 보이게 하면 빈 배열([])만 계속
+                // 남게 되는데, 이러면 그 어떤 것도 숨기지 않은 날짜와 동작은 똑같으면서
+                // (hiddenCategoriesByDate[date] || []로 쓰이는 곳들과 결과가 같음) 프로필에 쓸모없는
+                // 항목만 영구적으로 쌓이므로, 빈 배열이 되면 키 자체를 지움
+                if (hiddenCategoriesByDate[selectedDate].length === 0) {
+                    delete hiddenCategoriesByDate[selectedDate];
+                }
             }
             saveHiddenCategoriesToStorage();
             renderRecordForm();

@@ -4,6 +4,11 @@
 
 const USERS_SHEET_NAME = "Users";           // 사번별 계정과 프로필(이름/소속/설정 등)을 저장하는 시트 (한 행 = 한 사람)
 const RECORDS_SHEET_NAME = "Records";       // 일일 기록(records)만 사번+연월 단위로 저장하는 시트 (한 행 = 한 사람의 한 달)
+const LARGE_FIELDS_SHEET_NAME = "ProfileLargeFields"; // 흐름도/메모장/절감과제/정비계획처럼 계속 커질 수 있는 필드를 Users 시트 프로필 셀 밖으로 따로 저장하는 시트 (한 행 = 한 사람의 한 필드)
+// Users 시트 프로필 JSON 셀에는 5만자 제한이 있음(records가 예전에 이 문제로 Records 시트로
+// 분리됐던 것과 같은 이유). 이 필드들은 흐름도를 여러 개 만들거나 메모장을 여러 개 쓰는 등
+// 내용이 계속 쌓일 수 있어서 같은 문제가 재발하지 않도록 여기 나열된 것만 LARGE_FIELDS_SHEET_NAME으로 분리 저장함
+const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule'];
 // records를 Users 시트 셀 하나에 전부 담으면 몇 년 쌓였을 때 셀당 5만자 제한에 걸릴 수 있어서
 // 이 시트로 따로 분리했음. 한 행이 "한 사람의 한 달"이라 아무리 오래 써도 셀 크기가 안 커짐.
 const TEAM_REPORTS_SHEET_NAME = "TeamReports"; // (레거시) 예전 하루 단위 자유 텍스트 팀 보고 시트. 주간 보고로 개편된 뒤로는 더 이상 새로 쓰지 않고, 과거 기록 조회/계정 삭제 시 정리 용도로만 남겨둠
@@ -218,6 +223,121 @@ function deleteRecordsForUser(employeeId) {
       sheet.deleteRow(i + 2);
     }
   }
+}
+
+// ===== 계속 커질 수 있는 필드(흐름도/메모장/절감과제/정비계획) 저장 시트 =====
+// Records와 같은 방식(사번별로 행을 나눠 저장, 한 요청 안에서는 한 번만 읽어서 재사용)이지만
+// 날짜가 아니라 필드 이름으로 행을 나눔: (사번, 필드명) 조합 하나가 한 행
+function getLargeFieldsSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(LARGE_FIELDS_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(LARGE_FIELDS_SHEET_NAME);
+    sheet.getRange(1, 1, 1, 4).setValues([["사번", "필드명", "데이터(JSON)", "마지막 저장"]]);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#667eea').setFontColor('white');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 100);
+    sheet.setColumnWidth(2, 140);
+    sheet.setColumnWidth(3, 150);
+    sheet.setColumnWidth(4, 160);
+  }
+  return sheet;
+}
+
+// ProfileLargeFields 시트 전체([사번, 필드명, 데이터JSON])를 한 번에 읽어서 배열로 돌려줌.
+// handleSaveState처럼 같은 요청 안에서 조회+저장을 둘 다 해야 할 때 재사용하면 시트를 두 번
+// 읽는 걸 피할 수 있음(락으로 보호되는 구간이라 재사용해도 안전함)
+function readLargeFieldsRows(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  return sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+}
+
+function buildLargeFieldsIndexFromRows(rows) {
+  const index = {};
+  for (let i = 0; i < rows.length; i++) {
+    const key = String(rows[i][0]).trim() + "|" + String(rows[i][1]).trim();
+    index[key] = i + 2;
+  }
+  return index;
+}
+
+// 이 사번의 LARGE_FIELD_KEYS 중 시트에 이미 옮겨진 것만 담아서 돌려줌(옮겨지지 않은 필드는
+// 아예 키가 없음 - "아직 마이그레이션 전이라 값이 없는 것"과 "값이 실제로 비어있는 것"을
+// 구분하기 위함). 호출부(handleLogin/handleLoad)는 여기 없는 키에 한해서만 프로필 JSON에
+// 남아있던 예전 값을 그대로 씀
+function loadLargeFieldsForUser(employeeId, precomputedRows) {
+  const rows = precomputedRows || readLargeFieldsRows(getLargeFieldsSheet());
+  const result = {};
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== employeeId) continue;
+    const fieldName = String(rows[i][1]).trim();
+    if (LARGE_FIELD_KEYS.indexOf(fieldName) === -1) continue;
+    try { result[fieldName] = JSON.parse(rows[i][2] || "null"); } catch (parseErr) {}
+  }
+  return result;
+}
+
+// data(클라이언트가 보낸 getFullState())에 LARGE_FIELD_KEYS 중 실려있는 필드만 시트에 저장함.
+// Records와 마찬가지로 내용이 그대로면 재저장을 생략함
+function saveLargeFieldsForUser(employeeId, data, precomputedRows) {
+  const sheet = getLargeFieldsSheet();
+  const index = buildLargeFieldsIndexFromRows(precomputedRows || readLargeFieldsRows(sheet));
+  const now = new Date().toLocaleString('ko-KR');
+
+  LARGE_FIELD_KEYS.forEach(function(fieldName) {
+    if (!Object.prototype.hasOwnProperty.call(data, fieldName)) return; // 클라이언트가 이번 요청에 안 실었으면 손대지 않음
+    const json = JSON.stringify(data[fieldName]);
+    const key = employeeId + "|" + fieldName;
+    const row = index[key];
+
+    if (!row) {
+      sheet.appendRow([employeeId, fieldName, json, now]);
+      return;
+    }
+    const currentJson = sheet.getRange(row, 3).getValue();
+    if (currentJson === json) return; // 내용 그대로면 재저장 생략
+    sheet.getRange(row, 3, 1, 2).setValues([[json, now]]);
+  });
+}
+
+function deleteLargeFieldsForUser(employeeId) {
+  const sheet = getLargeFieldsSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = ids.length - 1; i >= 0; i--) {
+    if (String(ids[i][0]).trim() === employeeId) {
+      sheet.deleteRow(i + 2);
+    }
+  }
+}
+
+function renameLargeFieldsOwner(oldEmployeeId, newEmployeeId) {
+  if (oldEmployeeId === newEmployeeId) return;
+  const sheet = getLargeFieldsSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === oldEmployeeId) {
+      sheet.getRange(i + 2, 1).setValue(newEmployeeId);
+    }
+  }
+}
+
+// handleLogin/handleLoad에서 프로필을 응답으로 내려주기 직전에 호출함. ProfileLargeFields
+// 시트에 이미 옮겨진 필드는 그 값으로 덮어쓰고, 아직 옮겨지지 않은 필드(이 기능 도입 전부터
+// 있던 계정)는 프로필 JSON에 남아있는 예전 값을 그대로 둠 - 이 계정이 다음에 저장하면
+// saveLargeFieldsForUser가 호출되면서 자동으로 시트로 옮겨지고, 그 뒤로는 프로필 JSON에서 빠짐
+function applyLargeFieldsToProfile(employeeId, parsedData, precomputedRows) {
+  const migratedFields = loadLargeFieldsForUser(employeeId, precomputedRows);
+  LARGE_FIELD_KEYS.forEach(function(key) {
+    if (Object.prototype.hasOwnProperty.call(migratedFields, key)) {
+      parsedData[key] = migratedFields[key];
+    }
+  });
+  return parsedData;
 }
 
 function renameRecordsOwner(oldEmployeeId, newEmployeeId) {
@@ -621,6 +741,7 @@ function handleLogin(employeeId, passwordHash) {
   sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
 
   parsedData.records = loadMergedRecords(employeeId, parsedData);
+  applyLargeFieldsToProfile(employeeId, parsedData);
   // 프론트엔드는 더 이상 관리자 사번을 직접 알지 못하므로(공개 저장소 노출 방지), 이 계정이
   // 관리자인지를 서버가 판단해서 내려줌 - 화면 표시(관리자 화면 진입 등)에만 쓰고, 실제 권한
   // 검증은 여전히 서버의 verifyAdmin(ADMIN_EMPLOYEE_ID 대조)이 함
@@ -657,6 +778,7 @@ function handleLoad(employeeId, passwordHash) {
   }
 
   parsedData.records = loadMergedRecords(employeeId, parsedData);
+  applyLargeFieldsToProfile(employeeId, parsedData);
   // handleLogin과 동일한 이유로, 프론트가 화면 표시에만 쓸 수 있도록 관리자 여부를 함께 내려줌
   parsedData.isAdmin = (employeeId === ADMIN_EMPLOYEE_ID);
 
@@ -867,6 +989,7 @@ function handleAdminChangeEmployeeId(data) {
 
   sheet.getRange(row, 1).setValue(newEmployeeId);
   renameRecordsOwner(oldEmployeeId, newEmployeeId);
+  renameLargeFieldsOwner(oldEmployeeId, newEmployeeId);
   renameTeamReportsOwner(oldEmployeeId, newEmployeeId);
   renameTeamWeeklyReportsOwner(oldEmployeeId, newEmployeeId);
 
@@ -1037,6 +1160,7 @@ function purgeUserRow(sheet, rowNumber) {
   const readable = ss.getSheetByName(READABLE_SHEET_PREFIX + purgedEmployeeId);
   if (readable) ss.deleteSheet(readable);
   deleteRecordsForUser(purgedEmployeeId);
+  deleteLargeFieldsForUser(purgedEmployeeId);
   deleteTeamReportsForUser(purgedEmployeeId);
   deleteTeamWeeklyReportsForUser(purgedEmployeeId);
   // 삭제가 시트에 확실히 반영된 뒤에 응답을 돌려주기 위함. 이게 없으면 이 요청 직후에 프론트가
@@ -1473,6 +1597,11 @@ function handleSaveState(data, rawBody) {
     const recordsSheet = getRecordsSheet();
     const recordsRows = readRecordsRows(recordsSheet);
 
+    // ProfileLargeFields 시트도 마찬가지로 딱 한 번만 읽어서 백업 스냅샷 조회와 아래 저장 시
+    // 인덱스 구성 양쪽에 재사용함
+    const largeFieldsSheet = getLargeFieldsSheet();
+    const largeFieldsRows = readLargeFieldsRows(largeFieldsSheet);
+
     const existingRecords = loadMergedRecords(employeeId, existingProfile, recordsRows);
     existingRecordCount = Object.keys(existingRecords).length;
     const incomingRecordCount = data.records ? Object.keys(data.records).length : 0;
@@ -1500,7 +1629,8 @@ function handleSaveState(data, rawBody) {
       for (const dateStr in existingRecords) {
         if (affectedMonths[getYearMonth(dateStr)]) backupRecords[dateStr] = existingRecords[dateStr];
       }
-      const backupPayload = Object.assign({}, existingProfile, { records: backupRecords });
+      const existingProfileForBackup = applyLargeFieldsToProfile(employeeId, Object.assign({}, existingProfile), largeFieldsRows);
+      const backupPayload = Object.assign({}, existingProfileForBackup, { records: backupRecords });
       backupSheet.insertRowBefore(2);
       backupSheet.getRange(2, 1).setValue(new Date().toLocaleString('ko-KR'));
       backupSheet.getRange(2, 2).setValue(employeeId);
@@ -1513,7 +1643,9 @@ function handleSaveState(data, rawBody) {
 
     const dataToSave = {};
     for (const key in data) {
-      if (key !== 'employeeId' && key !== 'passwordHash' && key !== 'records') dataToSave[key] = data[key];
+      if (key === 'employeeId' || key === 'passwordHash' || key === 'records') continue;
+      if (LARGE_FIELD_KEYS.indexOf(key) !== -1) continue; // ProfileLargeFields 시트로 따로 저장함 (아래 saveLargeFieldsForUser)
+      dataToSave[key] = data[key];
     }
     // deletedAt(휴지통)/disabled(비활성화)/disabledReason(수동/자동 비활성화 구분)/isTeamLead(예전
     // 팀장 지정)/teamReportRole(팀 보고 역할)/lastLoginAt(마지막 로그인, 자동 비활성화 판단용)/
@@ -1541,6 +1673,7 @@ function handleSaveState(data, rawBody) {
     if (!recordsSafetyBlocked) {
       saveRecordsForUser(employeeId, data.records || {}, recordsRows);
     }
+    saveLargeFieldsForUser(employeeId, data, largeFieldsRows);
 
     // 활동기록을 이번에 건너뛰었다면(recordsSafetyBlocked) 사람이 보기 편한 시트도 빈 기록이 아니라
     // 기존 기록 그대로 유지되게 함
