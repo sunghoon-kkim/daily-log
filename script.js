@@ -8066,13 +8066,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
 
             if (list.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#999; padding:20px;">계정이 없습니다</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#999; padding:20px;">계정이 없습니다</td></tr>';
                 return;
             }
 
             tbody.innerHTML = list.map(u => `
                 <tr>
-                    <td>${u.disabled ? '🚫 ' : ''}${u.locked ? '🔒 ' : ''}${escapeHtml(u.employeeId)}</td>
+                    <td>${u.disabled ? (u.disabledReason === 'inactive' ? '🚫(자동 비활성화) ' : '🚫 ') : ''}${u.locked ? '🔒 ' : ''}${escapeHtml(u.employeeId)}</td>
                     <td>${teamReportRoleIcon(u.teamReportRole)}${escapeHtml(u.name)}</td>
                     <td>${escapeHtml(u.department)}</td>
                     <td>${u.isAdmin ? '-' : `
@@ -8090,6 +8090,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         ${u.duplicateApiKey ? '<div class="admin-apikey-dup">⚠️ 다른 계정과 중복</div>' : ''}
                     ` : '<span style="color:#999;">미입력</span>'}</td>
                     <td>${escapeHtml(u.lastSaved)}</td>
+                    <td>${u.lastLoginAt ? escapeHtml(new Date(u.lastLoginAt).toLocaleString('ko-KR')) : '<span style="color:#999;">기록 없음</span>'}</td>
                     <td class="admin-actions-cell">${u.isAdmin ? '<span style="color:#999;">관리자 계정</span>' : `
                         <div class="admin-more-wrap">
                             <button type="button" class="admin-more-btn" title="관리 메뉴" onclick="toggleAdminMoreMenu(event, '${u.employeeId}')">⋮${u.passwordResetRequestedAt ? '🔴' : ''}</button>

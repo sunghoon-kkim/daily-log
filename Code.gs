@@ -968,6 +968,10 @@ function handleAdminListUsers(data) {
       createdAt: row[4] ? row[4].toString() : "",
       disabledFeatures: Array.isArray(parsed.disabledFeatures) ? parsed.disabledFeatures : [],
       disabled: !!parsed.disabled,
+      // 'manual'(관리자가 직접 비활성화) / 'inactive'(AUTO_DISABLE_INACTIVE_DAYS일 이상 미접속으로
+      // autoDisableInactiveAccounts가 자동 비활성화) 구분. 이 기능 도입 전에 비활성화된 계정은 빈 문자열
+      disabledReason: parsed.disabledReason || "",
+      lastLoginAt: parsed.lastLoginAt || "",
       teamReportRole: getEffectiveTeamReportRole(parsed),
       // 관리자 목록 표에서 관리자 자신의 행을 구분해야 하는데, 프론트는 더 이상 ADMIN_EMPLOYEE_ID를
       // 모르므로(공개 저장소 노출 방지) 서버가 판별한 결과를 실어서 내려줌
@@ -1221,8 +1225,10 @@ function handleAdminSetUserDisabled(data) {
   const existingData = parseUserJson(sheet.getRange(row, 3).getValue());
   if (disabled) {
     existingData.disabled = true;
+    existingData.disabledReason = 'manual'; // 관리자 목록 화면에서 자동 비활성화(inactive)와 구분해서 보여주기 위함
   } else {
     delete existingData.disabled;
+    delete existingData.disabledReason;
   }
   sheet.getRange(row, 3).setValue(JSON.stringify(existingData));
 
@@ -1280,6 +1286,7 @@ function autoDisableInactiveAccounts() {
     if (now - lastActive.getTime() < thresholdMs) return;
 
     profile.disabled = true;
+    profile.disabledReason = 'inactive'; // 관리자 목록 화면에서 관리자가 직접 끈 것(manual)과 구분해서 보여줌
     sheet.getRange(i + 2, 3).setValue(JSON.stringify(profile));
   });
 }
@@ -1506,10 +1513,10 @@ function handleSaveState(data, rawBody) {
     for (const key in data) {
       if (key !== 'employeeId' && key !== 'passwordHash' && key !== 'records') dataToSave[key] = data[key];
     }
-    // deletedAt(휴지통)/disabled(비활성화)/isTeamLead(예전 팀장 지정)/teamReportRole(팀 보고 역할)/
-    // lastLoginAt(마지막 로그인, 자동 비활성화 판단용)은 서버(관리자 기능 또는 로그인 처리)만 관리하는
-    // 필드라 클라이언트가 보내는 getFullState()에는 포함되지 않음 - 그대로 두면 다음 자동저장 때
-    // 사라지므로 여기서 되살려줌
+    // deletedAt(휴지통)/disabled(비활성화)/disabledReason(수동/자동 비활성화 구분)/isTeamLead(예전
+    // 팀장 지정)/teamReportRole(팀 보고 역할)/lastLoginAt(마지막 로그인, 자동 비활성화 판단용)은
+    // 서버(관리자 기능 또는 로그인 처리)만 관리하는 필드라 클라이언트가 보내는 getFullState()에는
+    // 포함되지 않음 - 그대로 두면 다음 자동저장 때 사라지므로 여기서 되살려줌
     if (existingProfile.deletedAt) dataToSave.deletedAt = existingProfile.deletedAt;
     if (existingProfile.disabled) dataToSave.disabled = existingProfile.disabled;
     if (existingProfile.isTeamLead) dataToSave.isTeamLead = existingProfile.isTeamLead;
@@ -1518,6 +1525,7 @@ function handleSaveState(data, rawBody) {
     if (existingProfile.requestedAt) dataToSave.requestedAt = existingProfile.requestedAt;
     if (existingProfile.disabledFeatures) dataToSave.disabledFeatures = existingProfile.disabledFeatures;
     if (existingProfile.lastLoginAt) dataToSave.lastLoginAt = existingProfile.lastLoginAt;
+    if (existingProfile.disabledReason) dataToSave.disabledReason = existingProfile.disabledReason;
     // records는 더 이상 프로필 셀에 저장하지 않음 - Records 시트로 따로 저장함 (아래 saveRecordsForUser)
     const jsonToSave = JSON.stringify(dataToSave);
 
