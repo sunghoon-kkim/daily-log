@@ -817,28 +817,22 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             syncTimeout = setTimeout(syncToServer, 800);
         }
         
-        // 이번 세션에서 서버로부터 실제 기록이 있는 데이터를 한 번이라도 정상적으로 받아온 적이 있는지 여부.
-        // 이게 true인 상태에서 갑자기 records가 텅 비어있다면, 진짜로 다 지운 게 아니라 뭔가 꼬인 것일
-        // 가능성이 높으므로 서버로 그 빈 상태를 올려보내지 않음 (안전장치)
-        let everHadRecords = false;
-        
         // 다른 사람의 저장과 겹쳐서 서버 락 대기 시간(30초)을 넘겼거나 네트워크가 잠깐 끊긴
         // 경우처럼 "다시 시도하면 될 수도 있는" 실패만 재시도함. 몇 초 뒤 재시도, 그래도 안 되면
-        // 조금 더 기다렸다가 마지막으로 한 번 더 시도(총 3번). 비밀번호 불일치나 빈 데이터
-        // 안전장치처럼 다시 시도해도 똑같이 실패할 거부는 재시도하지 않고 바로 사용자에게 알림
+        // 조금 더 기다렸다가 마지막으로 한 번 더 시도(총 3번). 비밀번호 불일치처럼 다시 시도해도
+        // 똑같이 실패할 거부는 재시도하지 않고 바로 사용자에게 알림
+        //
+        // "기존에 기록이 있었는데 갑자기 비어있는" 빈 데이터 안전장치는 서버(handleSaveState)가
+        // 판단함 - 예전에는 이 판단을 클라이언트(이 세션에서 기록을 한 번이라도 봤는지)에서도
+        // 이중으로 해서 저장 자체를 아예 안 보냈는데, 그 클라이언트 쪽 플래그가 새로고침 전까지
+        // 계속 true로 남아있어서 한 번 걸리면 할 일/메모/카테고리 순서 같은 무관한 변경사항까지
+        // 이후 모든 저장이 조용히 막혀버리는 문제가 있었음. 서버는 매 요청마다 실제 저장된 값과
+        // 비교해서 판단하므로 훨씬 더 정확하고, 활동기록만 보류하고 나머지는 저장해주므로
+        // 클라이언트는 그냥 매번 보내고 서버 응답만 보면 됨
         const SYNC_RETRY_DELAYS_MS = [3000, 8000];
 
         async function syncToServer() {
             for (let attempt = 0; attempt <= SYNC_RETRY_DELAYS_MS.length; attempt++) {
-                const recordCount = Object.keys(records).length;
-                if (recordCount > 0) everHadRecords = true;
-
-                if (everHadRecords && recordCount === 0) {
-                    console.warn('빈 상태로 저장하려는 시도를 안전장치가 막았습니다.');
-                    showSyncStatus('⚠️ 저장 보류됨 (빈 데이터 감지, 새로고침 권장)', 'error');
-                    return false;
-                }
-
                 showSyncStatus(attempt === 0 ? '☁️ 저장 중...' : `☁️ 저장 재시도 중... (${attempt}/${SYNC_RETRY_DELAYS_MS.length})`, 'syncing');
                 try {
                     const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
@@ -856,6 +850,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         console.error('서버가 저장을 거부함:', resultData.message);
                         showSyncStatus('⚠️ ' + (resultData.message || '저장 거부됨'), 'error');
                         return false;
+                    }
+                    if (resultData && resultData.recordsSkipped) {
+                        console.warn('서버가 활동기록 저장을 보류함(다른 항목은 저장됨):', resultData.message);
+                        showSyncStatus('⚠️ 활동기록 저장 보류됨 (다른 변경사항은 저장됨)', 'error');
+                        return true;
                     }
                     showSyncStatus('☁️ 저장됨', 'ok');
                     return true;
@@ -3530,7 +3529,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const repeatInterval = document.getElementById('eventRepeatIntervalInput').value;
                 repeatCount = repeatInterval === '0' ? 1 : Math.max(1, Math.min(52, parseInt(document.getElementById('eventRepeatCountInput').value, 10) || 1));
                 // 반복 등록된 회차들을 나중에 "전체 삭제"할 수 있도록 묶어주는 id (1건짜리는 필요 없음)
-                const repeatGroupId = repeatCount > 1 ? 'rep_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) : null;
+                const repeatGroupId = repeatCount > 1 ? 'rep_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) : null;
 
                 for (let i = 0; i < repeatCount; i++) {
                     let occStart = start, occEnd = end;
@@ -3561,7 +3560,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         }
                     }
                     events.push({
-                        id: 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) + '_' + i,
+                        id: 'evt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '_' + i,
                         title, start: occStart, end: occEnd, color: selectedColor, repeatGroupId
                     });
                 }
@@ -3721,7 +3720,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!Array.isArray(freeNotesPages)) freeNotesPages = [];
             if (freeNotesPages.length === 0) {
                 freeNotesPages.push({
-                    id: 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                     name: '메모장 1',
                     content: notesContent || ''
                 });
@@ -3759,7 +3758,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!checkEditPermission()) return;
             syncActiveFreeNotesPageData();
             const newPage = {
-                id: 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                 name: '메모장 ' + (freeNotesPages.length + 1),
                 content: ''
             };
@@ -3860,7 +3859,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         function migrateTodoTextToItems(text) {
             return text.split('\n').map(line => line.trim()).filter(Boolean).map(line => ({
-                id: 'todo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                id: 'todo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
                 text: line,
                 done: false,
                 memo: ''
@@ -4072,7 +4071,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!text) return;
 
             todoItems.push({
-                id: 'todo_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                id: 'todo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
                 text,
                 done: false,
                 memo: ''
@@ -4812,7 +4811,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (waterFlowDiagrams.length === 0) {
                 const hasLegacyData = (waterFlowBlocks && waterFlowBlocks.length > 0) || (waterFlowConnections && waterFlowConnections.length > 0);
                 waterFlowDiagrams.push({
-                    id: 'wfd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    id: 'wfd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                     name: '흐름도 1',
                     blocks: hasLegacyData ? waterFlowBlocks : [],
                     connections: hasLegacyData ? waterFlowConnections : []
@@ -4930,7 +4929,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             pushWaterFlowUndoSnapshot();
             syncActiveWaterFlowDiagramData();
             const newDiagram = {
-                id: 'wfd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                id: 'wfd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                 name: '흐름도 ' + (waterFlowDiagrams.length + 1),
                 blocks: [],
                 connections: []
@@ -5395,7 +5394,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
             pushWaterFlowUndoSnapshot();
             waterFlowConnections.push({
-                id: 'wfc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                id: 'wfc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                 from: fromId,
                 to: toId
             });
@@ -5526,7 +5525,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
             pushWaterFlowUndoSnapshot();
             waterFlowConnections.push({
-                id: 'wfc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                id: 'wfc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                 from: fromId,
                 to: null,
                 toConnectionId: hostConnId
@@ -6188,7 +6187,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const pos = pendingNewWaterFlowBlockPosition || nextWaterFlowBlockPosition();
                 pendingNewWaterFlowBlockPosition = null;
                 waterFlowBlocks.push({
-                    id: 'wfb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    id: 'wfb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                     title, detail, color, x: pos.x, y: pos.y, expanded: true
                 });
             }
@@ -6230,7 +6229,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!b) return;
             pushWaterFlowUndoSnapshot();
             waterFlowBlocks.push({
-                id: 'wfb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                id: 'wfb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                 title: b.title, detail: b.detail, color: b.color,
                 x: (b.x || 0) + 24, y: (b.y || 0) + 24,
                 expanded: b.expanded
@@ -8022,6 +8021,20 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             renderAdminUserTable();
         }
 
+        // "2026. 9. 16. 오전 9:00:00" 같은 toLocaleString('ko-KR') 형식 문자열을 정렬 가능한 Date로
+        // 바꿔줌 (Code.gs의 parseKoreanLocaleDate와 동일한 로직). new Date(문자열)로는 이 형식을
+        // 못 알아듣고 Invalid Date가 되므로 직접 정규식으로 분해함
+        function parseKoreanLocaleDateForSort(str) {
+            if (!str) return null;
+            const m = String(str).match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?\s*(오전|오후)?\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+            if (!m) return null;
+            let hour = parseInt(m[5], 10);
+            if (m[4] === '오후' && hour < 12) hour += 12;
+            if (m[4] === '오전' && hour === 12) hour = 0;
+            const date = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10), hour, parseInt(m[6], 10), m[7] ? parseInt(m[7], 10) : 0);
+            return isNaN(date.getTime()) ? null : date;
+        }
+
         function renderAdminUserTable() {
             const tbody = document.getElementById('adminUserTableBody');
             if (!tbody) return;
@@ -8048,6 +8061,15 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     case 'department':
                         result = (a[adminSortKey] || '').localeCompare(b[adminSortKey] || '', 'ko');
                         break;
+                    case 'lastSaved': {
+                        // "2026. 9. 16. 오전 9:00:00"처럼 월/일이 0으로 채워지지 않는 형식이라,
+                        // 문자열 그대로 비교하면 "9. 2."가 "9. 16."보다 사전순으로 뒤에 와서
+                        // (문자 '2' > '1') 실제로는 더 오래된 날짜가 최신으로 정렬되는 문제가 있었음
+                        const da = parseKoreanLocaleDateForSort(a.lastSaved);
+                        const db = parseKoreanLocaleDateForSort(b.lastSaved);
+                        result = (da ? da.getTime() : 0) - (db ? db.getTime() : 0);
+                        break;
+                    }
                     default:
                         result = (a[adminSortKey] || '').localeCompare(b[adminSortKey] || '');
                 }

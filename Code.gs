@@ -1440,6 +1440,8 @@ function handleSaveState(data, rawBody) {
   // 충돌할 일이 없는데, 락(스크립트 전체가 공유하는 잠금) 안에서 매번 전체를 다시 그리면
   // 그동안 다른 모든 사람의 저장 요청이 불필요하게 대기하게 됨
   let readableUpdatePayload = null;
+  let recordsSafetyBlocked = false;
+  let existingRecordCount = 0;
   try {
     const sheet = getUsersSheet();
     const row = findUserRow(sheet, employeeId);
@@ -1472,15 +1474,15 @@ function handleSaveState(data, rawBody) {
     const recordsRows = readRecordsRows(recordsSheet);
 
     const existingRecords = loadMergedRecords(employeeId, existingProfile, recordsRows);
-    const existingRecordCount = Object.keys(existingRecords).length;
+    existingRecordCount = Object.keys(existingRecords).length;
     const incomingRecordCount = data.records ? Object.keys(data.records).length : 0;
 
-    if (existingRecordCount >= 1 && incomingRecordCount === 0) {
-      return jsonResponse({
-        status: "error",
-        message: "안전장치 작동: 기존에 " + existingRecordCount + "일치 기록이 저장되어 있는데, 빈 데이터로 덮어쓰려는 요청이라 저장을 거부했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요."
-      });
-    }
+    // 기존에 활동기록이 있었는데 이번 요청은 빈 데이터라면, 진짜로 다 지운 게 아니라 뭔가 꼬인
+    // 것일 가능성이 높으므로 활동기록만 이번 저장에서 건너뜀(기존 기록은 그대로 보존). 예전에는
+    // 이 경우 요청 전체를 거부해서 할 일/메모/카테고리 순서 같은 무관한 변경사항까지 매번 함께
+    // 저장 실패했는데(한 번 이 상태에 빠지면 새로고침 전까지 그 어떤 저장도 안 되는 문제가 있었음),
+    // 이제는 활동기록만 보류하고 나머지는 평소처럼 저장함
+    recordsSafetyBlocked = (existingRecordCount >= 1 && incomingRecordCount === 0);
 
     // 안전장치 2: 직전 상태 자동 백업. 프로필 전체 + 이번 저장으로 실제로 바뀌는 달의 기록만 백업함
     // (기록 전체를 매번 백업하면 백업 시트 셀도 언젠가 5만자 제한에 걸릴 수 있어서, 안 바뀌는
@@ -1514,9 +1516,12 @@ function handleSaveState(data, rawBody) {
       if (key !== 'employeeId' && key !== 'passwordHash' && key !== 'records') dataToSave[key] = data[key];
     }
     // deletedAt(휴지통)/disabled(비활성화)/disabledReason(수동/자동 비활성화 구분)/isTeamLead(예전
-    // 팀장 지정)/teamReportRole(팀 보고 역할)/lastLoginAt(마지막 로그인, 자동 비활성화 판단용)은
-    // 서버(관리자 기능 또는 로그인 처리)만 관리하는 필드라 클라이언트가 보내는 getFullState()에는
-    // 포함되지 않음 - 그대로 두면 다음 자동저장 때 사라지므로 여기서 되살려줌
+    // 팀장 지정)/teamReportRole(팀 보고 역할)/lastLoginAt(마지막 로그인, 자동 비활성화 판단용)/
+    // failedLoginCount·lockedAt(로그인 실패 잠금)은 서버(관리자 기능 또는 로그인 처리)만 관리하는
+    // 필드라 클라이언트가 보내는 getFullState()에는 포함되지 않음 - 그대로 두면 다음 자동저장 때
+    // 사라지므로 여기서 되살려줌. failedLoginCount/lockedAt을 안 살리면, 같은 계정으로 이미
+    // 로그인돼 있는 다른 기기의 평범한 자동저장 한 번만으로 브루트포스 잠금 카운트가 조용히
+    // 리셋되는 보안 허점이 생기므로 특히 중요함
     if (existingProfile.deletedAt) dataToSave.deletedAt = existingProfile.deletedAt;
     if (existingProfile.disabled) dataToSave.disabled = existingProfile.disabled;
     if (existingProfile.isTeamLead) dataToSave.isTeamLead = existingProfile.isTeamLead;
@@ -1526,19 +1531,33 @@ function handleSaveState(data, rawBody) {
     if (existingProfile.disabledFeatures) dataToSave.disabledFeatures = existingProfile.disabledFeatures;
     if (existingProfile.lastLoginAt) dataToSave.lastLoginAt = existingProfile.lastLoginAt;
     if (existingProfile.disabledReason) dataToSave.disabledReason = existingProfile.disabledReason;
+    if (existingProfile.failedLoginCount) dataToSave.failedLoginCount = existingProfile.failedLoginCount;
+    if (existingProfile.lockedAt) dataToSave.lockedAt = existingProfile.lockedAt;
     // records는 더 이상 프로필 셀에 저장하지 않음 - Records 시트로 따로 저장함 (아래 saveRecordsForUser)
     const jsonToSave = JSON.stringify(dataToSave);
 
     sheet.getRange(row, 3, 1, 2).setValues([[jsonToSave, new Date().toLocaleString('ko-KR')]]);
 
-    saveRecordsForUser(employeeId, data.records || {}, recordsRows);
+    if (!recordsSafetyBlocked) {
+      saveRecordsForUser(employeeId, data.records || {}, recordsRows);
+    }
 
-    readableUpdatePayload = Object.assign({}, dataToSave, { records: data.records || {} });
+    // 활동기록을 이번에 건너뛰었다면(recordsSafetyBlocked) 사람이 보기 편한 시트도 빈 기록이 아니라
+    // 기존 기록 그대로 유지되게 함
+    readableUpdatePayload = Object.assign({}, dataToSave, { records: recordsSafetyBlocked ? existingRecords : (data.records || {}) });
   } finally {
     lock.releaseLock();
   }
 
   if (readableUpdatePayload) updateReadableSheetWithRetry(employeeId, readableUpdatePayload);
+
+  if (recordsSafetyBlocked) {
+    return jsonResponse({
+      status: "success",
+      recordsSkipped: true,
+      message: "활동기록 " + existingRecordCount + "일치가 저장되어 있는데 이번 요청은 빈 데이터라 활동기록만 저장하지 않았습니다(다른 변경사항은 정상 저장됨). 정말로 기록을 전부 지운 것이 맞다면 페이지를 새로고침한 뒤 다시 저장해주세요."
+    });
+  }
 
   return jsonResponse({ status: "success" });
 }
