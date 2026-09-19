@@ -212,7 +212,23 @@
                     </div>
                     <p style="color: #666; font-size: 13px; margin-bottom: 12px;">날짜와 상관없이 자유롭게 쓰는 메모장입니다. 날짜가 지나도 내용이 사라지지 않습니다.</p>
                     <div class="free-notes-page-tabs" id="freeNotesPageTabs"></div>
-                    <textarea class="notes-textarea" id="notesTextarea" placeholder="자유롭게 메모를 작성하세요..."></textarea>
+                    <div class="notes-toolbar" id="notesToolbar">
+                        <button type="button" class="notes-tool-btn" title="굵게" onmousedown="event.preventDefault()" onclick="applyNoteFormat('bold')"><b>B</b></button>
+                        <button type="button" class="notes-tool-btn" title="글씨 크게" onmousedown="event.preventDefault()" onclick="changeNoteFontSize(1)">가<sup>+</sup></button>
+                        <button type="button" class="notes-tool-btn" title="글씨 작게" onmousedown="event.preventDefault()" onclick="changeNoteFontSize(-1)">가<sub>−</sub></button>
+                        <span class="notes-tool-divider"></span>
+                        <label class="notes-tool-color-label" title="글자 색">
+                            <span class="notes-tool-color-swatch" id="noteTextColorSwatch" style="color:#e63946;">가</span>
+                            <input type="color" class="notes-tool-color-input" id="noteTextColorInput" value="#e63946" onmousedown="saveNoteSelectionRange()" onchange="restoreNoteSelectionRange(); applyNoteFormat('foreColor', this.value); document.getElementById('noteTextColorSwatch').style.color = this.value;">
+                        </label>
+                        <label class="notes-tool-color-label" title="형광펜">
+                            <span class="notes-tool-color-swatch notes-tool-highlight-swatch" id="noteHighlightColorSwatch" style="background:#fff59d;">가</span>
+                            <input type="color" class="notes-tool-color-input" id="noteHighlightColorInput" value="#fff59d" onmousedown="saveNoteSelectionRange()" onchange="restoreNoteSelectionRange(); applyNoteFormat('hiliteColor', this.value); document.getElementById('noteHighlightColorSwatch').style.background = this.value;">
+                        </label>
+                        <span class="notes-tool-divider"></span>
+                        <button type="button" class="notes-tool-btn" title="서식 지우기" onmousedown="event.preventDefault()" onclick="clearNoteFormat()">✖ 서식</button>
+                    </div>
+                    <div class="notes-textarea" id="notesTextarea" contenteditable="true" data-placeholder="자유롭게 메모를 작성하세요..."></div>
                 </div>
             </div>
         </div>

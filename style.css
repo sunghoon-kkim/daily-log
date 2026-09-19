@@ -2702,11 +2702,88 @@ html {
             line-height: 1.7;
             resize: vertical;
             background: white;
+            overflow-y: auto;
         }
-        
+
         .notes-textarea:focus {
             outline: none;
             border-color: #667eea;
+        }
+
+        .notes-textarea[contenteditable]:empty:before {
+            content: attr(data-placeholder);
+            color: #999;
+            pointer-events: none;
+        }
+
+        .notes-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .notes-tool-btn {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: white;
+            color: #555;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .notes-tool-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .notes-tool-divider {
+            width: 1px;
+            height: 20px;
+            background: #e0e0e0;
+            margin: 0 2px;
+        }
+
+        .notes-tool-color-label {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px 8px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .notes-tool-color-label:hover {
+            border-color: #667eea;
+        }
+
+        .notes-tool-color-swatch {
+            font-size: 13px;
+            font-weight: 700;
+            pointer-events: none;
+        }
+
+        .notes-tool-highlight-swatch {
+            padding: 0 3px;
+            border-radius: 3px;
+            color: #333;
+        }
+
+        .notes-tool-color-input {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            border: none;
+            opacity: 0;
+            cursor: pointer;
         }
         
         /* 탭 5: AI 요약 */
@@ -4064,6 +4141,27 @@ html {
 
 .dark-mode .free-notes-page-add-btn:hover {
     background: #2a2a52;
+}
+
+.dark-mode .notes-tool-btn,
+.dark-mode .notes-tool-color-label {
+    background: var(--d-bg3);
+    border-color: var(--d-border);
+    color: var(--d-text2);
+}
+
+.dark-mode .notes-tool-btn:hover,
+.dark-mode .notes-tool-color-label:hover {
+    border-color: #8a9bf5;
+    color: #a9b6ff;
+}
+
+.dark-mode .notes-tool-divider {
+    background: var(--d-border);
+}
+
+.dark-mode .notes-textarea[contenteditable]:empty:before {
+    color: var(--d-text3);
 }
 
 .dark-mode .water-flow-connection-default-swatch {

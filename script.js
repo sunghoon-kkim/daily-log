@@ -3868,30 +3868,123 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
+        // 이 업데이트 전까지 메모장은 일반 텍스트(textarea.value)로 저장됐음. 예전 방식으로 저장된
+        // 내용을 그대로 innerHTML에 넣으면 <, >, & 같은 문자가 HTML로 해석돼 깨질 수 있어서,
+        // HTML 태그가 없는(=아직 예전 방식인) 내용일 때만 이스케이프 + 줄바꿈 변환을 거쳐줌
+        function toDisplayNotesHtml(content) {
+            if (!content) return '';
+            if (/<[a-z][\s\S]*>/i.test(content)) return content; // 이미 서식 있는 메모(새 방식)로 저장된 내용
+            const escaped = content
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            return escaped.replace(/\n/g, '<br>');
+        }
+
         function applyNotesContent() {
             renderFreeNotesPageTabs();
-            document.getElementById('notesTextarea').value = notesContent;
+            document.getElementById('notesTextarea').innerHTML = toDisplayNotesHtml(notesContent);
             renderTodoList();
+        }
+
+        let notesSaveTimeout = null;
+        function scheduleNotesSave() {
+            autoGrowNotesContainer();
+            clearTimeout(notesSaveTimeout);
+            notesSaveTimeout = setTimeout(() => {
+                const textarea = document.getElementById('notesTextarea');
+                notesContent = textarea.innerHTML;
+                syncActiveFreeNotesPageData();
+                localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
+                localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
+                queueSync();
+                const indicator = document.getElementById('notesSaveIndicator');
+                indicator.classList.add('show');
+                setTimeout(() => indicator.classList.remove('show'), 1500);
+            }, 500);
         }
 
         function setupNotesAutosave() {
             const textarea = document.getElementById('notesTextarea');
-            const indicator = document.getElementById('notesSaveIndicator');
-            let saveTimeout = null;
+            document.execCommand('defaultParagraphSeparator', false, 'br'); // 브라우저마다 다른 줄바꿈 태그(div/p)를 <br>로 통일
+            textarea.addEventListener('input', scheduleNotesSave);
+        }
 
-            textarea.addEventListener('input', () => {
-                autoGrowNotesContainer();
-                clearTimeout(saveTimeout);
-                saveTimeout = setTimeout(() => {
-                    notesContent = textarea.value;
-                    syncActiveFreeNotesPageData();
-                    localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
-                    localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
-                    queueSync();
-                    indicator.classList.add('show');
-                    setTimeout(() => indicator.classList.remove('show'), 1500);
-                }, 500);
-            });
+        // ===== 메모장 서식(굵게/글씨 크기/글자색/형광펜) =====
+        let savedNoteRange = null;
+
+        // 색상 선택창(input[type=color])을 열면 메모장이 포커스를 잃어 선택 영역이 풀릴 수 있어서,
+        // 선택창을 열기 직전(mousedown)에 선택 범위를 저장해뒀다가 색을 고른 뒤 되살려서 그 자리에 적용함
+        function saveNoteSelectionRange() {
+            const textarea = document.getElementById('notesTextarea');
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0 && textarea.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                savedNoteRange = sel.getRangeAt(0).cloneRange();
+            } else {
+                savedNoteRange = null;
+            }
+        }
+
+        function restoreNoteSelectionRange() {
+            document.getElementById('notesTextarea').focus();
+            if (!savedNoteRange) return;
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(savedNoteRange);
+        }
+
+        function applyNoteFormat(command, value) {
+            if (!checkEditPermission()) return;
+            document.getElementById('notesTextarea').focus();
+            document.execCommand('styleWithCSS', false, true);
+            document.execCommand(command, false, value || null);
+            scheduleNotesSave();
+        }
+
+        // execCommand('fontSize')는 1~7단계뿐이라 세밀한 조절이 안 돼서, 선택한 부분을
+        // <span style="font-size">로 직접 감싸는 방식으로 원하는 만큼 키우고 줄일 수 있게 함
+        function changeNoteFontSize(delta) {
+            if (!checkEditPermission()) return;
+            const textarea = document.getElementById('notesTextarea');
+            const sel = window.getSelection();
+            if (!sel || sel.rangeCount === 0 || sel.isCollapsed || !textarea.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                showAppToast('크기를 바꿀 글자를 먼저 선택해주세요.');
+                return;
+            }
+
+            const range = sel.getRangeAt(0);
+            const refEl = range.commonAncestorContainer.nodeType === 3
+                ? range.commonAncestorContainer.parentElement
+                : range.commonAncestorContainer;
+            const currentSize = parseFloat(getComputedStyle(refEl).fontSize) || 14;
+            const newSize = Math.min(Math.max(Math.round(currentSize + delta * 2), 10), 36);
+
+            const span = document.createElement('span');
+            span.style.fontSize = newSize + 'px';
+            try {
+                range.surroundContents(span);
+            } catch (e) {
+                // 선택 영역이 여러 태그에 걸쳐 있으면 surroundContents가 실패할 수 있어 대체 방식으로 처리
+                const frag = range.extractContents();
+                span.appendChild(frag);
+                range.insertNode(span);
+            }
+
+            sel.removeAllRanges();
+            const newRange = document.createRange();
+            newRange.selectNodeContents(span);
+            sel.addRange(newRange);
+
+            scheduleNotesSave();
+        }
+
+        function clearNoteFormat() {
+            if (!checkEditPermission()) return;
+            document.getElementById('notesTextarea').focus();
+            document.execCommand('removeFormat', false, null);
+            document.execCommand('styleWithCSS', false, true);
+            document.execCommand('hiliteColor', false, 'transparent'); // removeFormat만으로는 형광펜 배경이 안 지워지는 경우가 있어 한 번 더 처리
+            scheduleNotesSave();
         }
 
         // ===== 해야 할 일 (체크박스로 추가/수정/삭제/완료 표시하는 할일 목록) =====
@@ -8811,7 +8904,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             const notesTextarea = document.getElementById('notesTextarea');
             const aiTemplateTextarea = document.getElementById('aiTemplateTextarea');
-            if (notesTextarea) notesTextarea.readOnly = !editUnlocked;
+            if (notesTextarea) notesTextarea.contentEditable = editUnlocked ? 'true' : 'false';
             if (aiTemplateTextarea) aiTemplateTextarea.readOnly = !editUnlocked;
 
             // 활동기록 카테고리 textarea들은 날짜를 선택할 때마다 새로 그려지므로, 그때도 이 상태를 반영해야 함
