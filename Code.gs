@@ -81,6 +81,13 @@ function normalizeEmployeeId(id) {
   return (id || "").toString().trim();
 }
 
+// 사번을 시트 셀에 쓰기 전에 항상 먼저 호출: 셀 서식이 Automatic이면 "0123456"처럼 0으로
+// 시작하는 사번이 Sheets에 의해 숫자로 자동 변환되면서 앞자리 0이 사라지고(-> 123456), 그 뒤
+// findUserRow 등의 문자열 비교가 전부 어긋나 해당 계정이 영구히 로그인/조회 불가능해짐
+function lockEmployeeIdCellAsText(sheet, row, col) {
+  sheet.getRange(row, col).setNumberFormat('@');
+}
+
 // ===== 사번+연월별 기록(records) 저장 시트 =====
 function getRecordsSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -186,7 +193,9 @@ function saveRecordsForUser(employeeId, recordsObj, precomputedRows) {
 
     if (!row) {
       if (json === "{}") continue; // 원래 없던 달을 빈 값으로 새로 만들 필요는 없음
-      sheet.appendRow([employeeId, ym, json, now]);
+      const newRow = sheet.getLastRow() + 1;
+      lockEmployeeIdCellAsText(sheet, newRow, 1);
+      sheet.getRange(newRow, 1, 1, 4).setValues([[employeeId, ym, json, now]]);
       continue;
     }
 
@@ -292,7 +301,9 @@ function saveLargeFieldsForUser(employeeId, data, precomputedRows) {
     const row = index[key];
 
     if (!row) {
-      sheet.appendRow([employeeId, fieldName, json, now]);
+      const newRow = sheet.getLastRow() + 1;
+      lockEmployeeIdCellAsText(sheet, newRow, 1);
+      sheet.getRange(newRow, 1, 1, 4).setValues([[employeeId, fieldName, json, now]]);
       return;
     }
     const currentJson = sheet.getRange(row, 3).getValue();
@@ -321,6 +332,7 @@ function renameLargeFieldsOwner(oldEmployeeId, newEmployeeId) {
   const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   for (let i = 0; i < ids.length; i++) {
     if (String(ids[i][0]).trim() === oldEmployeeId) {
+      lockEmployeeIdCellAsText(sheet, i + 2, 1);
       sheet.getRange(i + 2, 1).setValue(newEmployeeId);
     }
   }
@@ -348,6 +360,7 @@ function renameRecordsOwner(oldEmployeeId, newEmployeeId) {
   const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   for (let i = 0; i < ids.length; i++) {
     if (String(ids[i][0]).trim() === oldEmployeeId) {
+      lockEmployeeIdCellAsText(sheet, i + 2, 1);
       sheet.getRange(i + 2, 1).setValue(newEmployeeId);
     }
   }
@@ -410,6 +423,7 @@ function renameTeamReportsOwner(oldEmployeeId, newEmployeeId) {
   const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   for (let i = 0; i < ids.length; i++) {
     if (String(ids[i][0]).trim() === oldEmployeeId) {
+      lockEmployeeIdCellAsText(sheet, i + 2, 1);
       sheet.getRange(i + 2, 1).setValue(newEmployeeId);
     }
   }
@@ -473,6 +487,7 @@ function renameTeamWeeklyReportsOwner(oldEmployeeId, newEmployeeId) {
   const values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
   for (let i = 0; i < values.length; i++) {
     if (String(values[i][0]).trim() === oldEmployeeId) {
+      lockEmployeeIdCellAsText(sheet, i + 2, 1);
       sheet.getRange(i + 2, 1).setValue(newEmployeeId);
     }
     const targetIds = parseJsonSafe(values[i][2], []);
@@ -881,7 +896,9 @@ function handleSignup(data) {
       pending: true,
       requestedAt: new Date().toISOString()
     };
-    sheet.appendRow([employeeId, passwordHash, JSON.stringify(initialData), "", new Date().toLocaleString('ko-KR')]);
+    const newRow = sheet.getLastRow() + 1;
+    lockEmployeeIdCellAsText(sheet, newRow, 1);
+    sheet.getRange(newRow, 1, 1, 5).setValues([[employeeId, passwordHash, JSON.stringify(initialData), "", new Date().toLocaleString('ko-KR')]]);
   } finally {
     lock.releaseLock();
   }
@@ -987,6 +1004,7 @@ function handleAdminChangeEmployeeId(data) {
     }
   }
 
+  lockEmployeeIdCellAsText(sheet, row, 1);
   sheet.getRange(row, 1).setValue(newEmployeeId);
   renameRecordsOwner(oldEmployeeId, newEmployeeId);
   renameLargeFieldsOwner(oldEmployeeId, newEmployeeId);
@@ -1633,6 +1651,7 @@ function handleSaveState(data, rawBody) {
       const backupPayload = Object.assign({}, existingProfileForBackup, { records: backupRecords });
       backupSheet.insertRowBefore(2);
       backupSheet.getRange(2, 1).setValue(new Date().toLocaleString('ko-KR'));
+      lockEmployeeIdCellAsText(backupSheet, 2, 2);
       backupSheet.getRange(2, 2).setValue(employeeId);
       backupSheet.getRange(2, 3).setValue(JSON.stringify(backupPayload));
       const lastRow = backupSheet.getLastRow();
@@ -1927,6 +1946,7 @@ function handleSubmitTeamWeeklyReport(data) {
       // "주시작일" 열 서식을 텍스트로 먼저 고정한 뒤 값을 써야 "2026-08-30" 같은 값이 Sheets에
       // 의해 실제 Date로 자동 변환되지 않음 (자동 변환되면 재제출 시 findTeamWeeklyReportRow가
       // 기존 행을 못 찾아 갱신 대신 매번 새 행이 쌓이는 문제가 생김)
+      lockEmployeeIdCellAsText(sheet, newRow, 1);
       sheet.getRange(newRow, 2).setNumberFormat('@');
       sheet.getRange(newRow, 1, 1, 5).setValues([[auth.employeeId, weekStart, targetPayload, payload, submittedAt]]);
     } else {
@@ -2243,9 +2263,16 @@ function callGeminiRawText(apiKey, contents, systemPrompt) {
   for (let attempt = 0; attempt <= GEMINI_MAX_RETRIES; attempt++) {
     const response = UrlFetchApp.fetch(url, options);
     const responseCode = response.getResponseCode();
-    const responseData = JSON.parse(response.getContentText());
+    // Gemini 쪽 장애(예: 502로 HTML 오류 페이지나 빈 본문이 내려오는 경우) 시 JSON이 아닐 수
+    // 있으므로, 여기서 예외를 그대로 던지지 않고 null로 두어 아래에서 재시도/일반 오류로 처리함
+    let responseData = null;
+    try {
+      responseData = JSON.parse(response.getContentText());
+    } catch (parseErr) {
+      responseData = null;
+    }
 
-    if (responseCode === 200) {
+    if (responseCode === 200 && responseData) {
       let text = "";
       if (responseData.candidates && responseData.candidates[0] &&
           responseData.candidates[0].content && responseData.candidates[0].content.parts) {
@@ -2256,9 +2283,9 @@ function callGeminiRawText(apiKey, contents, systemPrompt) {
       return stripMarkdown(text);
     }
 
-    lastErrMsg = (responseData.error && responseData.error.message) ? responseData.error.message : "";
+    lastErrMsg = (responseData && responseData.error && responseData.error.message) ? responseData.error.message : "";
 
-    if (attempt < GEMINI_MAX_RETRIES && isGeminiOverloadedError(responseCode, responseData)) {
+    if (attempt < GEMINI_MAX_RETRIES && (!responseData || isGeminiOverloadedError(responseCode, responseData))) {
       Utilities.sleep(GEMINI_RETRY_DELAY_MS * (attempt + 1));
       continue;
     }
@@ -2884,7 +2911,9 @@ function migrateLegacyData() {
     // 웹 프론트엔드와 100% 동일한 해시 규칙 적용
     const passwordHash = computeSha256(rawPw + ':' + employeeId);
 
-    sheet.appendRow([employeeId, passwordHash, profileJson, new Date().toLocaleString('ko-KR'), new Date().toLocaleString('ko-KR')]);
+    const newRow = sheet.getLastRow() + 1;
+    lockEmployeeIdCellAsText(sheet, newRow, 1);
+    sheet.getRange(newRow, 1, 1, 5).setValues([[employeeId, passwordHash, profileJson, new Date().toLocaleString('ko-KR'), new Date().toLocaleString('ko-KR')]]);
     saveRecordsForUser(employeeId, legacyRecords);
     updateReadableSheet(employeeId, legacyData);
     ui.alert("'" + employeeId + "' 계정으로 데이터 이전 및 비밀번호 설정이 완료되었습니다.\n\n웹 화면에서 해당 사번과 비밀번호로 로그인하세요.");
