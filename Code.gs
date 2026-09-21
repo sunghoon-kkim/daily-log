@@ -8,7 +8,7 @@ const LARGE_FIELDS_SHEET_NAME = "ProfileLargeFields"; // 흐름도/메모장/절
 // Users 시트 프로필 JSON 셀에는 5만자 제한이 있음(records가 예전에 이 문제로 Records 시트로
 // 분리됐던 것과 같은 이유). 이 필드들은 흐름도를 여러 개 만들거나 메모장을 여러 개 쓰는 등
 // 내용이 계속 쌓일 수 있어서 같은 문제가 재발하지 않도록 여기 나열된 것만 LARGE_FIELDS_SHEET_NAME으로 분리 저장함
-const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule'];
+const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule', 'categoryImages'];
 // records를 Users 시트 셀 하나에 전부 담으면 몇 년 쌓였을 때 셀당 5만자 제한에 걸릴 수 있어서
 // 이 시트로 따로 분리했음. 한 행이 "한 사람의 한 달"이라 아무리 오래 써도 셀 크기가 안 커짐.
 const TEAM_REPORTS_SHEET_NAME = "TeamReports"; // (레거시) 예전 하루 단위 자유 텍스트 팀 보고 시트. 주간 보고로 개편된 뒤로는 더 이상 새로 쓰지 않고, 과거 기록 조회/계정 삭제 시 정리 용도로만 남겨둠
@@ -364,6 +364,99 @@ function renameRecordsOwner(oldEmployeeId, newEmployeeId) {
       sheet.getRange(i + 2, 1).setValue(newEmployeeId);
     }
   }
+}
+
+// ===== 메모장/활동기록 카테고리 박스에 붙여넣은 이미지 저장 (Google Drive) =====
+// Users/Records/ProfileLargeFields 시트 모두 셀당 5만자 제한이 있어서, 이미지를 base64로
+// 그 안에 직접 저장할 수 없음. 그래서 이미지 파일 자체는 앱 전용 Drive 폴더에 올리고,
+// 메모/활동기록에는 그 이미지를 가리키는 짧은 URL만 남김
+const IMAGE_UPLOAD_ROOT_FOLDER_NAME = "CAL_첨부이미지";
+const IMAGE_UPLOAD_MAX_BYTES = 8 * 1024 * 1024; // 클라이언트가 미리 리사이즈/압축해서 보내므로 이 정도면 충분히 넉넉함
+
+function getImageUploadRootFolder() {
+  const folders = DriveApp.getFoldersByName(IMAGE_UPLOAD_ROOT_FOLDER_NAME);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(IMAGE_UPLOAD_ROOT_FOLDER_NAME);
+}
+
+// 사번별로 하위 폴더를 나눠서, 계정을 완전 삭제할 때 그 사람 이미지만 한 번에 정리할 수 있게 함
+function getImageUploadFolderForUser(employeeId) {
+  const root = getImageUploadRootFolder();
+  const folders = root.getFoldersByName(employeeId);
+  if (folders.hasNext()) return folders.next();
+  return root.createFolder(employeeId);
+}
+
+// 메모장/활동기록 카테고리 박스에 붙여넣은 이미지 한 장을 업로드함. 로그인된 계정만 쓸 수 있도록
+// handleSaveState와 동일한 방식(사번+비밀번호 해시 대조)으로 인증함
+function handleUploadImage(data) {
+  const employeeId = normalizeEmployeeId(data.employeeId);
+  const passwordHash = data.passwordHash || "";
+  if (!employeeId || !passwordHash) {
+    return jsonResponse({ status: "error", message: "로그인 정보가 없어 업로드할 수 없습니다. 다시 로그인해주세요." });
+  }
+
+  const sheet = getUsersSheet();
+  const row = findUserRow(sheet, employeeId);
+  if (row === -1) {
+    return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
+  }
+  const rowValues = sheet.getRange(row, 2, 1, 2).getValues()[0];
+  if (String(rowValues[0]) !== passwordHash) {
+    return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
+  }
+  const denialMessage = getAccountAccessDenialMessage(parseUserJson(rowValues[1]));
+  if (denialMessage) {
+    return jsonResponse({ status: "error", message: denialMessage });
+  }
+
+  const imageDataUrl = (data.imageData || "").toString();
+  const match = imageDataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) {
+    return jsonResponse({ status: "error", message: "이미지 형식이 올바르지 않습니다." });
+  }
+  const mimeType = match[1];
+
+  // 같은 사람이 이미지 여러 장을 거의 동시에 붙여넣는 경우, 사번별 폴더가 없을 때
+  // "확인 후 생성" 사이에 두 요청이 겹쳐서 폴더가 중복 생성되는 것을 막기 위한 락
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return jsonResponse({ status: "error", message: "다른 요청이 진행 중이라 처리하지 못했습니다. 잠시 후 다시 시도해주세요." });
+  }
+
+  try {
+    const bytes = Utilities.base64Decode(match[2]);
+    if (bytes.length > IMAGE_UPLOAD_MAX_BYTES) {
+      return jsonResponse({ status: "error", message: "이미지 용량이 너무 큽니다." });
+    }
+    const extension = mimeType.split('/')[1].split('+')[0];
+    const blob = Utilities.newBlob(bytes, mimeType, employeeId + '_' + Date.now() + '.' + extension);
+    const folder = getImageUploadFolderForUser(employeeId);
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const fileId = file.getId();
+    // 일반 Drive 공유 링크는 <img> 태그로 바로 못 띄우므로, Drive가 지원하는 썸네일 임베드 형식을 씀
+    const url = "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w2000";
+    return jsonResponse({ status: "success", url: url, fileId: fileId });
+  } catch (uploadErr) {
+    return jsonResponse({ status: "error", message: "이미지 업로드에 실패했습니다: " + uploadErr.toString() });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 계정을 완전히 삭제(휴지통 보관기한 만료/관리자 즉시삭제)하거나 데이터를 초기화할 때,
+// 그 사람이 올린 이미지 폴더도 함께 휴지통으로 보냄(다른 삭제들과 마찬가지로 완전 영구삭제는 아님)
+function deleteImageFolderForUser(employeeId) {
+  try {
+    const root = getImageUploadRootFolder();
+    const folders = root.getFoldersByName(employeeId);
+    while (folders.hasNext()) {
+      folders.next().setTrashed(true);
+    }
+  } catch (err) {}
 }
 
 // ===== 팀 보고(개인 카테고리 기록과 별개로 제출하는 보고) 저장 시트 =====
@@ -808,6 +901,7 @@ function doPost(e) {
     const body = e.postData && e.postData.contents ? e.postData.contents : "{}";
     const data = JSON.parse(body);
 
+    if (data.action === "uploadImage") return handleUploadImage(data);
     if (data.action === "summarize") return handleSummarize(data);
     if (data.action === "revise") return handleRevise(data);
     if (data.action === "dailySummary") return handleDailySummary(data);
@@ -1181,6 +1275,7 @@ function purgeUserRow(sheet, rowNumber) {
   deleteLargeFieldsForUser(purgedEmployeeId);
   deleteTeamReportsForUser(purgedEmployeeId);
   deleteTeamWeeklyReportsForUser(purgedEmployeeId);
+  deleteImageFolderForUser(purgedEmployeeId);
   // 삭제가 시트에 확실히 반영된 뒤에 응답을 돌려주기 위함. 이게 없으면 이 요청 직후에 프론트가
   // 곧바로 보내는 adminListUsers 조회가 아직 안 지워진 상태를 읽어올 수 있어서(새로고침해야만
   // 사라지는 것처럼 보이는 원인), 관리자 화면에서 "즉시 삭제"를 눌러도 목록에 그대로 남아 보였음
@@ -2948,6 +3043,7 @@ function resetUserData() {
   sheet.getRange(row, 3).setValue("{}");
   sheet.getRange(row, 4).setValue(new Date().toLocaleString('ko-KR'));
   deleteRecordsForUser(employeeId);
+  deleteImageFolderForUser(employeeId);
 
   const readable = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(READABLE_SHEET_PREFIX + employeeId);
   if (readable) readable.clear();

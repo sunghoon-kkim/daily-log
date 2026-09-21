@@ -1303,6 +1303,12 @@
         </div>
     </div>
 
+    <!-- 메모장/활동기록에 붙여넣은 이미지를 클릭했을 때 크게 확대해서 보여주는 공용 뷰어 -->
+    <div class="image-lightbox-overlay" id="imageLightboxOverlay" onclick="closeImageLightbox(event)">
+        <button type="button" class="image-lightbox-close" onclick="closeImageLightbox(event)" aria-label="닫기">✕</button>
+        <img id="imageLightboxImg" class="image-lightbox-img" src="" alt="첨부 이미지 확대보기">
+    </div>
+
     <!-- 입력값 검증 오류처럼 짧게 알리고 사라지면 되는 메시지용 공용 토스트 (브라우저 기본 alert() 대체) -->
     <div id="appToast" class="app-toast" role="alert" aria-live="assertive"></div>
 

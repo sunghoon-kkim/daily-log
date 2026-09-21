@@ -76,6 +76,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let currentDate = new Date();
         let selectedDate = null;
         let records = {};       // { "2026-08-25": { "수처리": "내용" } }
+        let categoryImages = {}; // { "2026-08-25": { "수처리": [{url, fileId, width, height}] } } - 활동기록 카테고리 박스에 붙여넣은 이미지
         let events = [];        // [{ id, title, start, end, color }]
         let categories = ['카테고리1', '카테고리2', '카테고리3'];
         // [팀 보고] 탭 상태: 지금 보고 있는 주의 시작일(월요일, "yyyy-MM-dd"), 제출 대상 후보 목록,
@@ -295,6 +296,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             appUIInitialized = true;
 
             loadRecords();
+            loadCategoryImages();
             loadEvents();
             loadCategories();
             loadCategoryColors();
@@ -415,6 +417,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function loadRecords() {
             const stored = localStorage.getItem('activityRecords');
             records = stored ? safeJsonParse(stored, {}, 'activityRecords') : {};
+        }
+
+        function loadCategoryImages() {
+            const stored = localStorage.getItem('categoryImages');
+            categoryImages = stored ? safeJsonParse(stored, {}, 'categoryImages') : {};
+        }
+
+        function saveCategoryImagesToStorage() {
+            localStorage.setItem('categoryImages', JSON.stringify(categoryImages));
+            queueSync();
         }
 
         function loadEvents() {
@@ -622,6 +634,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 name: currentUserName,
                 department: currentUserDepartment,
                 records,
+                categoryImages,
                 events,
                 categories,
                 categoryColors,
@@ -649,6 +662,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         function cacheAllToLocalStorage() {
             localStorage.setItem('activityRecords', JSON.stringify(records));
+            localStorage.setItem('categoryImages', JSON.stringify(categoryImages));
             localStorage.setItem('calendarEvents', JSON.stringify(events));
             localStorage.setItem('activityCategories', JSON.stringify(categories));
             localStorage.setItem('categoryColors', JSON.stringify(categoryColors));
@@ -735,6 +749,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     currentUserName = (typeof data.name === 'string') ? data.name : '';
                     currentUserDepartment = (typeof data.department === 'string') ? data.department : '';
                     records = data.records || {};
+                    categoryImages = (data.categoryImages && typeof data.categoryImages === 'object') ? data.categoryImages : {};
                     events = data.events || [];
                     // 서버에 카테고리가 하나도 없는 신규 계정일 때만 기본 카테고리+색을 함께 채움.
                     // 이미 카테고리가 있는 계정은 색 정보가 비어있어도 기본색으로 덮어쓰지 않음
@@ -2032,6 +2047,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (key.endsWith('::' + name)) delete categoryCollapseOverride[key];
                 }
                 for (const date in records) delete records[date][name];
+                for (const date in categoryImages) delete categoryImages[date][name];
                 for (const date in hiddenCategoriesByDate) {
                     hiddenCategoriesByDate[date] = hiddenCategoriesByDate[date].filter(c => c !== name);
                 }
@@ -2042,6 +2058,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 saveCategoriesToStorage();
                 saveCategoryColorsToStorage();
                 saveRecordsToStorage();
+                saveCategoryImagesToStorage();
                 saveHiddenCategoriesToStorage();
                 saveDateCategoryOrderToStorage();
                 renderCategories();
@@ -2117,6 +2134,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 }
             }
 
+            for (const date in categoryImages) {
+                if (categoryImages[date] && Object.prototype.hasOwnProperty.call(categoryImages[date], oldName)) {
+                    categoryImages[date][newName] = categoryImages[date][oldName];
+                    delete categoryImages[date][oldName];
+                }
+            }
+
             for (const date in hiddenCategoriesByDate) {
                 hiddenCategoriesByDate[date] = hiddenCategoriesByDate[date].map(c => c === oldName ? newName : c);
             }
@@ -2143,6 +2167,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             saveCategoryBoxHeightsToStorage();
             saveDateCategoryBoxHeightsToStorage();
             saveRecordsToStorage();
+            saveCategoryImagesToStorage();
             saveHiddenCategoriesToStorage();
             saveDateCategoryOrderToStorage();
 
@@ -3045,6 +3070,89 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return changed;
         }
         
+        // 활동기록 카테고리 박스 하단에 표시할 이미지 썸네일 하나를 만듦 (클릭하면 확대, 모서리
+        // 드래그로 크기조절, ✕로 삭제). imageObj는 categoryImages[date][category] 배열의 원소 참조를
+        // 그대로 들고 있다가 크기조절/삭제 시 그 배열을 직접 찾아 갱신함
+        function createCategoryImageThumb(date, category, imageObj) {
+            const wrap = document.createElement('div');
+            wrap.className = 'category-image-thumb';
+
+            const img = document.createElement('img');
+            img.src = imageObj.url;
+            img.alt = '첨부 이미지';
+            img.style.width = (imageObj.width || 160) + 'px';
+            img.style.height = (imageObj.height || 120) + 'px';
+            img.addEventListener('click', () => openImageLightbox(imageObj.url));
+            observeImageResize(img, () => {
+                imageObj.width = img.offsetWidth;
+                imageObj.height = img.offsetHeight;
+                saveCategoryImagesToStorage();
+            });
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'category-image-remove';
+            removeBtn.title = '이미지 삭제';
+            removeBtn.setAttribute('aria-label', '이미지 삭제');
+            removeBtn.textContent = '✕';
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!checkEditPermission()) return;
+                const list = categoryImages[date] && categoryImages[date][category];
+                if (list) {
+                    const i = list.indexOf(imageObj);
+                    if (i !== -1) list.splice(i, 1);
+                    saveCategoryImagesToStorage();
+                }
+                wrap.remove();
+            });
+
+            wrap.appendChild(img);
+            wrap.appendChild(removeBtn);
+            return wrap;
+        }
+
+        // 활동기록 카테고리 박스(textarea)에 이미지를 붙여넣으면 텍스트로 넣지 않고 그 박스의
+        // 이미지 갤러리에 첨부함
+        async function handleCategoryImagePaste(e, textarea) {
+            const file = extractPastedImageFile(e);
+            if (!file) return;
+            e.preventDefault();
+            if (!checkEditPermission()) return;
+
+            const date = selectedDate;
+            const category = textarea.dataset.category;
+            if (!date || !category) return;
+
+            const box = textarea.closest('.category-record');
+            const gallery = box ? box.querySelector('.category-images') : null;
+
+            const placeholder = document.createElement('div');
+            placeholder.className = 'category-image-thumb category-image-uploading';
+            placeholder.textContent = '🖼️ 업로드 중...';
+            if (gallery) gallery.appendChild(placeholder);
+
+            try {
+                const { dataUrl, width, height } = await resizeImageFileToDataUrl(file, 1600, 0.82);
+                const result = await uploadImageToDrive(dataUrl);
+                const initialWidth = Math.min(width || 160, 200);
+                const ratio = (width && height) ? height / width : 0.75;
+                const imageObj = { url: result.url, fileId: result.fileId, width: initialWidth, height: Math.round(initialWidth * ratio) };
+
+                if (!categoryImages[date]) categoryImages[date] = {};
+                if (!categoryImages[date][category]) categoryImages[date][category] = [];
+                categoryImages[date][category].push(imageObj);
+                saveCategoryImagesToStorage();
+
+                placeholder.remove();
+                if (gallery) gallery.appendChild(createCategoryImageThumb(date, category, imageObj));
+            } catch (err) {
+                console.error('활동기록 이미지 업로드 실패:', err);
+                placeholder.textContent = '⚠️ 업로드 실패';
+                setTimeout(() => placeholder.remove(), 2500);
+            }
+        }
+
         function renderRecordForm() {
             const container = document.getElementById('recordContent');
             
@@ -3101,6 +3209,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                             </div>
                         </div>
                         <textarea id="category-${categoryHtml}" data-category="${categoryHtml}" placeholder="활동 내용을 입력하세요...">${escapeHtml(content)}</textarea>
+                        <div class="category-images" data-category="${categoryHtml}"></div>
                     </div>
                 `;
             }
@@ -3136,7 +3245,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     fillTextareaToFitBox(box, category);
                 });
                 observer.observe(box);
-                
+
+                // 이 날짜/카테고리에 이미 붙여넣어둔 이미지가 있으면 갤러리에 그려줌
+                const galleryContainer = box.querySelector('.category-images');
+                if (galleryContainer) {
+                    const existingImages = (categoryImages[dateForResize] && categoryImages[dateForResize][category]) || [];
+                    existingImages.forEach(imageObj => {
+                        galleryContainer.appendChild(createCategoryImageThumb(dateForResize, category, imageObj));
+                    });
+                }
+
                 // 날짜를 열었을 때 내용에 딱 맞게 박스 크기를 맞춤 (접힌 카테고리는 건너뜀)
                 autoGrowCategoryBox(category);
                 
@@ -3163,6 +3281,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
                     autoGrowCategoryBox(textarea.dataset.category || textarea.id.replace('category-', ''));
                 });
+
+                // 활동 내용에 이미지를 붙여넣으면(스크린샷 등) 텍스트로는 들어가지 않고,
+                // 박스 하단의 이미지 갤러리에 첨부됨
+                textarea.addEventListener('paste', (e) => handleCategoryImagePaste(e, textarea));
 
                 // 빈 박스를 처음 클릭했을 때 "1. " 자동 생성
                 textarea.addEventListener('focus', () => {
@@ -3351,12 +3473,15 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!box || !textarea || box.classList.contains('collapsed')) return;
             
             const headerEl = box.querySelector('.category-record-header');
+            const galleryEl = box.querySelector('.category-images');
             const style = getComputedStyle(box);
             const paddingTop = parseFloat(style.paddingTop) || 0;
             const paddingBottom = parseFloat(style.paddingBottom) || 0;
             const headerHeight = headerEl ? headerEl.offsetHeight + 10 : 0; // 10 = margin-bottom
-            
-            const available = box.clientHeight - paddingTop - paddingBottom - headerHeight;
+            // 이미지가 붙어있으면 그 갤러리 높이(+margin-top 8px)도 textarea가 차지할 수 없는 공간이므로 빼줌
+            const galleryHeight = (galleryEl && galleryEl.children.length > 0) ? galleryEl.offsetHeight + 8 : 0;
+
+            const available = box.clientHeight - paddingTop - paddingBottom - headerHeight - galleryHeight;
             
             // textarea 자신의 실제 필요한 콘텐츠 높이를 먼저 정확히 측정
             textarea.style.height = 'auto';
@@ -3753,6 +3878,95 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             setInterval(tick, 1000);
         }
 
+        // ===== 메모장/활동기록 카테고리 박스 공용: 이미지 붙여넣기·업로드·확대보기 =====
+        // 구글시트 셀은 5만자 제한이 있어서 이미지를 base64로 직접 저장할 수 없음. 그래서 이미지는
+        // Code.gs가 Google Drive에 올리고 그 URL만 돌려주며, 여기서는 그 URL만 저장/표시함
+
+        // 붙여넣기 이벤트에 이미지 파일이 들어있으면 그 File 객체를, 없으면(일반 텍스트 붙여넣기 등) null을 돌려줌
+        function extractPastedImageFile(e) {
+            const items = e.clipboardData && e.clipboardData.items;
+            if (!items) return null;
+            for (const item of items) {
+                if (item.kind === 'file' && item.type && item.type.startsWith('image/')) {
+                    return item.getAsFile();
+                }
+            }
+            return null;
+        }
+
+        // 원본 이미지를 그대로 올리면 용량이 커서 느리고 셀 제한과 무관하게 서버 왕복이 오래 걸리므로,
+        // 캔버스로 한 변의 최대 길이(maxDim)에 맞게 축소 + JPEG로 압축한 뒤 올림
+        function resizeImageFileToDataUrl(file, maxDim, quality) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        let width = img.naturalWidth;
+                        let height = img.naturalHeight;
+                        if (width > maxDim || height > maxDim) {
+                            if (width > height) {
+                                height = Math.round(height * maxDim / width);
+                                width = maxDim;
+                            } else {
+                                width = Math.round(width * maxDim / height);
+                                height = maxDim;
+                            }
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                        resolve({ dataUrl: canvas.toDataURL('image/jpeg', quality), width, height });
+                    };
+                    img.onerror = () => reject(new Error('이미지를 읽을 수 없습니다.'));
+                    img.src = ev.target.result;
+                };
+                reader.onerror = () => reject(new Error('이미지를 읽을 수 없습니다.'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function uploadImageToDrive(dataUrl) {
+            const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'uploadImage',
+                    employeeId: currentEmployeeId,
+                    passwordHash: currentPasswordHash,
+                    imageData: dataUrl
+                })
+            });
+            if (!res.ok) throw new Error('업로드 응답 오류');
+            const result = await res.json();
+            if (!result || result.status !== 'success') {
+                throw new Error((result && result.message) || '이미지 업로드에 실패했습니다.');
+            }
+            return result; // { url, fileId }
+        }
+
+        // 사용자가 이미지 모서리를 드래그해서 크기를 바꾸면(브라우저 기본 resize 핸들) 그 크기를 저장함.
+        // ResizeObserver는 observe() 호출 직후 최초 1회도 즉시 실행되므로, 삽입 직후에도 한 번 호출됨(무해함)
+        function observeImageResize(img, onResized) {
+            let saveTimeout = null;
+            const observer = new ResizeObserver(() => {
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(onResized, 400);
+            });
+            observer.observe(img);
+        }
+
+        function openImageLightbox(url) {
+            document.getElementById('imageLightboxImg').src = url;
+            document.getElementById('imageLightboxOverlay').classList.add('active');
+        }
+
+        function closeImageLightbox(e) {
+            if (e && e.target && e.target.id !== 'imageLightboxOverlay' && !e.target.classList.contains('image-lightbox-close')) return;
+            document.getElementById('imageLightboxOverlay').classList.remove('active');
+            document.getElementById('imageLightboxImg').src = '';
+        }
+
         // ===== 메모장 (날짜와 무관한 자유 메모, 흐름도처럼 여러 개 만들어 구분해서 쓸 수 있음) =====
 
         // notesContent는 현재 보고 있는(currentFreeNotesPageId) 메모장의 내용을 담아두는 변수일 뿐이라,
@@ -3884,6 +4098,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function applyNotesContent() {
             renderFreeNotesPageTabs();
             document.getElementById('notesTextarea').innerHTML = toDisplayNotesHtml(notesContent);
+            wireUpNoteImages(); // innerHTML로 새로 그린 내용 안의 이미지는 이벤트 리스너가 붙어있지 않으므로 다시 연결해줌
             renderTodoList();
         }
 
@@ -3908,6 +4123,83 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const textarea = document.getElementById('notesTextarea');
             document.execCommand('defaultParagraphSeparator', false, 'br'); // 브라우저마다 다른 줄바꿈 태그(div/p)를 <br>로 통일
             textarea.addEventListener('input', scheduleNotesSave);
+            textarea.addEventListener('paste', handleNotesImagePaste);
+        }
+
+        // 메모장에 이미지를 붙여넣으면(스크린샷, 복사한 이미지 등) 커서 위치에 삽입함.
+        // 일반 텍스트 붙여넣기는 손대지 않고 브라우저 기본 동작에 그대로 맡김
+        async function handleNotesImagePaste(e) {
+            const file = extractPastedImageFile(e);
+            if (!file) return;
+            e.preventDefault();
+            if (!checkEditPermission()) return;
+
+            const textarea = document.getElementById('notesTextarea');
+            const placeholder = document.createElement('span');
+            placeholder.textContent = '🖼️ 이미지 업로드 중...';
+            placeholder.className = 'note-image-uploading';
+            insertNodeAtCaret(textarea, placeholder);
+
+            try {
+                const { dataUrl, width, height } = await resizeImageFileToDataUrl(file, 1600, 0.82);
+                const result = await uploadImageToDrive(dataUrl);
+                const img = createResizableNoteImage(result.url, width, height);
+                placeholder.replaceWith(img);
+            } catch (err) {
+                console.error('메모 이미지 업로드 실패:', err);
+                placeholder.textContent = '⚠️ 이미지 업로드 실패';
+            }
+            scheduleNotesSave();
+        }
+
+        // contenteditable 영역의 현재 커서(선택 영역) 위치에 노드를 삽입함
+        function insertNodeAtCaret(container, node) {
+            container.focus();
+            const sel = window.getSelection();
+            let range;
+            if (sel && sel.rangeCount > 0 && container.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                range = sel.getRangeAt(0);
+            } else {
+                range = document.createRange();
+                range.selectNodeContents(container);
+                range.collapse(false);
+            }
+            range.deleteContents();
+            range.insertNode(node);
+            range.setStartAfter(node);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
+        // 새로 업로드한 메모장 이미지를 클릭하면 확대되고, 모서리를 드래그하면 크기를 바꿀 수 있는 <img>를 만듦
+        function createResizableNoteImage(url, naturalWidth, naturalHeight) {
+            const img = document.createElement('img');
+            img.src = url;
+            img.className = 'note-image';
+            img.alt = '첨부 이미지';
+            const initialWidth = Math.min(naturalWidth || 320, 320);
+            const ratio = (naturalWidth && naturalHeight) ? naturalHeight / naturalWidth : 0.75;
+            img.style.width = initialWidth + 'px';
+            img.style.height = Math.round(initialWidth * ratio) + 'px';
+            img.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openImageLightbox(img.src);
+            });
+            observeImageResize(img, scheduleNotesSave);
+            return img;
+        }
+
+        // 저장돼있던 메모 내용을 innerHTML로 새로 그린 뒤 호출: 그 안의 이미지들에 클릭(확대보기)/
+        // 크기조절 저장 이벤트를 다시 연결함 (innerHTML 대입으로는 예전 리스너가 살아있지 않음)
+        function wireUpNoteImages() {
+            document.querySelectorAll('#notesTextarea img.note-image').forEach(img => {
+                img.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openImageLightbox(img.src);
+                });
+                observeImageResize(img, scheduleNotesSave);
+            });
         }
 
         // ===== 메모장 서식(굵게/글씨 크기/글자색/형광펜) =====
