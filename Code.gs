@@ -8,7 +8,7 @@ const LARGE_FIELDS_SHEET_NAME = "ProfileLargeFields"; // 흐름도/메모장/절
 // Users 시트 프로필 JSON 셀에는 5만자 제한이 있음(records가 예전에 이 문제로 Records 시트로
 // 분리됐던 것과 같은 이유). 이 필드들은 흐름도를 여러 개 만들거나 메모장을 여러 개 쓰는 등
 // 내용이 계속 쌓일 수 있어서 같은 문제가 재발하지 않도록 여기 나열된 것만 LARGE_FIELDS_SHEET_NAME으로 분리 저장함
-const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule', 'categoryImages'];
+const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule', 'categoryImages', 'monthlyFeedbacks'];
 // records를 Users 시트 셀 하나에 전부 담으면 몇 년 쌓였을 때 셀당 5만자 제한에 걸릴 수 있어서
 // 이 시트로 따로 분리했음. 한 행이 "한 사람의 한 달"이라 아무리 오래 써도 셀 크기가 안 커짐.
 const TEAM_REPORTS_SHEET_NAME = "TeamReports"; // (레거시) 예전 하루 단위 자유 텍스트 팀 보고 시트. 주간 보고로 개편된 뒤로는 더 이상 새로 쓰지 않고, 과거 기록 조회/계정 삭제 시 정리 용도로만 남겨둠
@@ -2440,6 +2440,11 @@ function buildSystemPrompt() {
     "① 월 목표 (Objective)\n② 핵심 결과 (KR)\n③ 실행 전략 및 노력 과정\n④ 성과 및 결과\n\n" +
     "=== '개선/보완할 점(할일)' 작성 방식 ===\n" +
     "① 부족했던 점 (한계 인식)\n② 개선·보완 계획 (근본 원인 분석, SOP 표준화, 시스템적 개선 관점)\n\n" +
+    "=== [과거 피드백 이력] 활용 원칙 (함께 주어질 때만 해당) ===\n" +
+    "- 과거에 팀장/상사가 제시했던 팀·개인 방향성이나 개선 요구사항의 기조를 이어받아, 이번 달 피드백도 일관된 톤앤매너로 작성하세요.\n" +
+    "- 과거 피드백의 개선 과제와 관련해 이번 달 [일일 기록 원본]에 실제로 수행한 내역이 있는 경우에만 그 연계 성과로 기술하세요. [일일 기록 원본]에 없는 사실을 과거 이력만 보고 지어내거나 과장하는 것은 엄격히 금지합니다.\n" +
+    "- 과거 이력과 연계할 근거가 [일일 기록 원본]에 없다면, 억지로 연결짓지 말고 이번 달 기록된 사실 위주로만 작성하세요.\n" +
+    "- [과거 피드백 이력]이 주어지지 않으면 이번 달 [일일 기록 원본]만 근거로 작성하세요.\n\n" +
     "=== 출력 형식 (매우 중요) ===\n" +
     "다른 설명 없이 아래 JSON 객체 '하나만' 출력하세요:\n" +
     '{"good": "잘한점 내용", "improve": "개선점 내용"}\n' +
@@ -2454,8 +2459,10 @@ function handleSummarize(data) {
   const template = data.template || "";
   const logText = data.logText || "";
   const periodLabel = data.periodLabel || "";
+  const feedbackHistoryText = data.feedbackHistoryText || "";
 
-  const userPrompt = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}`;
+  const historyBlock = feedbackHistoryText ? `\n\n[과거 피드백 이력]\n${feedbackHistoryText}` : "";
+  const userPrompt = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}${historyBlock}`;
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
 
   return callGeminiSplitAndRespond(apiKey, contents, buildSystemPrompt());

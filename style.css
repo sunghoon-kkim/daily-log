@@ -3175,7 +3175,7 @@ html {
             font-weight: 400;
         }
         
-        .goal-note-textarea {
+        .goal-note-textarea, .feedback-history-textarea {
             width: 100%;
             min-height: 70px;
             padding: 10px;
@@ -3186,8 +3186,8 @@ html {
             resize: vertical;
             margin-bottom: 10px;
         }
-        
-        .goal-note-textarea:focus {
+
+        .goal-note-textarea:focus, .feedback-history-textarea:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -4422,6 +4422,7 @@ html {
 .dark-mode .note-image-uploading,
 .dark-mode .ai-template-textarea,
 .dark-mode .goal-note-textarea,
+.dark-mode .feedback-history-textarea,
 .dark-mode .goal-revise-input,
 .dark-mode .trend-data-textarea,
 .dark-mode .trend-spec-input,

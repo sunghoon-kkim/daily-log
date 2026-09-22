@@ -366,7 +366,61 @@
                 
                 <div class="ai-status" id="aiStatus"></div>
             </div>
-            
+
+            <div class="ai-container" style="margin-top: 25px;" data-feature="monthlyFeedbackHistory">
+                <h3 style="margin-bottom: 10px;">🗂️ 월별 피드백 및 평가 이력</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">매달 평가 등급과 자가/수신 피드백을 남겨두면, 위 [AI 월별 피드백]을 생성할 때 이 계정의 누적 이력을 함께 참고해서 톤앤매너를 이어가고 과거 개선 요구사항과 실제 수행 여부를 연결해줍니다. 계정별로 저장되며, 과거 달을 선택해 자유롭게 조회·수정할 수 있습니다.</p>
+
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap;">
+                    <button type="button" class="category-prev-btn" onclick="changeFeedbackHistoryMonth(-1)">◀ 이전달</button>
+                    <span id="feedbackHistoryMonthLabel" style="font-weight:700; font-size:16px; color: #333;"></span>
+                    <button type="button" class="category-prev-btn" onclick="changeFeedbackHistoryMonth(1)">다음달 ▶</button>
+                    <input type="month" id="feedbackHistoryMonthInput" class="category-input" style="max-width:160px; flex:none;" onchange="onFeedbackHistoryMonthInputChange()">
+                    <button type="button" class="quick-preset-btn" onclick="jumpFeedbackHistoryMonthToToday()">이번달로</button>
+                    <span class="notes-save-indicator" id="feedbackHistorySavedIndicator" style="display:none;"></span>
+                </div>
+
+                <div style="max-width:240px; margin-bottom:20px;">
+                    <label class="ai-block-label" style="display:block; margin-bottom:6px;">당월 평가 등급</label>
+                    <select id="feedbackHistoryGradeSelect" class="category-input" style="width:100%;">
+                        <option value="">선택 안 함</option>
+                        <option value="S">S</option>
+                        <option value="A">A</option>
+                        <option value="B+">B+</option>
+                        <option value="B">B</option>
+                        <option value="C+">C+</option>
+                        <option value="C">C</option>
+                    </select>
+                </div>
+
+                <label class="ai-block-label" style="display:block; margin-bottom:8px;">✍️ 자가 피드백</label>
+                <div class="ai-split-columns" style="margin-bottom:20px;">
+                    <div class="ai-split-col">
+                        <label class="ai-block-label" style="display:block; margin-bottom:6px; font-weight:400; color:#666;">잘한 점 (한 일)</label>
+                        <textarea id="feedbackHistorySelfGood" class="feedback-history-textarea" style="min-height:110px;"></textarea>
+                    </div>
+                    <div class="ai-split-col">
+                        <label class="ai-block-label" style="display:block; margin-bottom:6px; font-weight:400; color:#666;">개선/보완할 점 (할 일)</label>
+                        <textarea id="feedbackHistorySelfImprove" class="feedback-history-textarea" style="min-height:110px;"></textarea>
+                    </div>
+                </div>
+
+                <label class="ai-block-label" style="display:block; margin-bottom:8px;">📥 수신 피드백 (팀장/상사)</label>
+                <div class="ai-split-columns" style="margin-bottom:20px;">
+                    <div class="ai-split-col">
+                        <label class="ai-block-label" style="display:block; margin-bottom:6px; font-weight:400; color:#666;">잘한 점 (인정받은 부분)</label>
+                        <textarea id="feedbackHistoryReceivedGood" class="feedback-history-textarea" style="min-height:110px;"></textarea>
+                    </div>
+                    <div class="ai-split-col">
+                        <label class="ai-block-label" style="display:block; margin-bottom:6px; font-weight:400; color:#666;">개선/보완할 점 (피드백 및 향후 방향성)</label>
+                        <textarea id="feedbackHistoryReceivedImprove" class="feedback-history-textarea" style="min-height:110px;"></textarea>
+                    </div>
+                </div>
+
+                <button class="add-category-btn" onclick="saveMonthlyFeedbackHistory()">💾 이 달 기록 저장</button>
+                <div class="ai-status" id="feedbackHistoryStatus"></div>
+            </div>
+
             <div class="ai-container" style="margin-top: 25px;" data-feature="goalSetting">
                 <h3 style="margin-bottom: 10px;">🎯 목표수립 (KPI / 핵심역량 / 성장계획 / 핵심가치 / 기타)</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 20px;">지난 활동을 요약하는 것이 아니라, 하반기에 이런 목표를 가지고 업무를 하겠다는 계획을 선언하는 문서예요. 항목별로 나누지 말고 전체 내용을 자유롭게 적으면, 회사 기본 가이드에 맞춰 체크한 항목마다 3개씩 초안을 만들어드려요. 생성된 항목은 서로 독립적으로 수정 요청할 수 있어요. (참고 기간의 활동기록은 현 수준 평가를 위한 근거 자료로만 함께 활용됩니다)</p>

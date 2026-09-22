@@ -178,6 +178,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     dailySummary: '📝 일일 업무 요약',
                     weeklySummary: '🗓️ 이번주 업무 요약',
                     monthlyFeedback: '🤖 AI 월별 피드백',
+                    monthlyFeedbackHistory: '🗂️ 월별 피드백 & 평가 이력 관리',
                     goalSetting: '🎯 목표수립'
                 }
             },
@@ -220,8 +221,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 위 그룹들을 { 키: 라벨 } 하나로 합친 조회용 맵
         const FEATURE_LABELS = FEATURE_GROUPS.reduce((acc, group) => Object.assign(acc, group.features), {});
         // 계정별 관리자 설정과 무관하게 코드 레벨에서 임시로 꺼두는 기능 키 목록.
-        // 목표수립 임시 비활성화(관련 코드/UI는 그대로 두고 화면에서만 숨김) - 되살리려면 이 배열을 비우면 됨
-        const FORCE_DISABLED_FEATURES = ['goalSetting'];
+        // 목표수립/이번주 업무 요약 임시 비활성화(관련 코드/UI는 그대로 두고 화면에서만 숨김) - 되살리려면 이 배열에서 빼면 됨
+        const FORCE_DISABLED_FEATURES = ['goalSetting', 'weeklySummary'];
         // 관리자가 이 계정에서 꺼둔 세부 기능 키 목록 (서버에서 로그인 시 받아옴). 본인은 못 바꾸고 관리자만 조정 가능
         let disabledFeatures = [];
         // 이 계정의 [팀 보고] 계층상 역할 ('', 'member', 'partLead', 'teamLead') - 서버에서 로그인 시
@@ -261,6 +262,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let currentFreeNotesPageId = null;
         let editingFreeNotesPageId = null; // 이름 변경/삭제 모달에서 대상이 되는 메모장 id
         let aiTemplateContent = '';
+        // 계정별 월별 피드백 & 평가 이력. { 'YYYY-MM': {grade, selfGood, selfImprove, receivedGood, receivedImprove, updatedAt} }
+        // AI 월별 피드백 생성 시 누적 이력을 참고 컨텍스트로 함께 보내 톤앤매너를 이어가는 데도 쓰임 (buildFeedbackHistoryContextText 참고)
+        let monthlyFeedbacks = {};
+        let currentFeedbackHistoryMonth = ''; // 지금 [월별 피드백 및 평가 이력] 폼에 보이는 YYYY-MM. 화면 상태값이라 항상 오늘 달로 시작함
         let savingsProjects = []; // [{id, title, month, targetAmount, actualAmount, status, note}] - 에너지/비용절감 과제 트래커
         let trendSubject = ''; // 설비·측정 항목 (매번 같은 값을 다시 적지 않도록 저장)
         let trendSpec = '';    // 관리 기준 (동일)
@@ -318,6 +323,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             currentUserDepartment = localStorage.getItem('accountDepartment') || '';
             loadTodoItems();
             aiTemplateContent = localStorage.getItem('aiTemplate') || DEFAULT_AI_TEMPLATE;
+            const storedMonthlyFeedbacks = localStorage.getItem('monthlyFeedbacks');
+            monthlyFeedbacks = storedMonthlyFeedbacks ? safeJsonParse(storedMonthlyFeedbacks, {}, 'monthlyFeedbacks') : {};
+            currentFeedbackHistoryMonth = formatDate(new Date()).slice(0, 7);
             const storedProjects = localStorage.getItem('savingsProjects');
             savingsProjects = storedProjects ? safeJsonParse(storedProjects, [], 'savingsProjects') : [];
             trendSubject = localStorage.getItem('trendSubject') || '';
@@ -347,6 +355,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             applyAITemplate();
             setupAITemplateAutosave();
             renderGoalAreas();
+            renderFeedbackHistoryForm();
             renderSavingsProjects();
             applyTrendSettings();
             setupTrendSettingsAutosave();
@@ -664,6 +673,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 currentFreeNotesPageId,
                 todo: todoItems,
                 aiTemplate: aiTemplateContent,
+                monthlyFeedbacks,
                 savingsProjects,
                 trendSubject,
                 trendSpec,
@@ -694,6 +704,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
             localStorage.setItem('todoItems', JSON.stringify(todoItems));
             localStorage.setItem('aiTemplate', aiTemplateContent);
+            localStorage.setItem('monthlyFeedbacks', JSON.stringify(monthlyFeedbacks));
             localStorage.setItem('savingsProjects', JSON.stringify(savingsProjects));
             localStorage.setItem('trendSubject', trendSubject);
             localStorage.setItem('trendSpec', trendSpec);
@@ -796,6 +807,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         todoItems = [];
                     }
                     aiTemplateContent = (typeof data.aiTemplate === 'string' && data.aiTemplate) ? data.aiTemplate : DEFAULT_AI_TEMPLATE;
+                    monthlyFeedbacks = (data.monthlyFeedbacks && typeof data.monthlyFeedbacks === 'object' && !Array.isArray(data.monthlyFeedbacks)) ? data.monthlyFeedbacks : {};
                     savingsProjects = Array.isArray(data.savingsProjects) ? data.savingsProjects : [];
                     trendSubject = (typeof data.trendSubject === 'string') ? data.trendSubject : '';
                     trendSpec = (typeof data.trendSpec === 'string') ? data.trendSpec : '';
@@ -820,6 +832,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (typeof renderSettingsTab === 'function') renderSettingsTab();
                     applyFeatureRestrictions();
                     if (selectedDate) renderRecordForm();
+                    if (typeof renderFeedbackHistoryForm === 'function') renderFeedbackHistoryForm();
                     if (typeof renderSavingsProjects === 'function') renderSavingsProjects();
                     if (typeof applyTrendSettings === 'function') applyTrendSettings();
                     if (typeof renderMaintenanceSchedule === 'function') renderMaintenanceSchedule();
@@ -7068,7 +7081,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (projectsSummary) {
                 logText += `\n\n[등록된 개선/절감 과제 현황]\n${projectsSummary}`;
             }
-            
+
+            const feedbackHistoryText = buildFeedbackHistoryContextText();
+
             btn.disabled = true;
             reviseBtn.disabled = true;
             loading.style.display = 'block';
@@ -7086,6 +7101,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         template: template,
                         logText: logText,
                         periodLabel: periodLabel,
+                        feedbackHistoryText: feedbackHistoryText,
                         userApiKey: personalAiApiKey
                     })
                 });
@@ -7102,7 +7118,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     
                     // 새로운 요약을 생성했으니 대화 히스토리도 새로 시작
                     // (서버가 자기 응답 그대로를 model 턴으로 기억해야 다음 수정 요청에서 형식을 유지함)
-                    const userPromptText = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}`;
+                    const historyBlock = feedbackHistoryText ? `\n\n[과거 피드백 이력]\n${feedbackHistoryText}` : '';
+                    const userPromptText = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}${historyBlock}`;
                     aiConversationHistory = [
                         { role: 'user', text: userPromptText },
                         { role: 'model', text: data.raw || JSON.stringify({ good: data.good, improve: data.improve }) }
@@ -7202,7 +7219,127 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             statusEl.textContent = '📋 개선/보완할 점(할일)이 복사되었습니다!';
             statusEl.className = 'ai-status success';
         }
-        
+
+        // ===== 월별 피드백 및 평가 이력 관리 =====
+        // 'YYYY-MM' 문자열을 "2026년 9월" 형태로 표시용 라벨로 바꿔줌
+        function formatYearMonthLabel(yyyyMM) {
+            if (!yyyyMM) return '';
+            const [y, m] = yyyyMM.split('-').map(Number);
+            if (!y || !m) return yyyyMM;
+            return `${y}년 ${m}월`;
+        }
+
+        // 'YYYY-MM' 문자열에 delta(달)만큼 더하거나 뺀 'YYYY-MM'을 돌려줌
+        function shiftYearMonth(yyyyMM, delta) {
+            const [y, m] = yyyyMM.split('-').map(Number);
+            const d = new Date(y, (m - 1) + delta, 1);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        function changeFeedbackHistoryMonth(delta) {
+            switchFeedbackHistoryMonth(shiftYearMonth(currentFeedbackHistoryMonth, delta));
+        }
+
+        function jumpFeedbackHistoryMonthToToday() {
+            switchFeedbackHistoryMonth(formatDate(new Date()).slice(0, 7));
+        }
+
+        function onFeedbackHistoryMonthInputChange() {
+            const val = document.getElementById('feedbackHistoryMonthInput').value;
+            if (val) switchFeedbackHistoryMonth(val);
+        }
+
+        // 지금 폼에 입력된 값이 저장된 기록과 다르면(=저장 안 한 수정이 있으면) true
+        function isFeedbackHistoryFormDirty() {
+            const record = monthlyFeedbacks[currentFeedbackHistoryMonth] || {};
+            return document.getElementById('feedbackHistoryGradeSelect').value !== (record.grade || '')
+                || document.getElementById('feedbackHistorySelfGood').value !== (record.selfGood || '')
+                || document.getElementById('feedbackHistorySelfImprove').value !== (record.selfImprove || '')
+                || document.getElementById('feedbackHistoryReceivedGood').value !== (record.receivedGood || '')
+                || document.getElementById('feedbackHistoryReceivedImprove').value !== (record.receivedImprove || '');
+        }
+
+        function switchFeedbackHistoryMonth(target) {
+            if (!target || target === currentFeedbackHistoryMonth) return;
+            const doSwitch = () => {
+                currentFeedbackHistoryMonth = target;
+                renderFeedbackHistoryForm();
+                const statusEl = document.getElementById('feedbackHistoryStatus');
+                if (statusEl) { statusEl.textContent = ''; statusEl.className = 'ai-status'; }
+            };
+            if (isFeedbackHistoryFormDirty()) {
+                confirmModal('저장하지 않은 변경 내용이 있습니다. 이동하면 사라집니다. 계속할까요?', doSwitch);
+            } else {
+                doSwitch();
+            }
+        }
+
+        function renderFeedbackHistoryForm() {
+            const monthInput = document.getElementById('feedbackHistoryMonthInput');
+            const monthLabel = document.getElementById('feedbackHistoryMonthLabel');
+            if (!monthInput || !monthLabel) return; // 아직 이 탭 DOM이 안 그려졌으면 조용히 건너뜀
+
+            monthInput.value = currentFeedbackHistoryMonth;
+            monthLabel.textContent = formatYearMonthLabel(currentFeedbackHistoryMonth);
+
+            const record = monthlyFeedbacks[currentFeedbackHistoryMonth] || {};
+            document.getElementById('feedbackHistoryGradeSelect').value = record.grade || '';
+            document.getElementById('feedbackHistorySelfGood').value = record.selfGood || '';
+            document.getElementById('feedbackHistorySelfImprove').value = record.selfImprove || '';
+            document.getElementById('feedbackHistoryReceivedGood').value = record.receivedGood || '';
+            document.getElementById('feedbackHistoryReceivedImprove').value = record.receivedImprove || '';
+
+            const indicator = document.getElementById('feedbackHistorySavedIndicator');
+            if (indicator) {
+                if (record.updatedAt) {
+                    indicator.style.display = '';
+                    indicator.textContent = '💾 저장됨 · ' + formatTeamReportSubmittedAt(record.updatedAt);
+                } else {
+                    indicator.style.display = 'none';
+                }
+            }
+        }
+
+        function saveMonthlyFeedbackHistory() {
+            if (!checkEditPermission()) return;
+
+            monthlyFeedbacks[currentFeedbackHistoryMonth] = {
+                grade: document.getElementById('feedbackHistoryGradeSelect').value,
+                selfGood: document.getElementById('feedbackHistorySelfGood').value.trim(),
+                selfImprove: document.getElementById('feedbackHistorySelfImprove').value.trim(),
+                receivedGood: document.getElementById('feedbackHistoryReceivedGood').value.trim(),
+                receivedImprove: document.getElementById('feedbackHistoryReceivedImprove').value.trim(),
+                updatedAt: new Date().toISOString()
+            };
+
+            localStorage.setItem('monthlyFeedbacks', JSON.stringify(monthlyFeedbacks));
+            queueSync();
+            renderFeedbackHistoryForm();
+
+            const statusEl = document.getElementById('feedbackHistoryStatus');
+            statusEl.textContent = `✅ ${formatYearMonthLabel(currentFeedbackHistoryMonth)} 기록이 저장되었습니다`;
+            statusEl.className = 'ai-status success';
+        }
+
+        // 지금까지 저장된 월별 피드백 이력을 AI 월별 피드백 생성 프롬프트에 참고 컨텍스트로 넣기 좋은
+        // 텍스트로 합침(오래된 달 → 최근 달 순). 내용이 하나도 없는 달은 건너뜀
+        function buildFeedbackHistoryContextText() {
+            const months = Object.keys(monthlyFeedbacks).sort();
+            const parts = [];
+            for (const ym of months) {
+                const r = monthlyFeedbacks[ym];
+                if (!r) continue;
+                const lines = [];
+                if (r.grade) lines.push(`평가등급: ${r.grade}`);
+                if (r.selfGood) lines.push(`자가 피드백 - 잘한점(한일): ${r.selfGood}`);
+                if (r.selfImprove) lines.push(`자가 피드백 - 개선/보완할점(할일): ${r.selfImprove}`);
+                if (r.receivedGood) lines.push(`수신 피드백(팀장/상사) - 잘한점(인정받은 부분): ${r.receivedGood}`);
+                if (r.receivedImprove) lines.push(`수신 피드백(팀장/상사) - 개선/보완할점(방향성): ${r.receivedImprove}`);
+                if (lines.length > 0) parts.push(`[${ym}]\n${lines.join('\n')}`);
+            }
+            return parts.join('\n\n');
+        }
+
         // ===== 목표수립 (KPI/핵심역량/성장계획/핵심가치/기타) - 전체 내용 한 번에 입력, 체크한 항목만 생성/개별 수정 =====
         const GOAL_AREAS = [
             { id: 'kpi', label: 'KPI', hint: '성과달성을 위한 주요 본질 업무' },
