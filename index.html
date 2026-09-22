@@ -1380,6 +1380,21 @@
     <!-- 입력값 검증 오류처럼 짧게 알리고 사라지면 되는 메시지용 공용 토스트 (브라우저 기본 alert() 대체) -->
     <div id="appToast" class="app-toast" role="alert" aria-live="assertive"></div>
 
-    <script src="script.js"></script>
+    <!-- 토큰 절감을 위해 script.js를 탭 단위로 분할함 (js/*.js). main.js가 전역 상태/공통
+         유틸리티를 담고 있어 반드시 가장 먼저 로드되어야 하고, 그 뒤 순서는 서로 의존하지
+         않아 자유로움 - sw.js의 CORE_ASSETS 캐시 목록도 이 순서와 맞춰뒀음 -->
+    <script src="js/main.js"></script>
+    <script src="js/category-manage.js"></script>
+    <script src="js/search.js"></script>
+    <script src="js/calendar-activity.js"></script>
+    <script src="js/todo-memo.js"></script>
+    <script src="js/ai-helper.js"></script>
+    <script src="js/savings-projects.js"></script>
+    <script src="js/trend-analysis.js"></script>
+    <script src="js/maintenance.js"></script>
+    <script src="js/flowchart.js"></script>
+    <script src="js/team-report.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/admin.js"></script>
 </body>
 </html>

@@ -2,14 +2,28 @@
 // (Google Sheets 데이터 동기화는 항상 네트워크로 이루어지므로, 오프라인이어도 화면은 뜨지만
 //  최신 데이터 동기화는 인터넷이 연결되어야 정상 작동합니다)
 
-const CACHE_NAME = 'activity-calendar-v3';
+const CACHE_NAME = 'activity-calendar-v4';
 // index.html에 인라인이던 CSS/JS를 style.css/script.js로 분리하면서 캐싱 대상도 같이 추가함.
 // (예전에 이 파일들을 실제로 만들지 않은 채로 캐싱만 시도했다가 cache.addAll이 통째로 실패해서
 //  install 자체가 항상 실패하던 버그가 있었음 - 이번엔 실제로 존재하는 파일들이라 안전함)
+// script.js는 토큰 절감을 위해 탭 단위로 js/*.js로 분할됨 - 반드시 index.html의 <script> 로딩
+// 순서(main.js가 항상 가장 먼저)와 동일한 목록을 유지해야 함
 const CORE_ASSETS = [
   './index.html',
   './style.css',
-  './script.js'
+  './js/main.js',
+  './js/category-manage.js',
+  './js/search.js',
+  './js/calendar-activity.js',
+  './js/todo-memo.js',
+  './js/ai-helper.js',
+  './js/savings-projects.js',
+  './js/trend-analysis.js',
+  './js/maintenance.js',
+  './js/flowchart.js',
+  './js/team-report.js',
+  './js/settings.js',
+  './js/admin.js'
 ];
 
 self.addEventListener('install', (event) => {
