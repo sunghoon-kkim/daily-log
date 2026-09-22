@@ -7269,7 +7269,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (statusEl) { statusEl.textContent = ''; statusEl.className = 'ai-status'; }
             };
             if (isFeedbackHistoryFormDirty()) {
-                confirmModal('저장하지 않은 변경 내용이 있습니다. 이동하면 사라집니다. 계속할까요?', doSwitch);
+                confirmModal(
+                    '저장하지 않은 변경 내용이 있습니다. 저장 후 이동하시겠습니까?',
+                    () => {
+                        saveMonthlyFeedbackHistory();
+                        doSwitch();
+                    },
+                    {
+                        confirmLabel: '저장 후 이동',
+                        extraLabel: '저장하지 않고 이동',
+                        extraCallback: doSwitch
+                    }
+                );
             } else {
                 doSwitch();
             }
