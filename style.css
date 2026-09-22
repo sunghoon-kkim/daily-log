@@ -1968,52 +1968,59 @@ html {
 
         .categories-list {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
             gap: 15px;
         }
 
         .category-tag {
             background: white;
-            padding: 12px 15px;
+            padding: 10px 16px;
             border-radius: 10px;
             border: 2px solid #667eea;
             display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
             align-items: center;
+            justify-content: space-between;
             font-size: 15px;
             font-weight: 600;
             color: #333;
             gap: 10px;
         }
+
+        /* 좌측 영역: 드래그 핸들 + 카테고리명을 하나로 묶어서 우측 버튼 그룹과 한 줄에 나란히 배치 */
+        .category-tag-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 0;
+        }
         
         .category-tag-name {
             flex: 1;
-            min-width: 60px;
+            min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
 
-        /* flex-basis:100%로 항상 자기 줄을 새로 차지하게 해서, 버튼 문구 길이(항상 열림/기본 최소화)에
-           따라 줄바꿈 여부가 들쭉날쭉해지는 것을 막음 - 이름 줄과 액션 버튼 줄이 상태와 무관하게 항상 2줄로 고정됨 */
+        /* 우측 버튼 그룹은 줄바꿈 없이 항상 고정폭을 유지해서, 좁은 카드에서도 아이콘이
+           찌그러지지 않고 카테고리명 쪽에서만 말줄임표로 흡수되도록 함 */
         .category-tag-actions {
             display: flex;
-            flex-basis: 100%;
-            flex-wrap: wrap;
+            flex-shrink: 0;
             align-items: center;
-            justify-content: flex-end;
             gap: 8px;
         }
-        
+
         .category-color-input {
-            width: 30px;
-            height: 30px;
+            width: 26px;
+            height: 26px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
             padding: 0;
             background: none;
+            flex-shrink: 0;
         }
         
         .category-color-input::-webkit-color-swatch-wrapper {
@@ -2031,10 +2038,10 @@ html {
             background: #f0f1fb;
             color: #667eea;
             border: none;
-            padding: 6px 10px;
-            border-radius: 14px;
+            padding: 5px 9px;
+            border-radius: 12px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             white-space: nowrap;
             flex-shrink: 0;
@@ -2058,11 +2065,11 @@ html {
             background: #ff6b6b;
             color: white;
             border: none;
-            width: 30px;
-            height: 30px;
+            width: 26px;
+            height: 26px;
             border-radius: 50%;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
             flex-shrink: 0;
         }
 
@@ -2074,11 +2081,11 @@ html {
             background: #f0f1fb;
             color: #667eea;
             border: none;
-            width: 30px;
-            height: 30px;
+            width: 26px;
+            height: 26px;
             border-radius: 50%;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
             flex-shrink: 0;
         }
 

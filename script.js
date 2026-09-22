@@ -2217,8 +2217,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const isDefaultCollapsed = !!categoryDefaultCollapsed[category];
                 return `
                 <div class="category-tag" data-category="${escapeHtml(category)}">
-                    <span class="category-tag-drag-handle" title="드래그하거나 화살표 키로 순서 변경" tabindex="0" role="button" aria-label="${escapeHtml(category)} 순서 변경 (화살표 키 사용 가능)" onpointerdown="categoryTagPointerDown(event, '${escapeForOnclickArg(category)}')" onkeydown="categoryTagKeyDown(event, '${escapeForOnclickArg(category)}')">⠿</span>
-                    <span class="category-tag-name">${escapeHtml(category)}</span>
+                    <div class="category-tag-left">
+                        <span class="category-tag-drag-handle" title="드래그하거나 화살표 키로 순서 변경" tabindex="0" role="button" aria-label="${escapeHtml(category)} 순서 변경 (화살표 키 사용 가능)" onpointerdown="categoryTagPointerDown(event, '${escapeForOnclickArg(category)}')" onkeydown="categoryTagKeyDown(event, '${escapeForOnclickArg(category)}')">⠿</span>
+                        <span class="category-tag-name">${escapeHtml(category)}</span>
+                    </div>
                     <div class="category-tag-actions">
                         <button class="category-default-collapse-toggle${isDefaultCollapsed ? ' active' : ''}" onclick="toggleCategoryDefaultCollapse('${escapeForOnclickArg(category)}')" title="활동기록 탭에서 이 카테고리의 기본 펼침/접힘 상태 (지난 날짜에 내용이 없으면 이 설정과 상관없이 항상 접힘)">${isDefaultCollapsed ? '▸ 기본 최소화' : '▾ 항상 열림'}</button>
                         <input type="color" class="category-color-input" value="${categoryColors[category] || '#667eea'}"
