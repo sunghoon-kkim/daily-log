@@ -1968,7 +1968,7 @@ html {
 
         .categories-list {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 15px;
         }
 
@@ -1989,14 +1989,20 @@ html {
         
         .category-tag-name {
             flex: 1;
+            min-width: 60px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        
+
+        /* flex-basis:100%로 항상 자기 줄을 새로 차지하게 해서, 버튼 문구 길이(항상 열림/기본 최소화)에
+           따라 줄바꿈 여부가 들쭉날쭉해지는 것을 막음 - 이름 줄과 액션 버튼 줄이 상태와 무관하게 항상 2줄로 고정됨 */
         .category-tag-actions {
             display: flex;
+            flex-basis: 100%;
+            flex-wrap: wrap;
             align-items: center;
+            justify-content: flex-end;
             gap: 8px;
         }
         
