@@ -1968,16 +1968,17 @@ html {
 
         .categories-list {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
             gap: 15px;
         }
-        
+
         .category-tag {
             background: white;
             padding: 12px 15px;
             border-radius: 10px;
             border: 2px solid #667eea;
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
             font-size: 15px;
@@ -2018,6 +2019,35 @@ html {
             border: 1px solid #ddd;
         }
         
+        /* 카테고리 관리 탭: 활동기록에서 이 카테고리를 기본으로 열어둘지 접어둘지 정하는 토글.
+           지난 날짜+내용없음 자동 접힘 규칙이 이 설정보다 항상 우선한다는 점을 title로 안내함(isCategoryCollapsed 참고) */
+        .category-default-collapse-toggle {
+            background: #f0f1fb;
+            color: #667eea;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 14px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: all 0.2s;
+        }
+
+        .category-default-collapse-toggle:hover {
+            background: #e0e2fa;
+        }
+
+        .category-default-collapse-toggle.active {
+            background: #eee;
+            color: #888;
+        }
+
+        .category-default-collapse-toggle.active:hover {
+            background: #e2e2e2;
+        }
+
         .category-tag-delete {
             background: #ff6b6b;
             color: white;

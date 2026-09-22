@@ -94,6 +94,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let hiddenCategoriesByDate = {}; // { "2026-08-26": ["보일러"] } - 그 날짜에 안 쓰는 카테고리 숨김 목록
         let dateCategoryOrder = {}; // { "2026-08-26": ["보일러","수처리","냉동기"] } - 그 날짜에서만 적용되는 카테고리 박스 순서
         let categoryCollapseOverride = {}; // { "2026-08-25::보일러": true/false } - 사용자가 직접 접기/펼치기를 클릭해서 자동 규칙을 덮어쓴 경우 (세션 동안만 유지)
+        let categoryDefaultCollapsed = {}; // { "보일러": true } - 카테고리 관리 탭에서 지정한 기본 펼침/접힘 상태 (지난 날짜+내용없음 규칙보다는 우선순위가 낮음)
         let draggedCategoryId = null; // 드래그 중인 카테고리 박스
         let notesContent = '';
         let todoItems = []; // [{ id, text, done }] - 해야 할 일 체크리스트
@@ -300,6 +301,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             loadEvents();
             loadCategories();
             loadCategoryColors();
+            loadCategoryDefaultCollapsed();
             loadCategoryBoxHeights();
             loadHiddenCategories();
             loadCollapsedUpcomingCards();
@@ -453,6 +455,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
         }
         
+        function loadCategoryDefaultCollapsed() {
+            const stored = localStorage.getItem('categoryDefaultCollapsed');
+            categoryDefaultCollapsed = stored ? safeJsonParse(stored, {}, 'categoryDefaultCollapsed') : {};
+        }
+
         function loadCategoryBoxHeights() {
             const stored = localStorage.getItem('categoryBoxHeights');
             categoryBoxHeights = stored ? safeJsonParse(stored, {}, 'categoryBoxHeights') : {};
@@ -584,6 +591,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             queueSync();
         }
         
+        function saveCategoryDefaultCollapsedToStorage() {
+            localStorage.setItem('categoryDefaultCollapsed', JSON.stringify(categoryDefaultCollapsed));
+            queueSync();
+        }
+
         function saveCategoryBoxHeightsToStorage() {
             localStorage.setItem('categoryBoxHeights', JSON.stringify(categoryBoxHeights));
             queueSync();
@@ -638,6 +650,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 events,
                 categories,
                 categoryColors,
+                categoryDefaultCollapsed,
                 categoryBoxHeights,
                 dateCategoryBoxHeights,
                 hiddenCategoriesByDate,
@@ -666,6 +679,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             localStorage.setItem('calendarEvents', JSON.stringify(events));
             localStorage.setItem('activityCategories', JSON.stringify(categories));
             localStorage.setItem('categoryColors', JSON.stringify(categoryColors));
+            localStorage.setItem('categoryDefaultCollapsed', JSON.stringify(categoryDefaultCollapsed));
             localStorage.setItem('categoryBoxHeights', JSON.stringify(categoryBoxHeights));
             localStorage.setItem('dateCategoryBoxHeights', JSON.stringify(dateCategoryBoxHeights));
             localStorage.setItem('hiddenCategoriesByDate', JSON.stringify(hiddenCategoriesByDate));
@@ -756,6 +770,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     const isBrandNewAccountCategories = !(data.categories && data.categories.length);
                     categories = isBrandNewAccountCategories ? DEFAULT_CATEGORIES.slice() : data.categories;
                     categoryColors = isBrandNewAccountCategories ? Object.assign({}, DEFAULT_CATEGORY_COLORS) : (data.categoryColors || {});
+                    categoryDefaultCollapsed = (data.categoryDefaultCollapsed && typeof data.categoryDefaultCollapsed === 'object') ? data.categoryDefaultCollapsed : {};
                     categoryBoxHeights = data.categoryBoxHeights || {};
                     dateCategoryBoxHeights = data.dateCategoryBoxHeights || {};
                     hiddenCategoriesByDate = data.hiddenCategoriesByDate || {};
@@ -2042,6 +2057,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             confirmModal(message, () => {
                 categories = categories.filter(c => c !== name);
                 delete categoryColors[name];
+                delete categoryDefaultCollapsed[name];
                 selectedCategoriesForQuery.delete(name);
                 for (const key in categoryCollapseOverride) {
                     if (key.endsWith('::' + name)) delete categoryCollapseOverride[key];
@@ -2057,6 +2073,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
                 saveCategoriesToStorage();
                 saveCategoryColorsToStorage();
+                saveCategoryDefaultCollapsedToStorage();
                 saveRecordsToStorage();
                 saveCategoryImagesToStorage();
                 saveHiddenCategoriesToStorage();
@@ -2071,6 +2088,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!checkEditPermission()) { renderCategories(); return; }
             categoryColors[name] = color;
             saveCategoryColorsToStorage();
+            if (selectedDate) renderRecordForm();
+        }
+
+        // 활동기록 탭에서 이 카테고리를 열어둘지(기본값) 접어둘지 카테고리 관리 탭에서 미리 정해둠.
+        // 단, "지난 날짜인데 내용이 비어있으면 자동 접힘" 규칙이 이 설정보다 항상 우선함 (isCategoryCollapsed 참고)
+        function toggleCategoryDefaultCollapse(name) {
+            if (!checkEditPermission()) return;
+            categoryDefaultCollapsed[name] = !categoryDefaultCollapsed[name];
+            saveCategoryDefaultCollapsedToStorage();
+            renderCategories();
             if (selectedDate) renderRecordForm();
         }
 
@@ -2112,6 +2139,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (Object.prototype.hasOwnProperty.call(categoryColors, oldName)) {
                 categoryColors[newName] = categoryColors[oldName];
                 delete categoryColors[oldName];
+            }
+
+            if (Object.prototype.hasOwnProperty.call(categoryDefaultCollapsed, oldName)) {
+                categoryDefaultCollapsed[newName] = categoryDefaultCollapsed[oldName];
+                delete categoryDefaultCollapsed[oldName];
             }
 
             if (Object.prototype.hasOwnProperty.call(categoryBoxHeights, oldName)) {
@@ -2164,6 +2196,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             saveCategoriesToStorage();
             saveCategoryColorsToStorage();
+            saveCategoryDefaultCollapsedToStorage();
             saveCategoryBoxHeightsToStorage();
             saveDateCategoryBoxHeightsToStorage();
             saveRecordsToStorage();
@@ -2180,18 +2213,22 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         function renderCategories() {
             const container = document.getElementById('categoriesList');
-            container.innerHTML = categories.map(category => `
+            container.innerHTML = categories.map(category => {
+                const isDefaultCollapsed = !!categoryDefaultCollapsed[category];
+                return `
                 <div class="category-tag" data-category="${escapeHtml(category)}">
                     <span class="category-tag-drag-handle" title="드래그하거나 화살표 키로 순서 변경" tabindex="0" role="button" aria-label="${escapeHtml(category)} 순서 변경 (화살표 키 사용 가능)" onpointerdown="categoryTagPointerDown(event, '${escapeForOnclickArg(category)}')" onkeydown="categoryTagKeyDown(event, '${escapeForOnclickArg(category)}')">⠿</span>
                     <span class="category-tag-name">${escapeHtml(category)}</span>
                     <div class="category-tag-actions">
+                        <button class="category-default-collapse-toggle${isDefaultCollapsed ? ' active' : ''}" onclick="toggleCategoryDefaultCollapse('${escapeForOnclickArg(category)}')" title="활동기록 탭에서 이 카테고리의 기본 펼침/접힘 상태 (지난 날짜에 내용이 없으면 이 설정과 상관없이 항상 접힘)">${isDefaultCollapsed ? '▸ 기본 최소화' : '▾ 항상 열림'}</button>
                         <input type="color" class="category-color-input" value="${categoryColors[category] || '#667eea'}"
                             onchange="changeCategoryColor('${escapeForOnclickArg(category)}', this.value)" title="박스 색상 설정">
                         <button class="category-tag-edit" onclick="renameCategory('${escapeForOnclickArg(category)}')" title="이름 수정">✏️</button>
                         <button class="category-tag-delete" onclick="deleteCategory('${escapeForOnclickArg(category)}')" aria-label="${escapeHtml(category)} 카테고리 삭제">✕</button>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
 
             if (typeof applyFormLockState === 'function') applyFormLockState();
         }
@@ -3382,20 +3419,24 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return categories.slice();
         }
         
-        // 이 카테고리가 지금 접혀야 하는지 판단
-        // - 사용자가 직접 접기/펼치기 버튼을 클릭한 적이 있으면 그 선택이 항상 우선
-        // - 그게 없으면: 지난 날짜인데 그 카테고리에 작성된 내용이 없으면 자동으로 접힘
+        // 이 카테고리가 지금 접혀야 하는지 판단 (우선순위 순서)
+        // 1. 사용자가 이 날짜에서 직접 접기/펼치기 버튼을 클릭한 적이 있으면 그 선택이 항상 최우선
+        // 2. (최우선 규칙) 지난 날짜인데 그 카테고리에 작성된 내용이 없으면 무조건 자동 접힘
+        // 3. 그 외(오늘/미래 날짜이거나, 지난 날짜라도 내용이 있는 경우)는 카테고리 관리 탭에서
+        //    지정해둔 기본 상태(항상 열림/기본 최소화)를 따름
         function isCategoryCollapsed(dateStr, category) {
             const key = dateStr + '::' + category;
             if (Object.prototype.hasOwnProperty.call(categoryCollapseOverride, key)) {
                 return categoryCollapseOverride[key];
             }
-            
+
             const todayStr = formatDate(new Date());
-            if (dateStr >= todayStr) return false;
-            
-            const content = (records[dateStr] && records[dateStr][category]) || '';
-            return content.trim() === '';
+            if (dateStr < todayStr) {
+                const content = (records[dateStr] && records[dateStr][category]) || '';
+                if (content.trim() === '') return true;
+            }
+
+            return !!categoryDefaultCollapsed[category];
         }
         
         // 카테고리 박스 접기/펼치기 (제목만 남기기) - 이 날짜에서 사용자가 직접 선택한 상태로 기억됨 (세션 동안만)
@@ -9151,7 +9192,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 데이터가 화면에 남아있는 것처럼 보일 수 있음
         const ACCOUNT_SCOPED_STORAGE_KEYS = [
             'activityRecords', 'calendarEvents', 'activityCategories',
-            'categoryColors', 'categoryBoxHeights', 'dateCategoryBoxHeights',
+            'categoryColors', 'categoryDefaultCollapsed', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
             'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
