@@ -1512,24 +1512,6 @@ html {
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
         }
         
-        .category-record.collapsed {
-            min-height: 0;
-            height: auto !important;
-            resize: none;
-            overflow: visible;
-            padding-bottom: 15px;
-            cursor: pointer;
-        }
-        
-        .category-record.collapsed:hover {
-            border-color: #667eea;
-        }
-        
-        .category-record.collapsed textarea,
-        .category-record.collapsed .category-images {
-            display: none;
-        }
-        
         .category-record-header {
             display: flex;
             align-items: center;
@@ -1646,7 +1628,62 @@ html {
             color: white;
             border-color: #667eea;
         }
-        
+
+        /* 접힌 카테고리 모음: 펼쳐진 카테고리들과 시각적으로 분리해서 저장하기 버튼 바로 위에 배치함 (renderRecordForm 참고) */
+        .collapsed-categories-area {
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px dashed #e0e0e0;
+        }
+
+        .collapsed-categories-label {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 8px;
+        }
+
+        .collapsed-categories-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+        }
+
+        .collapsed-category-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 10px;
+            border: 1px solid #e0e0e0;
+            background: #f8f9fb;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #555;
+            cursor: pointer;
+            overflow: hidden;
+            text-align: left;
+            transition: all 0.2s;
+        }
+
+        .collapsed-category-chip:hover {
+            border-color: var(--chip-color, #667eea);
+            background: white;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .collapsed-category-chip-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .collapsed-category-chip-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         .category-record textarea {
             width: 100%;
             display: block;
@@ -3861,6 +3898,10 @@ html {
                 grid-template-columns: 1fr;
             }
 
+            .collapsed-categories-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
             .category-selector,
             .section-selector {
                 grid-template-columns: repeat(2, 1fr);
@@ -3956,6 +3997,7 @@ html {
 .dark-mode .modal-box,
 .dark-mode .category-tag,
 .dark-mode .hidden-category-chip,
+.dark-mode .collapsed-category-chip,
 .dark-mode .result-item,
 .dark-mode .team-report-history-item,
 .dark-mode .project-card,
@@ -4435,6 +4477,14 @@ html {
 
 .dark-mode .hidden-categories-row {
     background: var(--d-bg2);
+}
+
+.dark-mode .collapsed-categories-area {
+    border-top-color: var(--d-border);
+}
+
+.dark-mode .collapsed-category-chip:hover {
+    background: var(--d-bg3);
 }
 
 .dark-mode .ai-copy-btn,

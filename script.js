@@ -3219,31 +3219,45 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 html += '</div>';
             }
             
-            // 카테고리별 활동 기록 (이 날짜에서 숨긴 카테고리는 건너뜀, 이 날짜만의 순서 적용)
+            // 카테고리별 활동 기록 (이 날짜에서 숨긴 카테고리는 건너뜀, 이 날짜만의 순서 적용).
+            // 접힌 카테고리는 세로 카드로 그리지 않고, 펼쳐진 카테고리들과 분리해서 하단에 배지 그리드로 모아 보여줌
             const hiddenList = hiddenCategoriesByDate[selectedDate] || [];
             const orderedCategories = getCategoryOrderForDate(selectedDate);
             const visibleCategories = orderedCategories.filter(c => !hiddenList.includes(c));
             const hiddenCategories = orderedCategories.filter(c => hiddenList.includes(c));
-            
+
+            let expandedHtml = '';
+            let collapsedChipsHtml = '';
+
             for (const category of visibleCategories) {
                 const content = records[selectedDate][category] || '';
                 const color = categoryColors[category] || '#667eea';
                 const isCollapsed = isCategoryCollapsed(selectedDate, category);
+                const categoryHtml = escapeHtml(category);
+                const categoryArg = escapeForOnclickArg(category);
+
+                if (isCollapsed) {
+                    collapsedChipsHtml += `
+                        <button type="button" class="collapsed-category-chip" data-category="${categoryHtml}" style="--chip-color:${color}" onclick="toggleCategoryCollapse('${categoryArg}')" title="클릭해서 펼치기">
+                            <span class="collapsed-category-chip-dot" style="background:${color}"></span>
+                            <span class="collapsed-category-chip-name">${categoryHtml}</span>
+                        </button>
+                    `;
+                    continue;
+                }
+
                 // 이 날짜에 개별 지정된 높이가 있으면 우선, 없으면 카테고리 기본값 사용
                 const dateHeight = dateCategoryBoxHeights[selectedDate] && dateCategoryBoxHeights[selectedDate][category];
                 const savedHeight = dateHeight || categoryBoxHeights[category];
-                const heightStyle = (savedHeight && !isCollapsed) ? `height:${savedHeight}px;` : '';
-                const collapsedClass = isCollapsed ? ' collapsed' : '';
-                const categoryHtml = escapeHtml(category);
-                const categoryArg = escapeForOnclickArg(category);
-                html += `
-                    <div class="category-record${collapsedClass}" data-category="${categoryHtml}" style="border-left-color:${color};${heightStyle}"${isCollapsed ? ` onclick="toggleCategoryCollapse('${categoryArg}')" title="클릭해서 펼치기"` : ''}>
+                const heightStyle = savedHeight ? `height:${savedHeight}px;` : '';
+                expandedHtml += `
+                    <div class="category-record" data-category="${categoryHtml}" style="border-left-color:${color};${heightStyle}">
                         <div class="category-record-header" draggable="true">
                             <span class="category-drag-handle" title="드래그해서 순서 변경">⠿</span>
                             <div class="category-name" style="color:${color}">${categoryHtml}</div>
                             <div class="category-header-actions">
                                 ${(!content && findPreviousRecord(selectedDate, category)) ? `<button class="category-prev-btn" draggable="false" onclick="loadPreviousRecord('${categoryArg}')" title="이전에 작성한 기록 불러오기">↓ 이전 기록</button>` : ''}
-                                <button class="category-collapse-btn" draggable="false" onclick="toggleCategoryCollapse('${categoryArg}')" title="접기/펼치기">${isCollapsed ? '▸' : '▾'}</button>
+                                <button class="category-collapse-btn" draggable="false" onclick="toggleCategoryCollapse('${categoryArg}')" title="접기/펼치기">▾</button>
                                 <button class="category-hide-btn" draggable="false" onclick="hideCategoryForDate('${categoryArg}')" title="이 날짜에서 숨기기" aria-label="이 날짜에서 숨기기">✕</button>
                             </div>
                         </div>
@@ -3253,6 +3267,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 `;
             }
 
+            html += `<div class="expanded-categories-area">${expandedHtml}</div>`;
+
             if (hiddenCategories.length > 0) {
                 html += '<div class="hidden-categories-row">';
                 html += '<span class="hidden-categories-label">이 날짜에서 숨김:</span>';
@@ -3261,7 +3277,17 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 }
                 html += '</div>';
             }
-            
+
+            // 접힌 카테고리가 하나도 없으면 영역 자체를 그리지 않아 불필요한 여백이 남지 않게 함
+            if (collapsedChipsHtml) {
+                html += `
+                    <div class="collapsed-categories-area">
+                        <div class="collapsed-categories-label">📁 접어둔 카테고리</div>
+                        <div class="collapsed-categories-grid">${collapsedChipsHtml}</div>
+                    </div>
+                `;
+            }
+
             container.innerHTML = html;
             
             // 박스 크기 조절 시 이 날짜에 한해서만 자동 저장 (카테고리 기본값은 건드리지 않음)
