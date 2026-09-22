@@ -7252,7 +7252,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 지금 폼에 입력된 값이 저장된 기록과 다르면(=저장 안 한 수정이 있으면) true
         function isFeedbackHistoryFormDirty() {
             const record = monthlyFeedbacks[currentFeedbackHistoryMonth] || {};
-            return document.getElementById('feedbackHistoryGradeSelect').value !== (record.grade || '')
+            return document.getElementById('feedbackHistorySelfGradeSelect').value !== (record.selfGrade || '')
+                || document.getElementById('feedbackHistoryReceivedGradeSelect').value !== (record.receivedGrade || '')
                 || document.getElementById('feedbackHistorySelfGood').value !== (record.selfGood || '')
                 || document.getElementById('feedbackHistorySelfImprove').value !== (record.selfImprove || '')
                 || document.getElementById('feedbackHistoryReceivedGood').value !== (record.receivedGood || '')
@@ -7283,7 +7284,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             monthLabel.textContent = formatYearMonthLabel(currentFeedbackHistoryMonth);
 
             const record = monthlyFeedbacks[currentFeedbackHistoryMonth] || {};
-            document.getElementById('feedbackHistoryGradeSelect').value = record.grade || '';
+            document.getElementById('feedbackHistorySelfGradeSelect').value = record.selfGrade || '';
+            document.getElementById('feedbackHistoryReceivedGradeSelect').value = record.receivedGrade || '';
             document.getElementById('feedbackHistorySelfGood').value = record.selfGood || '';
             document.getElementById('feedbackHistorySelfImprove').value = record.selfImprove || '';
             document.getElementById('feedbackHistoryReceivedGood').value = record.receivedGood || '';
@@ -7304,7 +7306,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!checkEditPermission()) return;
 
             monthlyFeedbacks[currentFeedbackHistoryMonth] = {
-                grade: document.getElementById('feedbackHistoryGradeSelect').value,
+                selfGrade: document.getElementById('feedbackHistorySelfGradeSelect').value,
+                receivedGrade: document.getElementById('feedbackHistoryReceivedGradeSelect').value,
                 selfGood: document.getElementById('feedbackHistorySelfGood').value.trim(),
                 selfImprove: document.getElementById('feedbackHistorySelfImprove').value.trim(),
                 receivedGood: document.getElementById('feedbackHistoryReceivedGood').value.trim(),
@@ -7330,7 +7333,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const r = monthlyFeedbacks[ym];
                 if (!r) continue;
                 const lines = [];
-                if (r.grade) lines.push(`평가등급: ${r.grade}`);
+                if (r.selfGrade) lines.push(`본인 평가등급: ${r.selfGrade}`);
+                if (r.receivedGrade) lines.push(`상사 평가등급: ${r.receivedGrade}`);
                 if (r.selfGood) lines.push(`자가 피드백 - 잘한점(한일): ${r.selfGood}`);
                 if (r.selfImprove) lines.push(`자가 피드백 - 개선/보완할점(할일): ${r.selfImprove}`);
                 if (r.receivedGood) lines.push(`수신 피드백(팀장/상사) - 잘한점(인정받은 부분): ${r.receivedGood}`);

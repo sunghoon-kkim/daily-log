@@ -380,17 +380,31 @@
                     <span class="notes-save-indicator" id="feedbackHistorySavedIndicator" style="display:none;"></span>
                 </div>
 
-                <div style="max-width:240px; margin-bottom:20px;">
-                    <label class="ai-block-label" style="display:block; margin-bottom:6px;">당월 평가 등급</label>
-                    <select id="feedbackHistoryGradeSelect" class="category-input" style="width:100%;">
-                        <option value="">선택 안 함</option>
-                        <option value="S">S</option>
-                        <option value="A">A</option>
-                        <option value="B+">B+</option>
-                        <option value="B">B</option>
-                        <option value="C+">C+</option>
-                        <option value="C">C</option>
-                    </select>
+                <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:20px;">
+                    <div style="max-width:240px; flex:1; min-width:180px;">
+                        <label class="ai-block-label" style="display:block; margin-bottom:6px;">당월 본인 평가 등급</label>
+                        <select id="feedbackHistorySelfGradeSelect" class="category-input" style="width:100%;">
+                            <option value="">선택 안 함</option>
+                            <option value="S">S</option>
+                            <option value="A">A</option>
+                            <option value="B+">B+</option>
+                            <option value="B">B</option>
+                            <option value="C+">C+</option>
+                            <option value="C">C</option>
+                        </select>
+                    </div>
+                    <div style="max-width:240px; flex:1; min-width:180px;">
+                        <label class="ai-block-label" style="display:block; margin-bottom:6px;">당월 상사 평가 등급</label>
+                        <select id="feedbackHistoryReceivedGradeSelect" class="category-input" style="width:100%;">
+                            <option value="">선택 안 함</option>
+                            <option value="S">S</option>
+                            <option value="A">A</option>
+                            <option value="B+">B+</option>
+                            <option value="B">B</option>
+                            <option value="C+">C+</option>
+                            <option value="C">C</option>
+                        </select>
+                    </div>
                 </div>
 
                 <label class="ai-block-label" style="display:block; margin-bottom:8px;">✍️ 자가 피드백</label>
