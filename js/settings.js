@@ -156,7 +156,7 @@
             if (!checkEditPermission()) return;
             const isDark = document.documentElement.classList.toggle('dark-mode');
             try {
-                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                safeSetItem('theme', isDark ? 'dark' : 'light');
             } catch (e) { /* 저장 실패해도 화면 전환 자체는 계속 동작하게 무시 */ }
             applyThemeButtonLabel();
         }

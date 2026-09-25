@@ -132,7 +132,7 @@
             });
             p.updatedMonth = formatDate(new Date()).slice(0, 7);
 
-            localStorage.setItem('savingsProjects', JSON.stringify(savingsProjects));
+            safeSetItem('savingsProjects', JSON.stringify(savingsProjects));
             queueSync();
             document.getElementById('projectMonthlyNoteInput').value = '';
             renderProjectMonthlyLogList(p);
@@ -177,7 +177,7 @@
                 });
             }
             
-            localStorage.setItem('savingsProjects', JSON.stringify(savingsProjects));
+            safeSetItem('savingsProjects', JSON.stringify(savingsProjects));
             queueSync();
             closeProjectModal();
             renderSavingsProjects();
@@ -188,7 +188,7 @@
             if (!editingProjectId) return;
             confirmModal('이 과제를 삭제하시겠습니까?', () => {
                 savingsProjects = savingsProjects.filter(p => p.id !== editingProjectId);
-                localStorage.setItem('savingsProjects', JSON.stringify(savingsProjects));
+                safeSetItem('savingsProjects', JSON.stringify(savingsProjects));
                 queueSync();
                 closeProjectModal();
                 renderSavingsProjects();

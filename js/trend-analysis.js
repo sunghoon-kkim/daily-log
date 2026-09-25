@@ -21,7 +21,7 @@
                 clearTimeout(t1);
                 t1 = setTimeout(() => {
                     trendSubject = subjectEl.value;
-                    localStorage.setItem('trendSubject', trendSubject);
+                    safeSetItem('trendSubject', trendSubject);
                     queueSync();
                 }, 500);
             });
@@ -30,7 +30,7 @@
                 clearTimeout(t2);
                 t2 = setTimeout(() => {
                     trendSpec = specEl.value;
-                    localStorage.setItem('trendSpec', trendSpec);
+                    safeSetItem('trendSpec', trendSpec);
                     queueSync();
                 }, 500);
             });

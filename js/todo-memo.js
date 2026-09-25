@@ -44,7 +44,7 @@
             syncActiveFreeNotesPageData(); // 나가기 전에 지금 보던 메모장 내용을 확실히 반영해둠
             currentFreeNotesPageId = pageId;
             ensureActiveFreeNotesPage();
-            localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId);
+            safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId);
             applyNotesContent();
         }
 
@@ -59,8 +59,8 @@
             freeNotesPages.push(newPage);
             currentFreeNotesPageId = newPage.id;
             notesContent = newPage.content;
-            localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
-            localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId);
+            safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
+            safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId);
             queueSync();
             applyNotesContent();
         }
@@ -91,7 +91,7 @@
             }
             const page = freeNotesPages.find(p => p.id === editingFreeNotesPageId);
             if (page) page.name = name;
-            localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
+            safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
             queueSync();
             closeFreeNotesPageModal();
             renderFreeNotesPageTabs();
@@ -105,8 +105,8 @@
                 freeNotesPages = freeNotesPages.filter(p => p.id !== targetId);
                 if (currentFreeNotesPageId === targetId) currentFreeNotesPageId = freeNotesPages[0].id;
                 ensureActiveFreeNotesPage();
-                localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
-                localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId);
+                safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
+                safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId);
                 queueSync();
                 closeFreeNotesPageModal();
                 applyNotesContent();
@@ -141,8 +141,8 @@
                 const textarea = document.getElementById('notesTextarea');
                 notesContent = textarea.innerHTML;
                 syncActiveFreeNotesPageData();
-                localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
-                localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
+                safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
+                safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
                 queueSync();
                 const indicator = document.getElementById('notesSaveIndicator');
                 indicator.classList.add('show');
@@ -332,7 +332,7 @@
         }
 
         function saveTodoItems() {
-            localStorage.setItem('todoItems', JSON.stringify(todoItems));
+            safeSetItem('todoItems', JSON.stringify(todoItems));
             queueSync();
             const indicator = document.getElementById('todoSaveIndicator');
             if (indicator) {
@@ -627,6 +627,6 @@
                 const rect = container.getBoundingClientRect();
                 const todoRect = todoPane.getBoundingClientRect();
                 const percent = (todoRect.width / rect.width) * 100;
-                localStorage.setItem('notesSplitPercent', percent.toFixed(1));
+                safeSetItem('notesSplitPercent', percent.toFixed(1));
             });
         }

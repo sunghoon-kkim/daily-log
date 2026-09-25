@@ -337,7 +337,7 @@
         function toggleUpcomingWidget() {
             if (!checkEditPermission()) return;
             const isVisible = localStorage.getItem('upcomingWidgetVisible') !== 'false';
-            localStorage.setItem('upcomingWidgetVisible', (!isVisible).toString());
+            safeSetItem('upcomingWidgetVisible', (!isVisible).toString());
             renderUpcomingWidget();
         }
         

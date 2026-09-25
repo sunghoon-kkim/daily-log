@@ -425,6 +425,24 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return parsed;
         }
 
+        // localStorage 용량(보통 5MB)이 base64 이미지 등으로 꽉 차면 setItem이 QuotaExceededError를
+        // 던지는데, 이게 그대로 올라가면 뒤이은 queueSync()(서버 저장)나 화면 갱신까지 통째로 건너뛰게 됨.
+        // 로컬 캐시는 서버 데이터의 사본일 뿐이므로 실패해도 경고만 남기고 흐름은 계속 진행시킨다.
+        let localStorageQuotaWarned = false;
+        function safeSetItem(key, value) {
+            try {
+                localStorage.setItem(key, value);
+                return true;
+            } catch (e) {
+                console.warn(`localStorage 저장 실패 (${key}):`, e);
+                if (!localStorageQuotaWarned) {
+                    localStorageQuotaWarned = true; // 같은 경고가 연달아 뜨지 않도록 세션당 한 번만 알림
+                    try { showStatus('⚠️ 기기 저장 공간이 부족해 로컬 캐시 저장에 실패했습니다 (서버 저장은 계속 진행됩니다)', 'error'); } catch (_) { /* 무시 */ }
+                }
+                return false;
+            }
+        }
+
         function loadRecords() {
             const stored = localStorage.getItem('activityRecords');
             records = stored ? safeJsonParse(stored, {}, 'activityRecords') : {};
@@ -436,7 +454,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         function saveCategoryImagesToStorage() {
-            localStorage.setItem('categoryImages', JSON.stringify(categoryImages));
+            safeSetItem('categoryImages', JSON.stringify(categoryImages));
             queueSync();
         }
 
@@ -581,67 +599,67 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         function saveRecordsToStorage() {
-            localStorage.setItem('activityRecords', JSON.stringify(records));
+            safeSetItem('activityRecords', JSON.stringify(records));
             queueSync();
         }
         
         function saveEventsToStorage() {
-            localStorage.setItem('calendarEvents', JSON.stringify(events));
+            safeSetItem('calendarEvents', JSON.stringify(events));
             queueSync();
         }
         
         function saveCategoriesToStorage() {
-            localStorage.setItem('activityCategories', JSON.stringify(categories));
+            safeSetItem('activityCategories', JSON.stringify(categories));
             queueSync();
         }
         
         function saveCategoryColorsToStorage() {
-            localStorage.setItem('categoryColors', JSON.stringify(categoryColors));
+            safeSetItem('categoryColors', JSON.stringify(categoryColors));
             queueSync();
         }
         
         function saveCategoryDefaultCollapsedToStorage() {
-            localStorage.setItem('categoryDefaultCollapsed', JSON.stringify(categoryDefaultCollapsed));
+            safeSetItem('categoryDefaultCollapsed', JSON.stringify(categoryDefaultCollapsed));
             queueSync();
         }
 
         function saveCategoryBoxHeightsToStorage() {
-            localStorage.setItem('categoryBoxHeights', JSON.stringify(categoryBoxHeights));
+            safeSetItem('categoryBoxHeights', JSON.stringify(categoryBoxHeights));
             queueSync();
         }
         
         function saveDateCategoryBoxHeightsToStorage() {
-            localStorage.setItem('dateCategoryBoxHeights', JSON.stringify(dateCategoryBoxHeights));
+            safeSetItem('dateCategoryBoxHeights', JSON.stringify(dateCategoryBoxHeights));
             queueSync();
         }
         
         function saveHiddenCategoriesToStorage() {
-            localStorage.setItem('hiddenCategoriesByDate', JSON.stringify(hiddenCategoriesByDate));
+            safeSetItem('hiddenCategoriesByDate', JSON.stringify(hiddenCategoriesByDate));
             queueSync();
         }
         
         function saveDateCategoryOrderToStorage() {
-            localStorage.setItem('dateCategoryOrder', JSON.stringify(dateCategoryOrder));
+            safeSetItem('dateCategoryOrder', JSON.stringify(dateCategoryOrder));
             queueSync();
         }
         
         function saveTabOrderToStorage() {
-            localStorage.setItem('tabOrder', JSON.stringify(tabOrder));
+            safeSetItem('tabOrder', JSON.stringify(tabOrder));
             queueSync();
         }
 
         function saveDisabledTabIdsToStorage() {
-            localStorage.setItem('disabledTabIds', JSON.stringify(disabledTabIds));
+            safeSetItem('disabledTabIds', JSON.stringify(disabledTabIds));
             queueSync();
         }
 
         function savePersonalAiApiKeyToStorage() {
-            localStorage.setItem('personalAiApiKey', personalAiApiKey);
+            safeSetItem('personalAiApiKey', personalAiApiKey);
             queueSync();
         }
 
         function saveCollapsedUpcomingCardsToStorage() {
-            localStorage.setItem('collapsedUpcomingCardIds', JSON.stringify(Array.from(collapsedUpcomingCardIds)));
+            safeSetItem('collapsedUpcomingCardIds', JSON.stringify(Array.from(collapsedUpcomingCardIds)));
             queueSync();
         }
         
@@ -684,36 +702,36 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         function cacheAllToLocalStorage() {
-            localStorage.setItem('activityRecords', JSON.stringify(records));
-            localStorage.setItem('categoryImages', JSON.stringify(categoryImages));
-            localStorage.setItem('calendarEvents', JSON.stringify(events));
-            localStorage.setItem('activityCategories', JSON.stringify(categories));
-            localStorage.setItem('categoryColors', JSON.stringify(categoryColors));
-            localStorage.setItem('categoryDefaultCollapsed', JSON.stringify(categoryDefaultCollapsed));
-            localStorage.setItem('categoryBoxHeights', JSON.stringify(categoryBoxHeights));
-            localStorage.setItem('dateCategoryBoxHeights', JSON.stringify(dateCategoryBoxHeights));
-            localStorage.setItem('hiddenCategoriesByDate', JSON.stringify(hiddenCategoriesByDate));
-            localStorage.setItem('dateCategoryOrder', JSON.stringify(dateCategoryOrder));
-            localStorage.setItem('collapsedUpcomingCardIds', JSON.stringify(Array.from(collapsedUpcomingCardIds)));
-            localStorage.setItem('tabOrder', JSON.stringify(tabOrder));
-            localStorage.setItem('disabledTabIds', JSON.stringify(disabledTabIds));
-            localStorage.setItem('personalAiApiKey', personalAiApiKey);
-            localStorage.setItem('disabledFeatures', JSON.stringify(disabledFeatures));
+            safeSetItem('activityRecords', JSON.stringify(records));
+            safeSetItem('categoryImages', JSON.stringify(categoryImages));
+            safeSetItem('calendarEvents', JSON.stringify(events));
+            safeSetItem('activityCategories', JSON.stringify(categories));
+            safeSetItem('categoryColors', JSON.stringify(categoryColors));
+            safeSetItem('categoryDefaultCollapsed', JSON.stringify(categoryDefaultCollapsed));
+            safeSetItem('categoryBoxHeights', JSON.stringify(categoryBoxHeights));
+            safeSetItem('dateCategoryBoxHeights', JSON.stringify(dateCategoryBoxHeights));
+            safeSetItem('hiddenCategoriesByDate', JSON.stringify(hiddenCategoriesByDate));
+            safeSetItem('dateCategoryOrder', JSON.stringify(dateCategoryOrder));
+            safeSetItem('collapsedUpcomingCardIds', JSON.stringify(Array.from(collapsedUpcomingCardIds)));
+            safeSetItem('tabOrder', JSON.stringify(tabOrder));
+            safeSetItem('disabledTabIds', JSON.stringify(disabledTabIds));
+            safeSetItem('personalAiApiKey', personalAiApiKey);
+            safeSetItem('disabledFeatures', JSON.stringify(disabledFeatures));
             syncActiveFreeNotesPageData();
-            localStorage.setItem('freeNotesPages', JSON.stringify(freeNotesPages));
-            localStorage.setItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
-            localStorage.setItem('todoItems', JSON.stringify(todoItems));
-            localStorage.setItem('aiTemplate', aiTemplateContent);
-            localStorage.setItem('monthlyFeedbacks', JSON.stringify(monthlyFeedbacks));
-            localStorage.setItem('savingsProjects', JSON.stringify(savingsProjects));
-            localStorage.setItem('trendSubject', trendSubject);
-            localStorage.setItem('trendSpec', trendSpec);
-            localStorage.setItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
+            safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
+            safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
+            safeSetItem('todoItems', JSON.stringify(todoItems));
+            safeSetItem('aiTemplate', aiTemplateContent);
+            safeSetItem('monthlyFeedbacks', JSON.stringify(monthlyFeedbacks));
+            safeSetItem('savingsProjects', JSON.stringify(savingsProjects));
+            safeSetItem('trendSubject', trendSubject);
+            safeSetItem('trendSpec', trendSpec);
+            safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
             syncActiveWaterFlowDiagramData();
-            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
-            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
-            localStorage.setItem('accountName', currentUserName);
-            localStorage.setItem('accountDepartment', currentUserDepartment);
+            safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
+            safeSetItem('accountName', currentUserName);
+            safeSetItem('accountDepartment', currentUserDepartment);
         }
 
         // 이 기기가 서버에서 최신 데이터를 완전히 받아오기 전까지는 절대 로컬(오래됐을 수 있는) 데이터를
@@ -1321,8 +1339,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         
         // 페이지를 닫거나 새로고침할 때도 입력 중이던 내용 저장 시도
+        // captureCurrentFormToRecords는 calendar-activity.js에 있어서, 그 파일이 로드되지 못했거나
+        // 로컬 저장이 실패해도 아래 sendBeacon(마지막 서버 저장)은 반드시 실행되도록 따로 감쌈
         window.addEventListener('beforeunload', () => {
-            captureCurrentFormToRecords();
+            try {
+                if (typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
+            } catch (e) { /* 무시 */ }
             try {
                 const blob = new Blob([JSON.stringify(getFullState())], { type: 'text/plain' });
                 navigator.sendBeacon(GOOGLE_APPS_SCRIPT_URL, blob);
@@ -1596,8 +1618,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     currentPasswordHash = passwordHash;
                     currentUserName = name;
                     currentUserDepartment = department;
-                    localStorage.setItem('accountName', name);
-                    localStorage.setItem('accountDepartment', department);
+                    safeSetItem('accountName', name);
+                    safeSetItem('accountDepartment', department);
                     editUnlocked = true;
                     isAdmin = false; // 관리자 계정은 이미 시트에 만들어져 있어 회원가입으로는 절대 생성되지 않음(중복 사번으로 거부됨)
 
@@ -1709,8 +1731,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
                 currentUserName = newName;
                 currentUserDepartment = newDepartment;
-                localStorage.setItem('accountName', currentUserName);
-                localStorage.setItem('accountDepartment', currentUserDepartment);
+                safeSetItem('accountName', currentUserName);
+                safeSetItem('accountDepartment', currentUserDepartment);
                 queueSync();
 
                 applyEditLockUI();

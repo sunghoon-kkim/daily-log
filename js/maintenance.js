@@ -123,7 +123,7 @@
             const m = maintenanceSchedule.find(x => x.id === itemId);
             if (!m) return;
             m.ackFor = (m.ackFor === m.nextDue) ? null : m.nextDue;
-            localStorage.setItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
+            safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
             queueSync();
             renderMaintenanceSchedule();
         }
@@ -326,7 +326,7 @@
                 });
             }
 
-            localStorage.setItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
+            safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
             queueSync();
             closeMaintenanceModal();
             renderMaintenanceSchedule();
@@ -337,7 +337,7 @@
             if (!editingMaintenanceId) return;
             confirmModal('이 정비계획 항목을 삭제하시겠습니까?', () => {
                 maintenanceSchedule = maintenanceSchedule.filter(m => m.id !== editingMaintenanceId);
-                localStorage.setItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
+                safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
                 queueSync();
                 closeMaintenanceModal();
                 renderMaintenanceSchedule();

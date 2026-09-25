@@ -29,7 +29,7 @@
             confirmModal('지금 수정한 피드백 양식을 기본 양식으로 되돌리시겠습니까?', () => {
                 aiTemplateContent = DEFAULT_AI_TEMPLATE;
                 document.getElementById('aiTemplateTextarea').value = DEFAULT_AI_TEMPLATE;
-                localStorage.setItem('aiTemplate', aiTemplateContent);
+                safeSetItem('aiTemplate', aiTemplateContent);
                 queueSync();
             });
         }
@@ -42,7 +42,7 @@
                 clearTimeout(saveTimeout);
                 saveTimeout = setTimeout(() => {
                     aiTemplateContent = textarea.value;
-                    localStorage.setItem('aiTemplate', aiTemplateContent);
+                    safeSetItem('aiTemplate', aiTemplateContent);
                     queueSync();
                 }, 500);
             });
@@ -628,7 +628,7 @@
                 updatedAt: new Date().toISOString()
             };
 
-            localStorage.setItem('monthlyFeedbacks', JSON.stringify(monthlyFeedbacks));
+            safeSetItem('monthlyFeedbacks', JSON.stringify(monthlyFeedbacks));
             queueSync();
             renderFeedbackHistoryForm();
 
@@ -674,7 +674,7 @@
         }
 
         function saveGoalGrowthIncludeTalentDev(checked) {
-            localStorage.setItem('goalGrowthIncludeTalentDev', checked ? 'true' : 'false');
+            safeSetItem('goalGrowthIncludeTalentDev', checked ? 'true' : 'false');
         }
 
         // 항목 체크 상태는 기본적으로 전부 선택된 상태로 시작 (한 번 바꾸면 다음에도 그대로 기억)
@@ -684,7 +684,7 @@
         }
 
         function saveGoalAreaChecked(areaId, checked) {
-            localStorage.setItem(`goalAreaChecked_${areaId}`, checked ? 'true' : 'false');
+            safeSetItem(`goalAreaChecked_${areaId}`, checked ? 'true' : 'false');
         }
 
         function renderGoalAreaCheckRow() {

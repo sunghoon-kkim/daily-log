@@ -64,8 +64,8 @@
             currentWaterFlowDiagramId = state.currentId;
             ensureActiveWaterFlowDiagram();
             cancelWaterFlowConnectMode();
-            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
-            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
+            safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
             queueSync();
             renderWaterFlowDiagramTabs();
             renderWaterFlowCanvas();
@@ -133,7 +133,7 @@
             syncActiveWaterFlowDiagramData(); // 나가기 전에 지금 보던 흐름도 내용을 확실히 반영해둠
             currentWaterFlowDiagramId = diagramId;
             ensureActiveWaterFlowDiagram();
-            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
+            safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
             renderWaterFlowDiagramTabs();
             renderWaterFlowCanvas();
             fitWaterFlowViewToContent(); // 블록이 다 그려진 뒤에 화면에 전부 들어오도록 맞춤
@@ -153,8 +153,8 @@
             currentWaterFlowDiagramId = newDiagram.id;
             waterFlowBlocks = newDiagram.blocks;
             waterFlowConnections = newDiagram.connections;
-            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
-            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
+            safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
             queueSync();
             resetWaterFlowView();
             renderWaterFlowDiagramTabs();
@@ -188,7 +188,7 @@
             pushWaterFlowUndoSnapshot();
             const diagram = waterFlowDiagrams.find(d => d.id === editingWaterFlowDiagramId);
             if (diagram) diagram.name = name;
-            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
             queueSync();
             closeWaterFlowDiagramModal();
             renderWaterFlowDiagramTabs();
@@ -203,8 +203,8 @@
                 waterFlowDiagrams = waterFlowDiagrams.filter(d => d.id !== targetId);
                 if (currentWaterFlowDiagramId === targetId) currentWaterFlowDiagramId = waterFlowDiagrams[0].id;
                 ensureActiveWaterFlowDiagram();
-                localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
-                localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
+                safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+                safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
                 queueSync();
                 closeWaterFlowDiagramModal();
                 renderWaterFlowDiagramTabs();
@@ -215,15 +215,15 @@
 
         function saveWaterFlowBlocksToStorage() {
             syncActiveWaterFlowDiagramData();
-            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
-            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
+            safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
             queueSync();
         }
 
         function saveWaterFlowConnectionsToStorage() {
             syncActiveWaterFlowDiagramData();
-            localStorage.setItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
-            localStorage.setItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
+            safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
             queueSync();
         }
 
