@@ -5,12 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>📅 일일 활동 기록 - 캘린더</title>
     
+    <!-- 기본은 항상 라이트 모드. 브라우저/OS의 자동 다크 기능이 화면을 강제로 어둡게 바꾸지 않도록 알림
+         (사용자가 앱의 다크모드 버튼을 누른 경우에만 style.css의 .dark-mode가 다크 색을 적용함) -->
+    <meta name="color-scheme" content="only light">
+
     <!-- 다크모드 설정을 화면이 그려지기 전에 미리 적용해서, 라이트 화면이 잠깐 보였다가
-         다크로 바뀌는 깜빡임(FOUC)을 방지함 -->
+         다크로 바뀌는 깜빡임(FOUC)을 방지함. 예전 키('theme')에 남아 있던 값은 무시하고, 새 키
+         ('themePreference')에 사용자가 직접 다크를 고른 기록이 있을 때만 다크로 시작함 -->
     <script>
         (function () {
             try {
-                if (localStorage.getItem('theme') === 'dark') {
+                localStorage.removeItem('theme');
+                if (localStorage.getItem('themePreference') === 'dark') {
                     document.documentElement.classList.add('dark-mode');
                 }
             } catch (e) {}

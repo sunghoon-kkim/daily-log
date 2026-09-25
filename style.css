@@ -5478,3 +5478,8 @@ body {
         letter-spacing: -0.2px;
     }
 }
+
+/* 기본은 라이트(color-scheme: only light). 사용자가 다크모드를 직접 고른 경우에만 스크롤바·기본 입력칸도 어둡게 */
+:root.dark-mode {
+    color-scheme: dark;
+}
