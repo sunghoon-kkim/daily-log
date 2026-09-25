@@ -167,7 +167,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     keywordSearch: '🔎 통합 검색',
                     periodQuery: '📆 기간별 카테고리 조회',
                     equipmentTimeline: '🔧 설비별 이력 타임라인',
-                    keywordStats: '📊 키워드 발생 통계'
+                    keywordStats: '📊 키워드 발생 통계',
+                    recordImport: '⬆️ 과거 일지 가져오기(CSV)'
                 }
             },
             {
@@ -408,6 +409,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             setupGlobalEditLockInterceptor();
             setupModalDismissHandlers();
             setupWaterFlowUndoRedoShortcut();
+            setupAppKeyboardShortcuts();
             document.addEventListener('click', function (e) {
                 if (!e.target.closest('.admin-more-wrap')) closeAllAdminMoreMenus();
             });
@@ -1092,7 +1094,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     : '다른 기기에서 저장한 최신 내용으로 갱신했습니다';
                 if (recordConflicts.length) msg += ` · 같은 칸을 양쪽에서 고친 ${recordConflicts.length}건은 이 기기 내용으로 저장(다른 기기 내용은 🕘 수정 이력에 보관)`;
                 if (labels.length) msg += ` · 양쪽에서 함께 바뀐 [${labels.join(', ')}]은 다른 기기 내용이 적용됨`;
-                showAppToast(msg);
+                showAppToast(msg, 'info');
                 return keptLocal.length > 0;
             } finally {
                 conflictResolveInProgress = false;
@@ -1428,6 +1430,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 renderWaterFlowCanvas();
             }
 
+            if (tabName === 'query' && typeof showQuerySection === 'function') {
+                showQuerySection(); // 마지막에 보던 화면(또는 켜져 있는 첫 화면)으로
+            }
+
             if (tabName === 'teamReport' && typeof initTeamReportTab === 'function') {
                 initTeamReportTab(options.skipTeamReportLoad);
             }
@@ -1472,11 +1478,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 .replace(new RegExp('\u2029', 'g'), '\\u2029');
             return jsSafe.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
         }
+        // 예전에는 저장 버튼 아래 문구(statusMessage)로 따로 보여줘서, 화면마다 알림 위치가 달랐고 다른 탭에서는
+        // 아예 안 보였음. 이제 모든 짧은 알림을 화면 하단 토스트 하나로 통일함
         function showStatus(message, type) {
-            const statusEl = document.getElementById('statusMessage');
-            statusEl.textContent = message;
-            statusEl.className = `status-message ${type}`;
-            setTimeout(() => { statusEl.className = 'status-message'; }, 3000);
+            showAppToast(message, type === 'error' ? 'error' : 'success');
         }
         function formatDate(date) {
             const year = date.getFullYear();
@@ -1628,6 +1633,70 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 홈페이지에 접속하면 항상 기본은 로그아웃 상태로 시작해서 로그인 모달을 띄워둠.
         // 이전에는 브라우저에 저장된 사번/비밀번호로 자동 로그인을 시도했지만, 매번 직접
         // 로그인하도록 그 기능을 없앰
+        // ===== 키보드 단축키 =====
+        // Ctrl(⌘)+S 저장 / Alt+←·→ 전날·다음날 / Ctrl(⌘)+K 통합 검색 / ? 단축키 안내
+        const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+        const SHORTCUT_HELP_TEXT = `단축키 · ${IS_MAC ? '⌘' : 'Ctrl'}+S 저장 · Alt+←/→ 전날/다음날(달력) · ${IS_MAC ? '⌘' : 'Ctrl'}+K 통합 검색 · ? 이 안내`;
+
+        function isTypingInField(el) {
+            if (!el) return false;
+            const tag = el.tagName;
+            return tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable ||
+                (tag === 'INPUT' && !['checkbox', 'radio', 'button', 'color', 'range'].includes(el.type));
+        }
+
+        function moveSelectedDateBy(days) {
+            if (!selectedDate) return;
+            const [y, m, d] = selectedDate.split('-').map(Number);
+            const next = new Date(y, m - 1, d + days);
+            if (next.getFullYear() !== currentDate.getFullYear() || next.getMonth() !== currentDate.getMonth()) {
+                currentDate = new Date(next.getFullYear(), next.getMonth(), 1);
+            }
+            selectDate(formatDate(next));
+        }
+
+        async function saveViaShortcut() {
+            if (activeTabId === 'calendar' && selectedDate) { saveAllRecords(); return; }
+            if (selectedDate && typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
+            if (typeof syncActiveFreeNotesPageData === 'function') syncActiveFreeNotesPageData();
+            clearTimeout(syncTimeout);
+            const ok = await syncToServer();
+            showAppToast(ok ? '☁️ 저장했습니다' : '⚠️ 서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
+        }
+
+        function setupAppKeyboardShortcuts() {
+            document.addEventListener('keydown', (e) => {
+                if (!editUnlocked) return;
+                if (document.querySelector('.modal-overlay.active')) return; // 모달 입력 중에는 단축키를 쓰지 않음
+                const mod = IS_MAC ? e.metaKey : e.ctrlKey;
+                const key = (e.key || '').toLowerCase();
+
+                if (mod && !e.altKey && key === 's') {
+                    e.preventDefault(); // 브라우저 "페이지 저장" 대신 앱 저장
+                    saveViaShortcut();
+                    return;
+                }
+                if (mod && !e.altKey && key === 'k') {
+                    e.preventDefault();
+                    switchTab('query');
+                    if (typeof showQuerySection === 'function') showQuerySection('search');
+                    const input = document.getElementById('searchKeywordInput');
+                    if (input) { input.focus(); input.select(); }
+                    return;
+                }
+                if (e.altKey && !mod && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && activeTabId === 'calendar' && selectedDate) {
+                    // Mac에서 입력창 안의 Option+←/→는 단어 단위 커서 이동이라 그대로 둠
+                    if (IS_MAC && isTypingInField(document.activeElement)) return;
+                    e.preventDefault(); // Windows의 Alt+← "뒤로 가기"로 페이지를 벗어나는 것도 막음
+                    moveSelectedDateBy(e.key === 'ArrowLeft' ? -1 : 1);
+                    return;
+                }
+                if (e.key === '?' && !mod && !isTypingInField(document.activeElement)) {
+                    showAppToast(SHORTCUT_HELP_TEXT, 'info');
+                }
+            });
+        }
+
         function resetToLoggedOutState() {
             editUnlocked = false;
             currentEmployeeId = '';
@@ -2022,7 +2091,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment',
-            'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory'
+            'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory',
+            'recentSearchKeywords', 'recentEquipmentNames', 'recentKeywordStats'
         ];
 
         function logout() {
@@ -2111,6 +2181,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'maintCompleteModal') closeMaintenanceCompleteModal();
             else if (id === 'recordSnippetModal') closeRecordSnippetModal();
             else if (id === 'recordRevisionModal') closeRecordRevisionModal();
+            else if (id === 'recordImportModal') closeRecordImportModal();
             else if (id === 'waterFlowBlockModal') closeWaterFlowBlockModal();
             else if (id === 'waterFlowDiagramModal') closeWaterFlowDiagramModal();
             else if (id === 'waterFlowConnectionModal') closeWaterFlowConnectionModal();
@@ -2125,13 +2196,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 화면 하단 토스트로 보여줌 (alert()는 확인을 누를 때까지 화면을 막아 PWA에서 이질감이 있었음)
         let appToastTimer = null;
 
-        function showAppToast(message) {
+        // type: 'error'(기본값, 입력 오류 등) / 'success'(완료 안내) / 'info'(일반 안내). 색으로만 구분하지
+        // 않도록 메시지에는 항상 내용이 담긴 문구를 씀. 긴 안내(충돌 병합 등)는 읽을 시간을 더 줌
+        function showAppToast(message, type) {
             const el = document.getElementById('appToast');
             if (!el) { alert(message); return; } // 안전망(토스트 요소가 없는 예외적인 상황)
             el.textContent = message;
+            el.classList.remove('success', 'info', 'error');
+            el.classList.add(type === 'success' || type === 'info' ? type : 'error');
             el.classList.add('show');
             clearTimeout(appToastTimer);
-            appToastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+            const duration = Math.min(8000, Math.max(type === 'success' || type === 'info' ? 2600 : 3500, String(message).length * 60));
+            appToastTimer = setTimeout(() => el.classList.remove('show'), duration);
         }
 
         // 삭제/로그아웃처럼 되돌리기 어려운 동작을 브라우저 기본 confirm() 대신 앱 스타일 모달로

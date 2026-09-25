@@ -264,7 +264,7 @@
 
             if (selectedDate === issue.date) renderRecordForm();
             renderCalendar();
-            showAppToast('해결 처리했습니다');
+            showAppToast('해결 처리했습니다', 'success');
         }
 
         // 카테고리 입력창에서 커서가 있는 줄의 앞에 ☐를 붙이거나(미결 표시) 떼어냄
@@ -447,7 +447,7 @@
             }
             saveRecordSnippetsToStorage();
             renderRecordSnippetModal();
-            showAppToast(`${WEEKDAY_NAMES[dow]}요일 템플릿으로 저장했습니다`);
+            showAppToast(`${WEEKDAY_NAMES[dow]}요일 템플릿으로 저장했습니다`, 'success');
         }
 
         function applyWeekdayTemplateToCategory() {
@@ -510,7 +510,7 @@
             saveRecordsToStorage();
             renderRecordForm();
             renderCalendar();
-            showAppToast(`${targets.length}개 카테고리에 템플릿을 채웠습니다`);
+            showAppToast(`${targets.length}개 카테고리에 템플릿을 채웠습니다`, 'success');
         }
 
         // ===== 수정 이력 & 되돌리기 =====
@@ -562,5 +562,5 @@
             closeRecordRevisionModal();
             renderRecordForm();
             renderCalendar();
-            showAppToast(`${formatRevisionTime(rev.ts)} 이전 내용으로 되돌렸습니다`);
+            showAppToast(`${formatRevisionTime(rev.ts)} 이전 내용으로 되돌렸습니다`, 'success');
         }

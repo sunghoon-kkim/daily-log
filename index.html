@@ -98,9 +98,8 @@
                     
                     <div style="padding: 20px; border-top: 1px solid #e0e0e0;">
                         <div class="button-group">
-                            <button class="save-btn" id="saveAllBtn" onclick="saveAllRecords()">💾 저장하기</button>
+                            <button class="save-btn" id="saveAllBtn" onclick="saveAllRecords()" title="단축키: Ctrl(⌘)+S · 전날/다음날: Alt+←/→ · 단축키 안내: ?">💾 저장하기</button>
                         </div>
-                        <div class="status-message" id="statusMessage"></div>
                     </div>
                 </div>
             </div>
@@ -135,7 +134,14 @@
         <div id="query" class="tab-content">
             <div class="ai-status" data-empty-message-group="query" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 조회 기능이 없습니다. 관리자에게 문의해주세요.</div>
 
-            <div class="query-container" data-feature="keywordSearch">
+            <div class="quick-preset-row query-section-switcher" id="querySectionSwitcher" role="tablist" aria-label="검색 & 조회 화면 선택">
+                <button type="button" class="quick-preset-btn" role="tab" data-section="search" data-feature="keywordSearch" onclick="showQuerySection('search')">🔎 통합 검색</button>
+                <button type="button" class="quick-preset-btn" role="tab" data-section="period" data-feature="periodQuery" onclick="showQuerySection('period')">📆 기간 조회</button>
+                <button type="button" class="quick-preset-btn" role="tab" data-section="timeline" data-feature="equipmentTimeline" onclick="showQuerySection('timeline')">🔧 설비 이력</button>
+                <button type="button" class="quick-preset-btn" role="tab" data-section="stats" data-feature="keywordStats" onclick="showQuerySection('stats')">📊 키워드 통계</button>
+            </div>
+
+            <div class="query-container" data-feature="keywordSearch" data-query-section="search">
                 <h3 style="margin-bottom: 10px;">🔎 통합 검색</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">활동기록(보관 카테고리 포함)·예정작업·할일/메모·정비계획·개선과제에서 키워드로 검색합니다.</p>
                 
@@ -143,6 +149,7 @@
                     <input type="text" id="searchKeywordInput" class="search-input" placeholder="예: 펌프 누설|누수 -완료" onkeydown="if(event.key==='Enter') performKeywordSearch()">
                     <button class="query-btn" onclick="performKeywordSearch()">검색</button>
                 </div>
+                <div class="recent-chips" id="recentSearchChips"></div>
                 <div class="search-help-text">띄어쓰기 = 모두 포함(AND) · <b>A|B</b> = 둘 중 하나(OR) · <b>-단어</b> = 제외 · <b>"따옴표"</b> = 구절 그대로</div>
 
                 <div class="search-options-row">
@@ -175,7 +182,7 @@
                 </div>
             </div>
             
-            <div class="query-container" style="margin-top: 20px;" data-feature="periodQuery">
+            <div class="query-container" data-feature="periodQuery" data-query-section="period">
                 <h3 style="margin-bottom: 20px;">🔍 기간별 카테고리 조회</h3>
 
                 <div class="quick-preset-row" id="periodQueryPresetRow" style="margin-bottom:12px;">
@@ -207,6 +214,8 @@
                         <button class="ai-copy-btn" onclick="downloadQueryResultsCsv()" title="날짜·카테고리·내용 3열 목록">⬇️ 엑셀(목록)</button>
                         <button class="ai-copy-btn" onclick="downloadQueryResultsPivotCsv()" title="날짜(행) × 카테고리(열) 표">⬇️ 엑셀(날짜×카테고리 표)</button>
                         <button class="ai-copy-btn" onclick="printQueryReport()" title="인쇄 또는 PDF로 저장">🖨️ 보고서 인쇄</button>
+                        <button class="ai-copy-btn" data-feature="recordImport" onclick="openRecordImportPicker()" title="엑셀로 쓰던 예전 일지(CSV)를 활동기록으로 가져오기 - 날짜×카테고리 표 또는 날짜/카테고리/내용 목록 형식">⬆️ 과거 일지 가져오기</button>
+                        <input type="file" id="recordImportFileInput" accept=".csv,text/csv" style="display:none;" onchange="handleRecordImportFile(this)">
                     </div>
                 </div>
                 <div class="query-results" id="queryResults">
@@ -214,7 +223,7 @@
                 </div>
             </div>
 
-            <div class="query-container" style="margin-top: 20px;" id="equipmentTimelineSection" data-feature="equipmentTimeline">
+            <div class="query-container" id="equipmentTimelineSection" data-feature="equipmentTimeline" data-query-section="timeline">
                 <h3 style="margin-bottom: 10px;">🔧 설비별 이력 타임라인</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">설비명을 입력하면 활동기록·정비 완료 이력·일정·개선과제에서 그 설비가 언급된 내용을 시간순으로 모아 보여줍니다. 약칭이 여러 개면 <b>|</b>로 구분하세요 (예: 냉동기 2호|R-2).</p>
                 <div class="search-row">
@@ -222,6 +231,7 @@
                     <datalist id="equipmentNameList"></datalist>
                     <button class="query-btn" onclick="renderEquipmentTimeline()">조회</button>
                 </div>
+                <div class="recent-chips" id="recentEquipmentChips"></div>
                 <div class="search-options-row">
                     <select id="equipmentTimelinePeriod" class="search-option-select" onchange="if (document.getElementById('equipmentTimelineInput').value.trim()) renderEquipmentTimeline()" aria-label="설비 이력 기간">
                         <option value="">전체 기간</option>
@@ -238,13 +248,14 @@
                 </div>
             </div>
 
-            <div class="query-container" style="margin-top: 20px;" data-feature="keywordStats">
+            <div class="query-container" data-feature="keywordStats" data-query-section="stats">
                 <h3 style="margin-bottom: 10px;">📊 키워드 발생 통계</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">이상·고장 키워드가 월별로 며칠이나 기록됐는지 집계해 반복·재발 여부를 확인합니다. 쉼표로 최대 5개, 같은 뜻의 표현은 <b>|</b>로 묶으세요.</p>
                 <div class="search-row">
                     <input type="text" id="keywordStatsInput" class="search-input" placeholder="예: 누설|누수, 트립|정지, 알람" onkeydown="if(event.key==='Enter') renderKeywordStats()">
                     <button class="query-btn" onclick="renderKeywordStats()">집계</button>
                 </div>
+                <div class="recent-chips" id="recentKeywordStatsChips"></div>
                 <div class="search-options-row">
                     <select id="keywordStatsPeriod" class="search-option-select" onchange="if (document.getElementById('keywordStatsInput').value.trim()) renderKeywordStats()" aria-label="통계 기간">
                         <option value="6">최근 6개월</option>
@@ -1275,6 +1286,23 @@
             <div class="record-revision-list" id="recordRevisionList"></div>
             <div class="modal-buttons">
                 <button class="modal-btn modal-cancel-btn" onclick="closeRecordRevisionModal()">닫기</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="recordImportModal" role="dialog" aria-modal="true">
+        <div class="modal-box">
+            <h3>⬆️ 과거 일지 가져오기</h3>
+            <div class="record-import-summary" id="recordImportSummary"></div>
+            <div class="modal-field" id="recordImportPolicyField">
+                <label>이미 내용이 있는 칸은</label>
+                <label class="search-scope-label"><input type="radio" name="recordImportPolicy" value="skip" checked> 건너뛰기 (기존 내용 유지)</label>
+                <label class="search-scope-label"><input type="radio" name="recordImportPolicy" value="append"> 기존 내용 뒤에 이어 붙이기</label>
+                <label class="search-scope-label"><input type="radio" name="recordImportPolicy" value="overwrite"> 덮어쓰기 (기존 내용은 🕘 수정 이력에 보관)</label>
+            </div>
+            <p class="search-help-text" style="margin:0 0 10px 0;">첫 줄은 제목 줄이어야 합니다: <b>날짜, 카테고리1, 카테고리2…</b> (표 형식) 또는 <b>날짜, 카테고리, 내용</b> (목록 형식)</p>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-save-btn" onclick="confirmRecordImport()">가져오기</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeRecordImportModal()">취소</button>
             </div>
         </div>
     </div>

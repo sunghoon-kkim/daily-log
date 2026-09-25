@@ -505,7 +505,7 @@
             renderMaintenanceSchedule();
             renderCalendar();
             if (selectedDate === date) renderRecordForm();
-            showAppToast(logToRecord && category ? `완료 처리했습니다 (${date} 활동기록 [${category}]에도 기록됨)` : '완료 처리했습니다');
+            showAppToast(logToRecord && category ? `완료 처리했습니다 (${date} 활동기록 [${category}]에도 기록됨)` : '완료 처리했습니다', 'success');
         }
 
         function deleteMaintenanceCompletion(itemId, completionId) {

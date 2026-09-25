@@ -82,6 +82,7 @@
                 return;
             }
 
+            rememberRecent('recentEquipmentNames', input.value);
             const periodValue = (document.getElementById('equipmentTimelinePeriod') || {}).value;
             const periodStart = getSearchPeriodStart(periodValue);
             const { entries, matchedPlans } = collectEquipmentTimeline(aliases, periodStart);
@@ -155,6 +156,7 @@
         // 정비계획 탭의 설비 그룹 "📜 설비 이력" 버튼에서 호출
         function openEquipmentTimeline(equipmentName) {
             switchTab('query');
+            showQuerySection('timeline');
             const input = document.getElementById('equipmentTimelineInput');
             if (!input) return;
             input.value = equipmentName;
@@ -228,6 +230,7 @@
                 return;
             }
 
+            rememberRecent('recentKeywordStats', input.value);
             const monthCount = parseInt((document.getElementById('keywordStatsPeriod') || {}).value, 10) || 12;
             const categoryFilter = (document.getElementById('keywordStatsCategory') || {}).value || '';
             const monthKeys = getRecentMonthKeys(monthCount);
@@ -279,6 +282,7 @@
             if (!input) return;
             // 약칭 묶음(A|B)은 통합 검색에서도 OR로 동작하도록 띄어쓰기 없이 그대로 넘김
             input.value = stat.aliases.join('|');
+            showQuerySection('search');
             const categoryFilter = (document.getElementById('keywordStatsCategory') || {}).value || '';
             const searchCategorySelect = document.getElementById('searchCategorySelect');
             if (searchCategorySelect) searchCategorySelect.value = categoryFilter;
@@ -293,4 +297,182 @@
             monthKeys.forEach(k => rows.push([k, ...stats.map(s => s.byMonth[k])]));
             rows.push(['합계', ...stats.map(s => s.total)]);
             downloadCsvFile(rows, `키워드통계_${formatDate(new Date())}.csv`);
+        }
+
+        // ===== 과거 일지 가져오기 (CSV) =====
+        // 엑셀로 쓰던 예전 일지를 앱으로 옮겨 이력이 끊기지 않게 함. 이 앱이 내보내는 두 형식을 그대로 받음:
+        //  ① 표 형식: 날짜, (요일), 카테고리1, 카테고리2 ...   ② 목록 형식: 날짜, 카테고리, 내용
+        // 엑셀 "CSV UTF-8" 저장본과 한글 엑셀 기본 "CSV(쉼표로 분리)"(CP949) 저장본을 모두 읽음
+        const RECORD_IMPORT_MAX_ENTRIES = 20000;
+        let pendingRecordImport = null; // { fileName, entries: [{date, category, value}], newCategories, overlapCount, skippedRows }
+
+        function openRecordImportPicker() {
+            if (!checkEditPermission()) return;
+            const input = document.getElementById('recordImportFileInput');
+            if (!input) return;
+            input.value = '';
+            input.click();
+        }
+
+        function decodeCsvBuffer(buffer) {
+            try {
+                return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+            } catch (e) {
+                return new TextDecoder('euc-kr').decode(buffer); // 한글 엑셀 기본 CSV 인코딩(CP949)
+            }
+        }
+
+        // 따옴표로 감싼 칸 안의 쉼표/줄바꿈/"" 이스케이프까지 처리하는 CSV 파서
+        function parseCsvText(text) {
+            const rows = [];
+            let row = [], field = '', inQuotes = false;
+            const src = String(text).replace(/^﻿/, '');
+            for (let i = 0; i < src.length; i++) {
+                const ch = src[i];
+                if (inQuotes) {
+                    if (ch === '"') {
+                        if (src[i + 1] === '"') { field += '"'; i++; }
+                        else inQuotes = false;
+                    } else field += ch;
+                } else if (ch === '"') inQuotes = true;
+                else if (ch === ',') { row.push(field); field = ''; }
+                else if (ch === '\n' || ch === '\r') {
+                    if (ch === '\r' && src[i + 1] === '\n') i++;
+                    row.push(field); rows.push(row); row = []; field = '';
+                } else field += ch;
+            }
+            if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+            return rows.filter(r => r.some(c => String(c).trim() !== ''));
+        }
+
+        // "2026-09-25", "2026.9.25", "2026/09/25 (목)", "2026. 9. 25." 또는 엑셀 날짜 일련번호 → "yyyy-MM-dd"
+        function normalizeImportDate(raw) {
+            const text = String(raw || '').trim();
+            let y, m, d;
+            const match = text.match(/^(\d{4})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})/);
+            if (match) { y = +match[1]; m = +match[2]; d = +match[3]; }
+            else if (/^\d{5}$/.test(text)) {
+                const dt = new Date(Date.UTC(1899, 11, 30) + Number(text) * 86400000);
+                y = dt.getUTCFullYear(); m = dt.getUTCMonth() + 1; d = dt.getUTCDate();
+            } else return null;
+            const check = new Date(y, m - 1, d);
+            if (check.getFullYear() !== y || check.getMonth() !== m - 1 || check.getDate() !== d) return null;
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+
+        function buildImportEntries(rows) {
+            if (rows.length < 2) throw new Error('가져올 내용이 없습니다 (첫 줄은 제목 줄이어야 합니다)');
+            const header = rows[0].map(h => String(h).trim());
+            const dateCol = header.findIndex(h => ['날짜', '일자', 'date'].includes(h.toLowerCase()));
+            if (dateCol === -1) throw new Error("첫 줄(제목 줄)에 '날짜' 열이 있어야 합니다");
+
+            const catCol = header.indexOf('카테고리');
+            const contentCol = header.indexOf('내용');
+            const isLongFormat = catCol !== -1 && contentCol !== -1;
+            const pivotCols = isLongFormat ? [] : header
+                .map((h, i) => ({ h, i }))
+                .filter(({ h, i }) => i !== dateCol && h && !['요일', 'weekday'].includes(h.toLowerCase()));
+            if (!isLongFormat && pivotCols.length === 0) throw new Error('카테고리 열을 찾지 못했습니다');
+
+            const merged = new Map(); // "date|category" → value (같은 칸이 여러 번 나오면 줄바꿈으로 이어 붙임)
+            let skippedRows = 0;
+            for (const row of rows.slice(1)) {
+                const date = normalizeImportDate(row[dateCol]);
+                if (!date) { skippedRows++; continue; }
+                const cells = isLongFormat
+                    ? [{ category: String(row[catCol] || '').trim(), value: String(row[contentCol] || '').trim() }]
+                    : pivotCols.map(({ h, i }) => ({ category: h, value: String(row[i] || '').trim() }));
+                for (const { category, value } of cells) {
+                    if (!category || !value) continue;
+                    const key = date + '|' + category;
+                    merged.set(key, merged.has(key) ? merged.get(key) + '\n' + value : value);
+                }
+            }
+            const entries = [];
+            merged.forEach((value, key) => {
+                const sep = key.indexOf('|');
+                entries.push({ date: key.slice(0, sep), category: key.slice(sep + 1), value });
+            });
+            if (entries.length > RECORD_IMPORT_MAX_ENTRIES) throw new Error(`한 번에 ${RECORD_IMPORT_MAX_ENTRIES}칸까지만 가져올 수 있습니다. 파일을 나눠서 가져와주세요`);
+            entries.sort((a, b) => a.date.localeCompare(b.date));
+            return { entries, skippedRows };
+        }
+
+        async function handleRecordImportFile(input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            if (/\.xlsx?$/i.test(file.name)) {
+                showAppToast('엑셀 파일은 "다른 이름으로 저장 → CSV UTF-8(쉼표로 분리)"로 저장한 뒤 가져와주세요');
+                return;
+            }
+            try {
+                const text = decodeCsvBuffer(await file.arrayBuffer());
+                const { entries, skippedRows } = buildImportEntries(parseCsvText(text));
+                if (entries.length === 0) throw new Error('가져올 수 있는 내용이 없습니다 (날짜 형식을 확인해주세요)');
+
+                const usedCategories = Array.from(new Set(entries.map(e => e.category)));
+                const newCategories = usedCategories.filter(c => !categories.includes(c) && !archivedCategories.includes(c));
+                const overlapCount = entries.filter(e => {
+                    const existing = (records[e.date] || {})[e.category];
+                    return existing && existing.trim() && existing.trim() !== e.value.trim();
+                }).length;
+                const dates = Array.from(new Set(entries.map(e => e.date)));
+                pendingRecordImport = { fileName: file.name, entries, newCategories, overlapCount, skippedRows };
+
+                document.getElementById('recordImportSummary').innerHTML = `
+                    <div><b>${escapeHtml(file.name)}</b></div>
+                    <div>기간: ${dates[0]} ~ ${dates[dates.length - 1]} · ${dates.length}일 · ${entries.length}칸</div>
+                    <div>카테고리: ${usedCategories.map(c => escapeHtml(c) + (newCategories.includes(c) ? ' <span class="import-new-badge">새로 추가</span>' : (archivedCategories.includes(c) ? ' (보관됨)' : ''))).join(', ')}</div>
+                    ${overlapCount ? `<div class="import-warn">⚠️ 이미 다른 내용이 적힌 칸 ${overlapCount}개 - 아래에서 처리 방법을 골라주세요</div>` : '<div>✅ 기존 기록과 겹치는 칸이 없습니다</div>'}
+                    ${skippedRows ? `<div class="import-warn">날짜를 알아볼 수 없어 건너뛴 줄 ${skippedRows}개</div>` : ''}`;
+                document.getElementById('recordImportPolicyField').style.display = overlapCount ? '' : 'none';
+                document.getElementById('recordImportModal').classList.add('active');
+                applyFormLockState();
+            } catch (err) {
+                showAppToast('가져오기 실패: ' + err.message);
+            }
+        }
+
+        function closeRecordImportModal() {
+            document.getElementById('recordImportModal').classList.remove('active');
+            pendingRecordImport = null;
+        }
+
+        function confirmRecordImport() {
+            if (!checkEditPermission()) return;
+            const plan = pendingRecordImport;
+            if (!plan) return;
+            const policyEl = document.querySelector('input[name="recordImportPolicy"]:checked');
+            const policy = policyEl ? policyEl.value : 'skip';
+
+            if (selectedDate) captureCurrentFormToRecords(); // 화면에 입력 중이던 내용 먼저 확정
+            plan.newCategories.forEach(c => {
+                categories.push(c);
+                if (!categoryColors[c]) categoryColors[c] = COLOR_PALETTE[categories.length % COLOR_PALETTE.length];
+            });
+
+            let added = 0, appended = 0, overwritten = 0, skipped = 0;
+            for (const { date, category, value } of plan.entries) {
+                if (!records[date]) records[date] = {};
+                const existing = records[date][category] || '';
+                if (!existing.trim()) { records[date][category] = value; added++; continue; }
+                if (existing.trim() === value.trim()) { skipped++; continue; }
+                if (policy === 'append') { records[date][category] = existing.replace(/\s+$/, '') + '\n' + value; appended++; }
+                else if (policy === 'overwrite') { pushRecordRevision(date, category, existing, true); records[date][category] = value; overwritten++; }
+                else skipped++;
+            }
+
+            if (plan.newCategories.length) { saveCategoriesToStorage(); saveCategoryColorsToStorage(); }
+            saveRecordsToStorage();
+            closeRecordImportModal();
+            renderCategories();
+            renderCategorySelector();
+            renderCalendar();
+            if (selectedDate) renderRecordForm();
+            const parts = [`새로 ${added}칸`];
+            if (appended) parts.push(`이어 붙임 ${appended}칸`);
+            if (overwritten) parts.push(`덮어씀 ${overwritten}칸(이전 내용은 🕘 수정 이력에 보관)`);
+            if (skipped) parts.push(`건너뜀 ${skipped}칸`);
+            if (plan.newCategories.length) parts.push(`새 카테고리 ${plan.newCategories.length}개`);
+            showAppToast('가져오기 완료: ' + parts.join(' · '), 'success');
         }

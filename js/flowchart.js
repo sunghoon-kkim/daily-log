@@ -80,7 +80,7 @@
             syncActiveWaterFlowDiagramData();
             waterFlowRedoStack.push(JSON.stringify({ diagrams: waterFlowDiagrams, currentId: currentWaterFlowDiagramId }));
             restoreWaterFlowSnapshot(waterFlowUndoStack.pop());
-            showAppToast('↩️ 되돌렸습니다');
+            showAppToast('↩️ 되돌렸습니다', 'info');
         }
 
         function redoWaterFlowChange() {
@@ -92,7 +92,7 @@
             syncActiveWaterFlowDiagramData();
             waterFlowUndoStack.push(JSON.stringify({ diagrams: waterFlowDiagrams, currentId: currentWaterFlowDiagramId }));
             restoreWaterFlowSnapshot(waterFlowRedoStack.pop());
-            showAppToast('↪️ 다시 실행했습니다');
+            showAppToast('↪️ 다시 실행했습니다', 'info');
         }
 
         // 흐름도 탭을 보고 있을 때만 Ctrl+Z(되돌리기)/Ctrl+Shift+Z 또는 Ctrl+Y(다시 실행)를 가로챔.

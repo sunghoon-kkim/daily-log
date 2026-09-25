@@ -5245,3 +5245,130 @@ body.edit-locked .custom-color-swatch {
 .dark-mode .category-tool-menu-item:focus-visible {
     background: var(--d-bg3);
 }
+
+/* ===== 알림 토스트 종류 (오류: 기본 빨강 / 완료: 초록 / 안내: 남색) ===== */
+.app-toast.success {
+    background: #0f9d6e;
+}
+
+.app-toast.info {
+    background: #3d4b8f;
+}
+
+/* ===== 검색 & 조회 탭 화면 전환 / 최근 검색어 칩 ===== */
+.query-section-switcher {
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.query-section-hidden {
+    display: none !important;
+}
+
+.recent-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: -10px 0 14px 0;
+}
+
+.recent-chips:empty {
+    display: none;
+}
+
+.recent-chips-label {
+    font-size: 12px;
+    color: #888;
+}
+
+.recent-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    border: 1px solid #dfe3f5;
+    border-radius: 14px;
+    background: #f5f6fd;
+    overflow: hidden;
+}
+
+.recent-chip-text {
+    border: none;
+    background: transparent;
+    padding: 4px 4px 4px 10px;
+    font-size: 12px;
+    color: #444;
+    cursor: pointer;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.recent-chip-remove {
+    border: none;
+    background: transparent;
+    padding: 4px 8px 4px 4px;
+    font-size: 13px;
+    color: #999;
+    cursor: pointer;
+}
+
+.recent-chip-remove:hover {
+    color: #d84343;
+}
+
+.dark-mode .recent-chip {
+    background: var(--d-bg3);
+    border-color: var(--d-border);
+}
+
+.dark-mode .recent-chip-text {
+    color: var(--d-text2);
+}
+
+.dark-mode .recent-chips-label {
+    color: var(--d-text3);
+}
+
+/* ===== 과거 일지 가져오기 ===== */
+.record-import-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: #444;
+    margin-bottom: 12px;
+    word-break: break-word;
+}
+
+.record-import-summary .import-warn {
+    color: #c0392b;
+}
+
+.import-new-badge {
+    font-size: 11px;
+    padding: 0 6px;
+    border-radius: 8px;
+    background: #eef0fb;
+    color: #4a5bd4;
+}
+
+#recordImportPolicyField .search-scope-label {
+    display: flex;
+    margin: 4px 0;
+    white-space: normal;
+}
+
+.dark-mode .record-import-summary {
+    color: var(--d-text2);
+}
+
+.dark-mode .record-import-summary .import-warn {
+    color: #ff8a8a;
+}
+
+.dark-mode .import-new-badge {
+    background: var(--d-bg3);
+    color: #aab6ff;
+}

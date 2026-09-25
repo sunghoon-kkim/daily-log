@@ -210,6 +210,7 @@
                 return;
             }
 
+            rememberRecent('recentSearchKeywords', keyword);
             const results = collectKeywordSearchResults(query);
             // 최근 날짜부터, 날짜가 없는 자료(메모/할일/정비계획/과제)는 맨 뒤로
             results.sort((a, b) => {
@@ -514,4 +515,89 @@ tr{page-break-inside:avoid}
             win.document.close();
             win.focus();
             setTimeout(() => win.print(), 300);
+        }
+
+        // ===== 검색 & 조회 탭 화면 전환 =====
+        // 통합 검색/기간 조회/설비 이력/키워드 통계를 한 화면에 모두 늘어놓으면 아래로 한참 내려야 해서,
+        // 위쪽 전환 버튼으로 하나씩 보여줌. 마지막에 본 화면은 이 기기에 기억해둠
+        function isQuerySectionAvailable(sectionEl) {
+            return sectionEl && !isFeatureDisabled(sectionEl.dataset.feature);
+        }
+
+        function showQuerySection(name) {
+            const sections = Array.from(document.querySelectorAll('[data-query-section]'));
+            if (sections.length === 0) return;
+            let target = name;
+            if (!target) { try { target = localStorage.getItem('querySection') || 'search'; } catch (e) { target = 'search'; } }
+            let targetEl = sections.find(el => el.dataset.querySection === target);
+            if (!isQuerySectionAvailable(targetEl)) {
+                targetEl = sections.find(isQuerySectionAvailable);
+                if (!targetEl) return;
+                target = targetEl.dataset.querySection;
+            }
+            sections.forEach(el => el.classList.toggle('query-section-hidden', el !== targetEl));
+            document.querySelectorAll('#querySectionSwitcher .quick-preset-btn').forEach(btn => {
+                const selected = btn.dataset.section === target;
+                btn.classList.toggle('selected', selected);
+                btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+            });
+            if (name) safeSetItem('querySection', target);
+            if (target === 'timeline' && typeof refreshEquipmentNameList === 'function') refreshEquipmentNameList();
+            renderAllRecentChips();
+        }
+
+        // ===== 최근 검색어 칩 =====
+        // 자주 다시 찾는 검색어/설비/통계 키워드를 이 기기에 최근 순으로 8개까지 기억해 한 번에 다시 조회
+        const RECENT_LIST_MAX = 8;
+        const RECENT_LISTS = {
+            recentSearchKeywords: { containerId: 'recentSearchChips', inputId: 'searchKeywordInput', run: () => performKeywordSearch() },
+            recentEquipmentNames: { containerId: 'recentEquipmentChips', inputId: 'equipmentTimelineInput', run: () => renderEquipmentTimeline() },
+            recentKeywordStats: { containerId: 'recentKeywordStatsChips', inputId: 'keywordStatsInput', run: () => renderKeywordStats() }
+        };
+
+        function getRecentList(key) {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+                return Array.isArray(parsed) ? parsed.filter(v => typeof v === 'string') : [];
+            } catch (e) { return []; }
+        }
+
+        function rememberRecent(key, value) {
+            const v = String(value || '').trim();
+            if (!v) return;
+            const list = [v].concat(getRecentList(key).filter(x => x !== v)).slice(0, RECENT_LIST_MAX);
+            safeSetItem(key, JSON.stringify(list));
+            renderRecentChips(key);
+        }
+
+        function removeRecent(key, idx) {
+            const list = getRecentList(key);
+            list.splice(idx, 1);
+            safeSetItem(key, JSON.stringify(list));
+            renderRecentChips(key);
+        }
+
+        function pickRecent(key, idx) {
+            const conf = RECENT_LISTS[key];
+            const value = getRecentList(key)[idx];
+            const input = conf && document.getElementById(conf.inputId);
+            if (!input || value === undefined) return;
+            input.value = value;
+            conf.run();
+        }
+
+        function renderRecentChips(key) {
+            const conf = RECENT_LISTS[key];
+            const el = conf && document.getElementById(conf.containerId);
+            if (!el) return;
+            const list = getRecentList(key);
+            el.innerHTML = list.length === 0 ? '' : '<span class="recent-chips-label">최근</span>' + list.map((v, i) => `
+                <span class="recent-chip">
+                    <button type="button" class="recent-chip-text" onclick="pickRecent('${key}', ${i})">${escapeHtml(v)}</button>
+                    <button type="button" class="recent-chip-remove" onclick="removeRecent('${key}', ${i})" aria-label="${escapeHtml(v)} 최근 목록에서 지우기">×</button>
+                </span>`).join('');
+        }
+
+        function renderAllRecentChips() {
+            Object.keys(RECENT_LISTS).forEach(renderRecentChips);
         }

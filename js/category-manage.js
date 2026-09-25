@@ -267,7 +267,7 @@
                 renderCategorySelector();
                 if (selectedDate) renderRecordForm();
                 renderCalendar();
-                showAppToast(`'${name}' 카테고리를 보관했습니다`);
+                showAppToast(`'${name}' 카테고리를 보관했습니다`, 'success');
             });
         }
 
@@ -286,7 +286,7 @@
             renderCategorySelector();
             if (selectedDate) renderRecordForm();
             renderCalendar();
-            showAppToast(`'${name}' 카테고리를 복원했습니다`);
+            showAppToast(`'${name}' 카테고리를 복원했습니다`, 'success');
         }
 
         function renderArchivedCategories() {
