@@ -4615,9 +4615,14 @@ body.edit-locked .custom-color-swatch {
 }
 
 .month-record-rate {
+    /* 보라색 달력 머리글 위에 놓이므로 글자색만 바꾸면 잘 안 보여서, 반투명 배지 + 흰 글씨로 표시 */
+    align-self: flex-start;
     font-size: 12px;
     font-weight: 600;
-    color: #2e7d32;
+    color: white;
+    background: rgba(255, 255, 255, 0.22);
+    padding: 2px 10px;
+    border-radius: 10px;
 }
 
 .month-record-rate:empty {
@@ -4625,7 +4630,7 @@ body.edit-locked .custom-color-swatch {
 }
 
 .month-record-rate.has-missing {
-    color: #d84343;
+    background: rgba(216, 67, 67, 0.9);
 }
 
 .day.record-missing {
@@ -4644,13 +4649,7 @@ body.edit-locked .custom-color-swatch {
     color: var(--d-text3);
 }
 
-.dark-mode .month-record-rate {
-    color: #7bd88f;
-}
 
-.dark-mode .month-record-rate.has-missing {
-    color: #ff8a8a;
-}
 
 /* ===== 정비 완료 이력 / 설비별 이력 타임라인 ===== */
 .maint-card-actions {
@@ -5000,7 +4999,6 @@ body.edit-locked .custom-color-swatch {
     align-items: stretch;
     gap: 2px;
     height: 110px;
-    border-bottom: 1px solid #d0d0d8;
 }
 
 .keyword-stat-col {
@@ -5032,6 +5030,7 @@ body.edit-locked .custom-color-swatch {
     display: flex;
     align-items: flex-end;
     justify-content: center;
+    border-bottom: 1px solid #d0d0d8; /* 기준선은 막대 바로 아래(월 이름 위)에 */
 }
 
 .keyword-stat-bar {
@@ -5107,7 +5106,7 @@ body.edit-locked .custom-color-swatch {
     color: var(--d-text2);
 }
 
-.dark-mode .keyword-stat-chart {
+.dark-mode .keyword-stat-bar-area {
     border-bottom-color: var(--d-border);
 }
 
@@ -5175,6 +5174,9 @@ body.edit-locked .custom-color-swatch {
 .category-menu-btn {
     position: relative;
     font-weight: 700;
+    font-size: 18px;
+    line-height: 1;
+    letter-spacing: -1px;
 }
 
 .category-menu-btn.has-badge::after {
@@ -5371,4 +5373,11 @@ body.edit-locked .custom-color-swatch {
 .dark-mode .import-new-badge {
     background: var(--d-bg3);
     color: #aab6ff;
+}
+
+@media (max-width: 768px) {
+    /* 휴대폰에서는 달력 머리글이 가운데 정렬이므로 작성률 배지도 가운데로 */
+    .month-record-rate {
+        align-self: center;
+    }
 }
