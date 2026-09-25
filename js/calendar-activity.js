@@ -932,6 +932,9 @@
             if (!checkEditPermission()) return;
             const key = selectedDate + '::' + category;
             const current = isCategoryCollapsed(selectedDate, category);
+            // 화면을 다시 그리기 전에 입력 중이던 내용(자동저장 0.8초 대기 중인 것 포함)을 먼저 확정.
+            // 안 하면 다른 박스를 입력하다 바로 접기/펼치기를 누를 때 방금 친 내용이 사라짐
+            captureCurrentFormToRecords();
             categoryCollapseOverride[key] = !current;
             renderRecordForm();
         }
@@ -975,6 +978,7 @@
                 currentOrder.splice(fromIndex, 1);
                 currentOrder.splice(toIndex, 0, draggedCategoryId);
                 
+                captureCurrentFormToRecords(); // 다시 그리기 전에 입력 중이던 내용 먼저 확정
                 dateCategoryOrder[selectedDate] = currentOrder;
                 saveDateCategoryOrderToStorage();
                 renderRecordForm();
@@ -1057,6 +1061,8 @@
         function showCategoryForDate(category) {
             if (!checkEditPermission()) return;
             if (!selectedDate) return;
+
+            captureCurrentFormToRecords(); // 다시 그리기 전에 입력 중이던 내용 먼저 확정
 
             if (hiddenCategoriesByDate[selectedDate]) {
                 hiddenCategoriesByDate[selectedDate] = hiddenCategoriesByDate[selectedDate].filter(c => c !== category);
