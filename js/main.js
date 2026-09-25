@@ -1240,6 +1240,38 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const tabId = tabEl.dataset.tabId;
                 tabEl.addEventListener('click', () => switchTab(tabId));
             });
+            setupTabsOverflowHint();
+            scrollActiveTabIntoView();
+        }
+
+        // 휴대폰에서는 탭 줄이 가로 스크롤인데, 가려진 탭이 있는지 알 수 없어서 스크롤 가능한 쪽 가장자리를
+        // 흐리게 처리해 "더 있음"을 보여줌. 선택한 탭이 화면 밖에 있으면 보이는 위치로 스크롤함
+        function updateTabsOverflowHint() {
+            const container = document.getElementById('tabsContainer');
+            if (!container) return;
+            const maxScroll = container.scrollWidth - container.clientWidth;
+            container.classList.toggle('more-left', container.scrollLeft > 4);
+            container.classList.toggle('more-right', maxScroll - container.scrollLeft > 4);
+        }
+
+        function setupTabsOverflowHint() {
+            const container = document.getElementById('tabsContainer');
+            if (!container) return;
+            if (!container.dataset.overflowHintBound) {
+                container.dataset.overflowHintBound = 'true';
+                container.addEventListener('scroll', updateTabsOverflowHint, { passive: true });
+                window.addEventListener('resize', updateTabsOverflowHint);
+            }
+            updateTabsOverflowHint();
+        }
+
+        function scrollActiveTabIntoView() {
+            const container = document.getElementById('tabsContainer');
+            const activeEl = container && container.querySelector('.tab.active');
+            if (!activeEl || container.scrollWidth <= container.clientWidth) return;
+            const left = activeEl.offsetLeft - (container.clientWidth - activeEl.offsetWidth) / 2;
+            container.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+            setTimeout(updateTabsOverflowHint, 350);
         }
 
         // 목록 순서 변경을 위한 공통 드래그(+화살표 키) 헬퍼. 탭 순서/카테고리 순서/할일 순서가
@@ -1414,6 +1446,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             document.querySelectorAll('.tab').forEach(el => {
                 el.classList.toggle('active', el.dataset.tabId === tabName);
             });
+            scrollActiveTabIntoView();
 
             // 메모장 탭은 숨겨져있던 동안엔 높이를 정확히 잴 수 없으므로, 보이게 된 직후에 다시 맞춤
             if (tabName === 'notes' && typeof autoGrowNotesContainer === 'function') {

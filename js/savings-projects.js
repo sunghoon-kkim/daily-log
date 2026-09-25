@@ -49,7 +49,7 @@
                     ${p.target ? `<div class="project-card-row"><b>목표:</b> ${escapeHtml(p.target)}</div>` : ''}
                     ${p.actual ? `<div class="project-card-row"><b>실제:</b> ${escapeHtml(p.actual)}</div>` : ''}
                     ${(p.monthlyLogs && p.monthlyLogs.length) ? `<div class="project-card-row">📌 월별 기록 ${p.monthlyLogs.length}건</div>` : ''}
-                    <div class="project-card-date">등록: ${p.createdMonth} · 최근 수정: ${p.updatedMonth}</div>
+                    ${(p.createdMonth || p.updatedMonth) ? `<div class="project-card-date">${[p.createdMonth ? '등록: ' + p.createdMonth : '', p.updatedMonth ? '최근 수정: ' + p.updatedMonth : ''].filter(Boolean).join(' · ')}</div>` : ''}
                 </div>
             `).join('');
         }
@@ -202,7 +202,7 @@
                 const parts = [`- [${p.category}/${p.status}] ${p.title}`];
                 if (p.target) parts.push(`목표: ${p.target}`);
                 if (p.actual) parts.push(`실제: ${p.actual}`);
-                parts.push(`(등록 ${p.createdMonth}, 최근 수정 ${p.updatedMonth})`);
+                if (p.createdMonth || p.updatedMonth) parts.push(`(${[p.createdMonth ? '등록 ' + p.createdMonth : '', p.updatedMonth ? '최근 수정 ' + p.updatedMonth : ''].filter(Boolean).join(', ')})`);
                 return parts.join(' / ');
             }).join('\n');
         }

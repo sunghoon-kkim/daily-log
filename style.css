@@ -5381,3 +5381,100 @@ body.edit-locked .custom-color-swatch {
         align-self: center;
     }
 }
+
+/* ===== 전반 UI 다듬기 ===== */
+/* 한글이 단어 중간에서 줄바꿈되지 않게 함 ("카테고 / 리 관리" → "카테고리 / 관리").
+   아주 긴 영문/숫자 덩어리는 칸을 넘치지 않도록 필요할 때만 끊음 */
+body {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+}
+
+.query-control-group select {
+    padding: 10px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    background: white;
+    color: #333;
+}
+
+.dark-mode .query-control-group select {
+    background: var(--d-bg3);
+    color: var(--d-text1);
+    border-color: var(--d-border);
+}
+
+.water-flow-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.help-details {
+    margin-bottom: 15px;
+    color: #666;
+    font-size: 14px;
+}
+
+.help-details summary {
+    cursor: pointer;
+    color: #667eea;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+.help-details p {
+    line-height: 1.6;
+}
+
+.dark-mode .help-details {
+    color: var(--d-text2);
+}
+
+@media (max-width: 768px) {
+    /* 상단 시계/계정/다크모드/저장 상태: 가로 스크롤로 오른쪽 버튼이 가려지던 것을 줄바꿈으로 전부 보이게 */
+    .sync-status-bar {
+        flex-wrap: wrap;
+        overflow-x: visible;
+        row-gap: 6px;
+    }
+
+    .live-clock {
+        flex-basis: 100%;
+        justify-content: center;
+    }
+
+    /* 탭 줄: 스크롤할 탭이 더 있는 쪽 가장자리를 흐리게 */
+    .tabs-container.more-right {
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+    }
+
+    .tabs-container.more-left {
+        -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent);
+        mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent);
+    }
+
+    .tabs-container.more-left.more-right {
+        -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+        mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+    }
+
+    .water-flow-toolbar .category-prev-btn,
+    .water-flow-toolbar .add-category-btn {
+        flex: 1 1 auto;
+        white-space: nowrap;
+    }
+}
+
+@media (min-width: 769px) {
+    /* 탭 너비를 글자 길이에 맞춰 나눠서, 긴 탭 이름이 세 줄로 쪼개지지 않게 함 */
+    .tab {
+        flex: 1 1 auto;
+        padding: 16px 8px;
+        font-size: 14px;
+        letter-spacing: -0.2px;
+    }
+}
