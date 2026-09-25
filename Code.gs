@@ -9,14 +9,27 @@ const LARGE_FIELDS_SHEET_NAME = "ProfileLargeFields"; // 흐름도/메모장/절
 // 분리됐던 것과 같은 이유). 이 필드들은 흐름도를 여러 개 만들거나 메모장을 여러 개 쓰는 등
 // 내용이 계속 쌓일 수 있어서 같은 문제가 재발하지 않도록 여기 나열된 것만 LARGE_FIELDS_SHEET_NAME으로 분리 저장함
 // recordRevisions: 활동기록 날짜·카테고리별 수정 이력(되돌리기용). 프론트가 전체 크기를 2만자 이내로 제한해서 보냄
-const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule', 'categoryImages', 'monthlyFeedbacks', 'recordRevisions'];
+// events/todo/dateCategoryBoxHeights/hiddenCategoriesByDate/dateCategoryOrder: 날짜가 지날수록 계속 쌓이는 값이라
+// 프로필 셀에 두면 1~2년 뒤 5만자를 넘겨 저장이 통째로 막힐 수 있어서 함께 분리함
+const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule', 'categoryImages', 'monthlyFeedbacks', 'recordRevisions',
+  'events', 'todo', 'dateCategoryBoxHeights', 'hiddenCategoriesByDate', 'dateCategoryOrder'];
+// 구글 시트는 셀 하나에 5만자까지만 들어감. 넘기면 setValues가 예외를 던져 저장 전체가 실패하므로,
+// 한 달치 기록/대용량 필드는 CELL_SAFE_MAX_CHARS 단위로 여러 행에 나눠 저장하고(여유분 확보),
+// 나눌 수 없는 프로필 셀은 쓰기 전에 CELL_MAX_CHARS를 넘는지 먼저 검사함
+const CELL_MAX_CHARS = 50000;
+const CELL_SAFE_MAX_CHARS = 45000;
 // records를 Users 시트 셀 하나에 전부 담으면 몇 년 쌓였을 때 셀당 5만자 제한에 걸릴 수 있어서
 // 이 시트로 따로 분리했음. 한 행이 "한 사람의 한 달"이라 아무리 오래 써도 셀 크기가 안 커짐.
 const TEAM_REPORTS_SHEET_NAME = "TeamReports"; // (레거시) 예전 하루 단위 자유 텍스트 팀 보고 시트. 주간 보고로 개편된 뒤로는 더 이상 새로 쓰지 않고, 과거 기록 조회/계정 삭제 시 정리 용도로만 남겨둠
 const TEAM_WEEKLY_REPORTS_SHEET_NAME = "TeamWeeklyReports"; // 팀 보고(주간, 제출 대상 지정) 저장 시트 - 한 행 = 한 사람의 한 주치 제출본
 const LEGACY_DATA_SHEET_NAME = "AppData";   // 예전 1인용 버전에서 쓰던 시트 (이전용으로만 참조)
 const READABLE_SHEET_PREFIX = "일일기록_";  // 사람이 보기 편한 날짜별 표 (사번별로 시트가 따로 생김)
-const BACKUP_SHEET_NAME = "AppData_백업";   // 저장할 때마다 직전 상태를 자동 백업해두는 시트 (최근 30개 유지)
+const BACKUP_SHEET_NAME = "AppData_백업";   // 저장 직전 상태를 자동 백업해두는 시트 (사번별 최근 BACKUP_MAX_PER_USER개 유지)
+// 자동저장은 입력할 때마다 일어나서, 매번 백업하면 전체 공용 30줄이 몇 분 만에 밀려나 되돌릴 시점이 남지 않았음.
+// 그래서 사번별로 BACKUP_WINDOW_SECONDS 동안은 같은 달을 한 번만 백업하고(그 구간의 "직전 상태"), 사번별로 따로 보관함
+const BACKUP_WINDOW_SECONDS = 3600;
+const BACKUP_MAX_PER_USER = 30;
+const BACKUP_MAX_TOTAL_ROWS = 3000;
 const GEMINI_MODEL = "gemini-3.6-flash";    // 안정적인 기본 Flash 모델 (gemini-2.5-flash는 신규 사용자에게 더 이상 제공되지 않아 변경함)
 
 // 사번은 현재 회사 기준 숫자 7자리. 프론트엔드(index.html)의 EMPLOYEE_ID_PATTERN과 동일하게 유지할 것
@@ -164,47 +177,112 @@ function loadMergedRecords(employeeId, profileData, precomputedRows) {
   return Object.assign({}, legacyRecords, monthlyRecords);
 }
 
-// records 객체(날짜별)를 연월 단위로 쪼개서 Records 시트에 저장.
-// 기존 전체 덮어쓰기 방식과 동일하게, 이번 저장에 안 들어온 달은 빈 값으로 정리함.
-// 내용이 그대로인 달은 다시 쓰지 않아서, 매번 전체 기록을 재저장하는 낭비를 피함.
-// precomputedRows를 넘기면(같은 요청 안에서 이미 읽어둔 경우) 시트를 다시 읽지 않고 그 결과로 인덱스를 만듦
-function saveRecordsForUser(employeeId, recordsObj, precomputedRows) {
+// 한 달치 기록이 셀 한도를 넘으면 날짜 단위로 여러 조각으로 나눔. 각 조각은 그 자체로 완전한
+// JSON 객체라서 mergeRecordsFromRows가 그냥 Object.assign으로 합치면 됨(읽는 쪽은 바꿀 필요 없음).
+// 조각 키: 첫 조각은 "YYYY-MM", 그다음부터 "YYYY-MM#2", "YYYY-MM#3" ...
+function splitRecordsMonthIntoChunks(monthObj, ym) {
+  const chunks = [];
+  let current = {};
+  let currentLen = 2; // "{}"
+  const dates = Object.keys(monthObj).sort();
+  for (let i = 0; i < dates.length; i++) {
+    const dateStr = dates[i];
+    const entryLen = JSON.stringify(dateStr).length + 1 + JSON.stringify(monthObj[dateStr]).length + 1;
+    if (entryLen + 2 > CELL_SAFE_MAX_CHARS) {
+      throw new Error(dateStr + " 하루 기록이 너무 길어(" + entryLen + "자) 저장할 수 없습니다. 내용을 나눠서 다른 날짜/카테고리에 적어주세요.");
+    }
+    if (currentLen + entryLen > CELL_SAFE_MAX_CHARS && Object.keys(current).length > 0) {
+      chunks.push(current);
+      current = {};
+      currentLen = 2;
+    }
+    current[dateStr] = monthObj[dateStr];
+    currentLen += entryLen;
+  }
+  chunks.push(current);
+  return chunks;
+}
+
+function getRecordsChunkKey(ym, chunkIndex) {
+  return chunkIndex === 0 ? ym : ym + "#" + (chunkIndex + 1);
+}
+
+// records 객체(날짜별)를 연월 단위로 쪼개서 Records 시트에 저장할 준비를 함(아직 시트에는 안 씀).
+// - onlyMonths가 없으면(전체 저장) 예전과 동일하게, 이번 저장에 안 들어온 달은 빈 값으로 정리함.
+// - onlyMonths(["2026-09", ...])가 있으면(변경분만 보내는 저장) 그 달들만 손대고 나머지 달은 그대로 둠.
+// 조각 나누기/크기 검사를 전부 끝낸 뒤 apply()로 한꺼번에 쓰므로, 너무 긴 하루 기록 때문에
+// 예외가 나도 시트에는 아무것도 쓰이지 않은 상태로 끝남.
+// 내용이 그대로인 행은 다시 쓰지 않고, 비교는 이미 읽어둔 rows 값으로 해서 행마다 getValue를 부르지 않음
+function prepareRecordsSave(employeeId, recordsObj, precomputedRows, onlyMonths) {
   const sheet = getRecordsSheet();
-  const index = buildRecordsIndexFromRows(precomputedRows || readRecordsRows(sheet));
-  const now = new Date().toLocaleString('ko-KR');
+  const rows = precomputedRows || readRecordsRows(sheet);
+  const index = buildRecordsIndexFromRows(rows);
+  const monthFilter = onlyMonths ? {} : null;
+  if (onlyMonths) onlyMonths.forEach(function(ym) { monthFilter[ym] = true; });
 
   const byMonth = {};
   for (const dateStr in recordsObj) {
     const ym = getYearMonth(dateStr);
     if (!ym) continue;
+    if (monthFilter && !monthFilter[ym]) continue;
     if (!byMonth[ym]) byMonth[ym] = {};
     byMonth[ym][dateStr] = recordsObj[dateStr];
   }
+  if (monthFilter) {
+    for (const ym in monthFilter) if (!byMonth[ym]) byMonth[ym] = {};
+  }
+
+  const prefix = employeeId + "|";
+  const existingSubKeys = [];
   for (const key in index) {
-    const sep = key.indexOf('|');
-    if (key.slice(0, sep) !== employeeId) continue;
-    const ym = key.slice(sep + 1);
+    if (key.indexOf(prefix) !== 0) continue;
+    const subKey = key.slice(prefix.length);
+    const ym = subKey.split("#")[0];
+    if (monthFilter && !monthFilter[ym]) continue;
+    existingSubKeys.push(subKey);
     if (!(ym in byMonth)) byMonth[ym] = {};
   }
 
+  const targets = {};
   for (const ym in byMonth) {
-    const json = JSON.stringify(byMonth[ym]);
-    const key = employeeId + "|" + ym;
-    const row = index[key];
+    splitRecordsMonthIntoChunks(byMonth[ym], ym).forEach(function(chunk, i) {
+      targets[getRecordsChunkKey(ym, i)] = JSON.stringify(chunk);
+    });
+  }
+  // 예전에 더 많은 조각으로 나뉘어 있던 달이 줄어든 경우 남는 조각 행은 빈 값으로 정리
+  existingSubKeys.forEach(function(subKey) {
+    if (!(subKey in targets)) targets[subKey] = "{}";
+  });
 
+  const updates = [];
+  const appends = [];
+  for (const subKey in targets) {
+    const json = targets[subKey];
+    const row = index[prefix + subKey];
     if (!row) {
       if (json === "{}") continue; // 원래 없던 달을 빈 값으로 새로 만들 필요는 없음
-      const newRow = sheet.getLastRow() + 1;
-      lockEmployeeIdCellAsText(sheet, newRow, 1);
-      sheet.getRange(newRow, 1, 1, 4).setValues([[employeeId, ym, json, now]]);
+      appends.push([employeeId, subKey, json]);
       continue;
     }
-
-    const currentJson = sheet.getRange(row, 3).getValue();
-    if (currentJson === json) continue; // 내용 그대로면 재저장 생략
-
-    sheet.getRange(row, 3, 1, 2).setValues([[json, now]]);
+    if (String(rows[row - 2][2]) === json) continue; // 내용 그대로면 재저장 생략
+    updates.push({ row: row, json: json });
   }
+
+  return {
+    apply: function() {
+      const now = new Date().toLocaleString('ko-KR');
+      updates.forEach(function(u) { sheet.getRange(u.row, 3, 1, 2).setValues([[u.json, now]]); });
+      if (appends.length) {
+        const startRow = sheet.getLastRow() + 1;
+        sheet.getRange(startRow, 1, appends.length, 2).setNumberFormat('@'); // 사번 앞자리 0 / 연월이 날짜로 바뀌지 않게
+        sheet.getRange(startRow, 1, appends.length, 4).setValues(appends.map(function(a) { return [a[0], a[1], a[2], now]; }));
+      }
+    }
+  };
+}
+
+function saveRecordsForUser(employeeId, recordsObj, precomputedRows, onlyMonths) {
+  prepareRecordsSave(employeeId, recordsObj, precomputedRows, onlyMonths).apply();
 }
 
 // 관리자 화면용: Records 시트를 한 번 읽어서 사번별 기록 개수 맵을 만듦
@@ -279,38 +357,121 @@ function buildLargeFieldsIndexFromRows(rows) {
 function loadLargeFieldsForUser(employeeId, precomputedRows) {
   const rows = precomputedRows || readLargeFieldsRows(getLargeFieldsSheet());
   const result = {};
+  const chunkParts = {}; // { fieldName: { 1: "...", 2: "..." } } - 셀 한도 때문에 나눠 저장된 조각
+  const mainValues = {};
   for (let i = 0; i < rows.length; i++) {
     if (String(rows[i][0]).trim() !== employeeId) continue;
     const fieldName = String(rows[i][1]).trim();
+    const hashIdx = fieldName.indexOf("#");
+    if (hashIdx > 0) {
+      const baseName = fieldName.slice(0, hashIdx);
+      if (!chunkParts[baseName]) chunkParts[baseName] = {};
+      chunkParts[baseName][fieldName.slice(hashIdx + 1)] = String(rows[i][2] || "");
+      continue;
+    }
     if (LARGE_FIELD_KEYS.indexOf(fieldName) === -1) continue;
-    try { result[fieldName] = JSON.parse(rows[i][2] || "null"); } catch (parseErr) {}
+    mainValues[fieldName] = rows[i][2];
+  }
+  for (const fieldName in mainValues) {
+    let parsed;
+    try { parsed = JSON.parse(mainValues[fieldName] || "null"); } catch (parseErr) { continue; }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.__chunked) {
+      const parts = chunkParts[fieldName] || {};
+      let json = "";
+      let complete = true;
+      for (let n = 1; n <= parsed.__chunked; n++) {
+        const piece = parts[String(n)];
+        if (typeof piece !== "string" || piece.charAt(0) !== "~") { complete = false; break; }
+        json += piece.slice(1);
+      }
+      if (!complete) { Logger.log("대용량 필드 조각 누락: " + employeeId + " " + fieldName); continue; }
+      try { parsed = JSON.parse(json); } catch (parseErr2) { Logger.log("대용량 필드 조각 파싱 실패: " + employeeId + " " + fieldName); continue; }
+    }
+    result[fieldName] = parsed;
   }
   return result;
 }
 
-// data(클라이언트가 보낸 getFullState())에 LARGE_FIELD_KEYS 중 실려있는 필드만 시트에 저장함.
-// Records와 마찬가지로 내용이 그대로면 재저장을 생략함
-function saveLargeFieldsForUser(employeeId, data, precomputedRows) {
+// 긴 문자열을 셀 한도 이하 조각으로 나눔. 이모지 같은 서로게이트 쌍이 두 조각에 걸쳐 잘리면
+// 시트에 저장할 때 깨질 수 있으므로 그 경우 한 글자 앞에서 자름
+function splitStringForCells(text, maxLen) {
+  const pieces = [];
+  let pos = 0;
+  while (pos < text.length) {
+    let end = Math.min(pos + maxLen, text.length);
+    if (end < text.length) {
+      const code = text.charCodeAt(end - 1);
+      if (code >= 0xD800 && code <= 0xDBFF) end -= 1;
+    }
+    pieces.push(text.slice(pos, end));
+    pos = end;
+  }
+  return pieces;
+}
+
+// data에 LARGE_FIELD_KEYS 중 실려있는 필드만 시트에 저장할 준비를 함(아직 시트에는 안 씀).
+// 값이 셀 한도보다 길면 본 행에는 {"__chunked": 조각수}만 두고, "필드명#1", "필드명#2" ... 행에
+// "~"를 붙인 문자열 조각으로 나눠 저장함("~"는 시트가 조각을 숫자/날짜/수식으로 바꾸지 않게 하는 표시).
+// Records와 마찬가지로 내용이 그대로면 재저장을 생략하고, 비교는 이미 읽어둔 rows 값으로 함
+function prepareLargeFieldsSave(employeeId, data, precomputedRows) {
   const sheet = getLargeFieldsSheet();
-  const index = buildLargeFieldsIndexFromRows(precomputedRows || readLargeFieldsRows(sheet));
-  const now = new Date().toLocaleString('ko-KR');
+  const rows = precomputedRows || readLargeFieldsRows(sheet);
+  const index = buildLargeFieldsIndexFromRows(rows);
+  const prefix = employeeId + "|";
+  const targets = {};
 
   LARGE_FIELD_KEYS.forEach(function(fieldName) {
-    if (!Object.prototype.hasOwnProperty.call(data, fieldName)) return; // 클라이언트가 이번 요청에 안 실었으면 손대지 않음
-    const json = JSON.stringify(data[fieldName]);
-    const key = employeeId + "|" + fieldName;
-    const row = index[key];
+    if (!Object.prototype.hasOwnProperty.call(data, fieldName)) return; // 이번 요청에 안 실렸으면 손대지 않음
+    let json = JSON.stringify(data[fieldName]);
+    if (json === undefined) json = "null";
+    if (json.length <= CELL_SAFE_MAX_CHARS) {
+      targets[fieldName] = json;
+    } else {
+      const pieces = splitStringForCells(json, CELL_SAFE_MAX_CHARS - 1);
+      pieces.forEach(function(piece, i) { targets[fieldName + "#" + (i + 1)] = "~" + piece; });
+      targets[fieldName] = JSON.stringify({ __chunked: pieces.length });
+    }
+    // 예전에 더 많은 조각으로 나뉘어 있었다면 남는 조각 행은 비워둠
+    for (const key in index) {
+      if (key.indexOf(prefix + fieldName + "#") !== 0) continue;
+      const subKey = key.slice(prefix.length);
+      if (!(subKey in targets)) targets[subKey] = "";
+    }
+  });
 
+  // 조각 행을 본 행보다 먼저 쓰도록 정렬(중간에 실패해도 본 행이 없는 조각을 가리키지 않게)
+  const subKeys = Object.keys(targets).sort(function(a, b) {
+    return (b.indexOf("#") !== -1) - (a.indexOf("#") !== -1);
+  });
+  const updates = [];
+  const appends = [];
+  subKeys.forEach(function(subKey) {
+    const value = targets[subKey];
+    const row = index[prefix + subKey];
     if (!row) {
-      const newRow = sheet.getLastRow() + 1;
-      lockEmployeeIdCellAsText(sheet, newRow, 1);
-      sheet.getRange(newRow, 1, 1, 4).setValues([[employeeId, fieldName, json, now]]);
+      if (value === "") return;
+      appends.push([employeeId, subKey, value]);
       return;
     }
-    const currentJson = sheet.getRange(row, 3).getValue();
-    if (currentJson === json) return; // 내용 그대로면 재저장 생략
-    sheet.getRange(row, 3, 1, 2).setValues([[json, now]]);
+    if (String(rows[row - 2][2]) === value) return; // 내용 그대로면 재저장 생략
+    updates.push({ row: row, value: value });
   });
+
+  return {
+    apply: function() {
+      const now = new Date().toLocaleString('ko-KR');
+      updates.forEach(function(u) { sheet.getRange(u.row, 3, 1, 2).setValues([[u.value, now]]); });
+      if (appends.length) {
+        const startRow = sheet.getLastRow() + 1;
+        sheet.getRange(startRow, 1, appends.length, 1).setNumberFormat('@');
+        sheet.getRange(startRow, 1, appends.length, 4).setValues(appends.map(function(a) { return [a[0], a[1], a[2], now]; }));
+      }
+    }
+  };
+}
+
+function saveLargeFieldsForUser(employeeId, data, precomputedRows) {
+  prepareLargeFieldsSave(employeeId, data, precomputedRows).apply();
 }
 
 function deleteLargeFieldsForUser(employeeId) {
@@ -853,6 +1014,8 @@ function handleLogin(employeeId, passwordHash) {
   applyLargeFieldsToProfile(employeeId, parsedData);
   // 프론트는 이 목록에 recordRevisions가 있을 때만 수정 이력을 서버로 보냄(구버전 서버의 프로필 셀 5만자 한도 보호)
   parsedData.largeFieldKeys = LARGE_FIELD_KEYS;
+  // 이 서버가 변경분만 받는 저장(partial)을 처리할 수 있다는 표시. 프론트는 이 값이 있을 때만 변경분 저장을 씀
+  parsedData.supportsPartialSave = true;
   // 프론트엔드는 더 이상 관리자 사번을 직접 알지 못하므로(공개 저장소 노출 방지), 이 계정이
   // 관리자인지를 서버가 판단해서 내려줌 - 화면 표시(관리자 화면 진입 등)에만 쓰고, 실제 권한
   // 검증은 여전히 서버의 verifyAdmin(ADMIN_EMPLOYEE_ID 대조)이 함
@@ -892,6 +1055,8 @@ function handleLoad(employeeId, passwordHash) {
   applyLargeFieldsToProfile(employeeId, parsedData);
   // 프론트는 이 목록에 recordRevisions가 있을 때만 수정 이력을 서버로 보냄(구버전 서버의 프로필 셀 5만자 한도 보호)
   parsedData.largeFieldKeys = LARGE_FIELD_KEYS;
+  // 이 서버가 변경분만 받는 저장(partial)을 처리할 수 있다는 표시. 프론트는 이 값이 있을 때만 변경분 저장을 씀
+  parsedData.supportsPartialSave = true;
   // handleLogin과 동일한 이유로, 프론트가 화면 표시에만 쓸 수 있도록 관리자 여부를 함께 내려줌
   parsedData.isAdmin = (employeeId === ADMIN_EMPLOYEE_ID);
 
@@ -1736,53 +1901,73 @@ function handleSaveState(data, rawBody) {
     const largeFieldsSheet = getLargeFieldsSheet();
     const largeFieldsRows = readLargeFieldsRows(largeFieldsSheet);
 
+    // partial=true: 클라이언트가 마지막으로 서버와 맞춘 뒤 바뀐 항목만 보낸 저장(매번 몇 년치 전체를
+    // 올리지 않기 위함). 이때 records에는 recordsMonths에 적힌 달의 전체 내용만 들어있고, 안 보낸
+    // 항목/달은 서버에 있는 값을 그대로 둠. partial이 아니면 예전처럼 전체 상태로 보고 통째로 저장함
+    const isPartial = data.partial === true;
+    const recordsMonths = isPartial
+      ? (Array.isArray(data.recordsMonths) ? data.recordsMonths.filter(function(ym) { return /^\d{4}-\d{2}$/.test(String(ym)); }) : [])
+      : null;
+
     const existingRecords = loadMergedRecords(employeeId, existingProfile, recordsRows);
     existingRecordCount = Object.keys(existingRecords).length;
-    const incomingRecordCount = data.records ? Object.keys(data.records).length : 0;
 
-    // 기존에 활동기록이 있었는데 이번 요청은 빈 데이터라면, 진짜로 다 지운 게 아니라 뭔가 꼬인
+    // 이번 저장이 끝난 뒤의 전체 기록
+    let finalRecords;
+    if (isPartial) {
+      finalRecords = {};
+      const sentMonth = {};
+      recordsMonths.forEach(function(ym) { sentMonth[ym] = true; });
+      for (const dateStr in existingRecords) {
+        if (!sentMonth[getYearMonth(dateStr)]) finalRecords[dateStr] = existingRecords[dateStr];
+      }
+      for (const dateStr in (data.records || {})) {
+        if (sentMonth[getYearMonth(dateStr)]) finalRecords[dateStr] = data.records[dateStr];
+      }
+    } else {
+      finalRecords = data.records || {};
+    }
+    const touchesRecords = !isPartial || recordsMonths.length > 0;
+
+    // 기존에 활동기록이 있었는데 이번 저장 결과가 빈 데이터라면, 진짜로 다 지운 게 아니라 뭔가 꼬인
     // 것일 가능성이 높으므로 활동기록만 이번 저장에서 건너뜀(기존 기록은 그대로 보존). 예전에는
     // 이 경우 요청 전체를 거부해서 할 일/메모/카테고리 순서 같은 무관한 변경사항까지 매번 함께
     // 저장 실패했는데(한 번 이 상태에 빠지면 새로고침 전까지 그 어떤 저장도 안 되는 문제가 있었음),
     // 이제는 활동기록만 보류하고 나머지는 평소처럼 저장함
-    recordsSafetyBlocked = (existingRecordCount >= 1 && incomingRecordCount === 0);
-
-    // 안전장치 2: 직전 상태 자동 백업. 프로필 전체 + 이번 저장으로 실제로 바뀌는 달의 기록만 백업함
-    // (기록 전체를 매번 백업하면 백업 시트 셀도 언젠가 5만자 제한에 걸릴 수 있어서, 안 바뀌는
-    // 과거 달까지 매번 백업하지 않고 이번에 손대는 달만 백업함)
-    try {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      let backupSheet = ss.getSheetByName(BACKUP_SHEET_NAME);
-      if (!backupSheet) {
-        backupSheet = ss.insertSheet(BACKUP_SHEET_NAME);
-        backupSheet.getRange(1, 1, 1, 3).setValues([["백업 시각", "사번", "데이터(JSON)"]]);
-      }
-      const affectedMonths = {};
-      for (const dateStr in (data.records || {})) affectedMonths[getYearMonth(dateStr)] = true;
-      const backupRecords = {};
-      for (const dateStr in existingRecords) {
-        if (affectedMonths[getYearMonth(dateStr)]) backupRecords[dateStr] = existingRecords[dateStr];
-      }
-      const existingProfileForBackup = applyLargeFieldsToProfile(employeeId, Object.assign({}, existingProfile), largeFieldsRows);
-      const backupPayload = Object.assign({}, existingProfileForBackup, { records: backupRecords });
-      backupSheet.insertRowBefore(2);
-      backupSheet.getRange(2, 1).setValue(new Date().toLocaleString('ko-KR'));
-      lockEmployeeIdCellAsText(backupSheet, 2, 2);
-      backupSheet.getRange(2, 2).setValue(employeeId);
-      backupSheet.getRange(2, 3).setValue(JSON.stringify(backupPayload));
-      const lastRow = backupSheet.getLastRow();
-      if (lastRow > 31) {
-        backupSheet.deleteRows(32, lastRow - 31);
-      }
-    } catch (backupErr) {}
+    recordsSafetyBlocked = touchesRecords && existingRecordCount >= 1 && Object.keys(finalRecords).length === 0;
 
     const dataToSave = {};
+    if (isPartial) {
+      // 안 보낸 항목은 지금 서버 값을 그대로 유지
+      for (const key in existingProfile) {
+        if (key === 'records') continue;
+        dataToSave[key] = existingProfile[key];
+      }
+    }
     for (const key in data) {
       if (key === 'employeeId' || key === 'passwordHash' || key === 'records') continue;
       if (key === 'baseUpdatedAt' || key === 'forceOverwrite' || key === 'serverUpdatedAt') continue; // 저장 버전은 서버만 관리
-      if (LARGE_FIELD_KEYS.indexOf(key) !== -1) continue; // ProfileLargeFields 시트로 따로 저장함 (아래 saveLargeFieldsForUser)
+      if (key === 'partial' || key === 'recordsMonths' || key === 'action') continue;
       dataToSave[key] = data[key];
     }
+
+    // 대용량 필드는 ProfileLargeFields 시트로 따로 저장함. 이번에 보낸 값이 있으면 그 값을, 안 보냈더라도
+    // 아직 프로필 셀에 남아있는(이 기능 도입 전부터 있던) 값이면 이번 기회에 시트로 옮겨서 프로필 셀을 가볍게 함
+    const migratedLargeFields = {};
+    const largePrefix = employeeId + "|";
+    for (let i = 0; i < largeFieldsRows.length; i++) {
+      if (String(largeFieldsRows[i][0]).trim() + "|" === largePrefix) migratedLargeFields[String(largeFieldsRows[i][1]).trim()] = true;
+    }
+    const largeData = {};
+    LARGE_FIELD_KEYS.forEach(function(key) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        largeData[key] = data[key];
+      } else if (Object.prototype.hasOwnProperty.call(existingProfile, key) && !migratedLargeFields[key]) {
+        largeData[key] = existingProfile[key];
+      }
+      delete dataToSave[key];
+    });
+
     // deletedAt(휴지통)/disabled(비활성화)/disabledReason(수동/자동 비활성화 구분)/isTeamLead(예전
     // 팀장 지정)/teamReportRole(팀 보고 역할)/lastLoginAt(마지막 로그인, 자동 비활성화 판단용)/
     // failedLoginCount·lockedAt(로그인 실패 잠금)은 서버(관리자 기능 또는 로그인 처리)만 관리하는
@@ -1804,19 +1989,55 @@ function handleSaveState(data, rawBody) {
     // 이번 저장의 새 버전. 응답으로 돌려줘서 클라이언트가 다음 저장 때 기준 버전으로 씀
     newServerUpdatedAt = Math.max(Date.now(), Number(existingProfile.serverUpdatedAt || 0) + 1);
     dataToSave.serverUpdatedAt = newServerUpdatedAt;
-    // records는 더 이상 프로필 셀에 저장하지 않음 - Records 시트로 따로 저장함 (아래 saveRecordsForUser)
+    // records는 더 이상 프로필 셀에 저장하지 않음 - Records 시트로 따로 저장함
     const jsonToSave = JSON.stringify(dataToSave);
 
+    // 시트에 쓰기 전에 크기 검사와 조각 나누기를 전부 끝냄. 여기서 걸리면 아무것도 쓰지 않은 채
+    // 이유를 알려주므로, 일부만 저장되고 버전만 올라가 충돌이 반복되는 상태가 생기지 않음
+    if (jsonToSave.length > CELL_MAX_CHARS) {
+      const sizes = Object.keys(dataToSave).map(function(k) { return { k: k, n: JSON.stringify(dataToSave[k] === undefined ? null : dataToSave[k]).length }; })
+        .sort(function(a, b) { return b.n - a.n; }).slice(0, 3)
+        .map(function(x) { return x.k + " " + x.n + "자"; }).join(", ");
+      return jsonResponse({ status: "error", tooLarge: true, message: "설정 데이터가 너무 커서(" + jsonToSave.length + "자) 저장할 수 없습니다. 큰 항목: " + sizes });
+    }
+    let recordsPlan = null;
+    let largeFieldsPlan = null;
+    try {
+      if (!recordsSafetyBlocked && touchesRecords) {
+        recordsPlan = prepareRecordsSave(employeeId, isPartial ? (data.records || {}) : finalRecords, recordsRows, recordsMonths);
+      }
+      largeFieldsPlan = prepareLargeFieldsSave(employeeId, largeData, largeFieldsRows);
+    } catch (prepareErr) {
+      return jsonResponse({ status: "error", tooLarge: true, message: prepareErr.message || prepareErr.toString() });
+    }
+
+    // 안전장치 2: 직전 상태 자동 백업(사번별, 한 시간 구간마다 달별로 한 번). 백업 실패는 저장을 막지 않음
+    try {
+      const affectedMonths = {};
+      if (touchesRecords) {
+        if (isPartial) recordsMonths.forEach(function(ym) { affectedMonths[ym] = true; });
+        else for (const dateStr in finalRecords) affectedMonths[getYearMonth(dateStr)] = true;
+      }
+      backupBeforeSaveIfDue(employeeId, existingProfile, existingRecords, largeFieldsRows, affectedMonths);
+    } catch (backupErr) {
+      Logger.log("자동 백업 실패: " + backupErr);
+    }
+
+    // 기록/대용량 필드를 먼저 쓰고, 저장 버전(serverUpdatedAt)이 담긴 프로필은 맨 마지막에 씀.
+    // 중간에 실패하면 버전이 안 올라가므로 클라이언트가 같은 기준 버전으로 그대로 다시 시도할 수 있음
+    if (recordsPlan) recordsPlan.apply();
+    largeFieldsPlan.apply();
     sheet.getRange(row, 3, 1, 2).setValues([[jsonToSave, new Date().toLocaleString('ko-KR')]]);
 
-    if (!recordsSafetyBlocked) {
-      saveRecordsForUser(employeeId, data.records || {}, recordsRows);
+    // 사람이 보기 편한 시트는 기록/카테고리/일정이 바뀐 경우에만 다시 그림(할일·메모만 바뀐 저장까지
+    // 매번 시트 전체를 지우고 다시 그리면 저장이 느려짐)
+    const touchesReadable = !isPartial || touchesRecords ||
+      ['categories', 'archivedCategories', 'events'].some(function(k) { return Object.prototype.hasOwnProperty.call(data, k); });
+    if (touchesReadable) {
+      const existingFullProfile = applyLargeFieldsToProfile(employeeId, Object.assign({}, existingProfile), largeFieldsRows);
+      // 활동기록을 이번에 건너뛰었다면(recordsSafetyBlocked) 사람이 보기 편한 시트도 빈 기록이 아니라 기존 기록 그대로 유지
+      readableUpdatePayload = Object.assign({}, existingFullProfile, dataToSave, largeData, { records: recordsSafetyBlocked ? existingRecords : finalRecords });
     }
-    saveLargeFieldsForUser(employeeId, data, largeFieldsRows);
-
-    // 활동기록을 이번에 건너뛰었다면(recordsSafetyBlocked) 사람이 보기 편한 시트도 빈 기록이 아니라
-    // 기존 기록 그대로 유지되게 함
-    readableUpdatePayload = Object.assign({}, dataToSave, { records: recordsSafetyBlocked ? existingRecords : (data.records || {}) });
   } finally {
     lock.releaseLock();
   }
@@ -1835,9 +2056,89 @@ function handleSaveState(data, rawBody) {
   return jsonResponse({ status: "success", serverUpdatedAt: newServerUpdatedAt });
 }
 
+// ===== 자동 백업 =====
+// 백업 시트는 [백업 시각, 사번, 데이터(JSON)] 한 줄 = 한 번의 백업. 최신이 위(2행)에 옴.
+// 사번별로 BACKUP_WINDOW_SECONDS 구간 안에서는 같은 달(또는 프로필)을 한 번만 백업함 - 그 구간이 시작되기
+// "직전 상태"가 남으므로, 입력할 때마다 자동저장이 일어나도 되돌릴 시점이 금방 밀려나지 않음
+function backupBeforeSaveIfDue(employeeId, existingProfile, existingRecords, largeFieldsRows, affectedMonths) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = "backupWindow:" + employeeId;
+  const now = Date.now();
+  let windowState = null;
+  try { windowState = JSON.parse(cache.get(cacheKey) || "null"); } catch (parseErr) { windowState = null; }
+  if (!windowState || !windowState.start || now - windowState.start > BACKUP_WINDOW_SECONDS * 1000) {
+    windowState = { start: now, keys: [] };
+  }
+
+  const dueMonths = Object.keys(affectedMonths).filter(function(ym) { return windowState.keys.indexOf(ym) === -1; });
+  const profileDue = windowState.keys.indexOf("_profile") === -1;
+  if (dueMonths.length === 0 && !profileDue) return;
+
+  const backupRecords = {};
+  const dueSet = {};
+  dueMonths.forEach(function(ym) { dueSet[ym] = true; });
+  for (const dateStr in existingRecords) {
+    if (dueSet[getYearMonth(dateStr)]) backupRecords[dateStr] = existingRecords[dateStr];
+  }
+  const profileForBackup = applyLargeFieldsToProfile(employeeId, Object.assign({}, existingProfile), largeFieldsRows);
+  delete profileForBackup.records;
+  writeBackupRow(employeeId, profileForBackup, backupRecords);
+
+  windowState.keys = windowState.keys.concat(dueMonths);
+  if (profileDue) windowState.keys.push("_profile");
+  const remainingSeconds = Math.max(60, Math.ceil((windowState.start + BACKUP_WINDOW_SECONDS * 1000 - now) / 1000));
+  cache.put(cacheKey, JSON.stringify(windowState), remainingSeconds);
+}
+
+// 백업 한 줄을 맨 위에 추가하고, 이 사번의 오래된 백업/전체 한도를 넘는 줄을 정리함.
+// 셀 한도를 넘으면 대용량 필드부터 빼고, 그래도 넘으면 기록만 남기고, 그래도 넘으면 이번 백업은 건너뜀
+// (예전에는 행을 먼저 끼워넣고 값을 나중에 써서, 쓰기가 실패하면 내용 없는 백업 줄이 남았음)
+function writeBackupRow(employeeId, profile, records) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let backupSheet = ss.getSheetByName(BACKUP_SHEET_NAME);
+  if (!backupSheet) {
+    backupSheet = ss.insertSheet(BACKUP_SHEET_NAME);
+    backupSheet.getRange(1, 1, 1, 3).setValues([["백업 시각", "사번", "데이터(JSON)"]]);
+  }
+
+  let payloadJson = JSON.stringify(Object.assign({}, profile, { records: records }));
+  if (payloadJson.length > CELL_MAX_CHARS) {
+    const slimProfile = Object.assign({}, profile);
+    LARGE_FIELD_KEYS.forEach(function(k) { delete slimProfile[k]; });
+    payloadJson = JSON.stringify(Object.assign({}, slimProfile, { records: records }));
+  }
+  if (payloadJson.length > CELL_MAX_CHARS) {
+    payloadJson = JSON.stringify({ records: records });
+  }
+  if (payloadJson.length > CELL_MAX_CHARS) {
+    Logger.log("백업 데이터가 셀 한도를 넘어 건너뜀: " + employeeId);
+    return;
+  }
+
+  backupSheet.insertRowBefore(2);
+  lockEmployeeIdCellAsText(backupSheet, 2, 2);
+  backupSheet.getRange(2, 1, 1, 3).setValues([[new Date().toLocaleString('ko-KR'), employeeId, payloadJson]]);
+  pruneBackupRows(backupSheet, employeeId);
+}
+
+function pruneBackupRows(backupSheet, employeeId) {
+  let lastRow = backupSheet.getLastRow();
+  if (lastRow < 2) return;
+  const ids = backupSheet.getRange(2, 2, lastRow - 1, 1).getValues();
+  const rowsToDelete = [];
+  let seen = 0;
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() !== employeeId) continue;
+    seen++;
+    if (seen > BACKUP_MAX_PER_USER) rowsToDelete.push(i + 2);
+  }
+  for (let j = rowsToDelete.length - 1; j >= 0; j--) backupSheet.deleteRow(rowsToDelete[j]);
+  lastRow = backupSheet.getLastRow();
+  if (lastRow > BACKUP_MAX_TOTAL_ROWS + 1) backupSheet.deleteRows(BACKUP_MAX_TOTAL_ROWS + 2, lastRow - BACKUP_MAX_TOTAL_ROWS - 1);
+}
+
 // 이 사번의 자동 백업 목록 조회 (설정 탭 "자동 백업"에서 씀).
-// BACKUP_SHEET_NAME은 전체 사용자가 함께 쓰는 시트라 최근 30건만 보관되므로, 다른 사람들이
-// 그 사이 자주 저장했다면 이 사번 백업이 얼마 없거나 하나도 없을 수 있음
+// 사번별로 최근 BACKUP_MAX_PER_USER건까지 보관됨(한 시간 구간마다 달별로 한 번씩 쌓임)
 function handleGetMyBackups(data) {
   const employeeId = normalizeEmployeeId(data.employeeId);
   const passwordHash = data.passwordHash || "";
@@ -1928,14 +2229,7 @@ function handleRestoreFromBackup(data) {
     for (const dateStr in backupRecords) {
       if (currentRecords[dateStr]) beforeRestoreSnapshot[dateStr] = currentRecords[dateStr];
     }
-    backupSheet.insertRowBefore(2);
-    backupSheet.getRange(2, 1, 1, 3).setValues([[
-      new Date().toLocaleString('ko-KR'),
-      employeeId,
-      JSON.stringify(Object.assign({}, existingProfile, { records: beforeRestoreSnapshot }))
-    ]]);
-    const lastRow = backupSheet.getLastRow();
-    if (lastRow > 31) backupSheet.deleteRows(32, lastRow - 31);
+    writeBackupRow(employeeId, existingProfile, beforeRestoreSnapshot);
 
     // 백업에 들어있던 날짜만 그 시점 값으로 덮어쓰고, 백업에 없는 날짜(다른 달 등)는 지금 값을 그대로 둠
     const mergedRecords = Object.assign({}, currentRecords, backupRecords);
@@ -1948,7 +2242,7 @@ function handleRestoreFromBackup(data) {
       usersSheet.getRange(row, 3).setValue(JSON.stringify(restoredProfile));
     } catch (versionErr) {}
 
-    readableUpdatePayload = Object.assign({}, existingProfile, { records: mergedRecords });
+    readableUpdatePayload = Object.assign(applyLargeFieldsToProfile(employeeId, Object.assign({}, existingProfile)), { records: mergedRecords });
     restoredDateCount = Object.keys(backupRecords).length;
   } finally {
     lock.releaseLock();
@@ -2369,11 +2663,19 @@ function isGeminiOverloadedError(responseCode, responseData) {
   return /UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(status) || /overloaded|high demand/i.test(msg);
 }
 
-function callGeminiRawText(apiKey, contents, systemPrompt) {
+// Gemini 3 계열은 답을 쓰기 전에 내부 추론(thinking)을 기본(medium)으로 켜고 시작해서, 5줄짜리 요약에도
+// 수십 초가 걸릴 수 있음. 일일/주간 요약처럼 단순히 정리만 하면 되는 작업은 options.thinkingLevel="low"로
+// 추론을 줄여 응답을 빠르게 받음. (월별 피드백/목표수립처럼 판단이 필요한 작업은 기본값 유지)
+const GEMINI_FAST_THINKING_LEVEL = "low";
+
+function callGeminiRawText(apiKey, contents, systemPrompt, callOptions) {
   const payload = {
     systemInstruction: { parts: [{ text: systemPrompt }] },
     contents: contents
   };
+  if (callOptions && callOptions.thinkingLevel) {
+    payload.generationConfig = { thinkingConfig: { thinkingLevel: callOptions.thinkingLevel } };
+  }
 
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
     GEMINI_MODEL + ":generateContent";
@@ -2413,6 +2715,14 @@ function callGeminiRawText(apiKey, contents, systemPrompt) {
 
     lastErrMsg = (responseData && responseData.error && responseData.error.message) ? responseData.error.message : "";
 
+    // 모델이 바뀌어 추론 수준 설정을 지원하지 않으면(400) 설정을 빼고 곧바로 다시 요청함(재시도 횟수 차감 없음)
+    if (responseCode === 400 && payload.generationConfig) {
+      delete payload.generationConfig;
+      options.payload = JSON.stringify(payload);
+      attempt--;
+      continue;
+    }
+
     if (attempt < GEMINI_MAX_RETRIES && (!responseData || isGeminiOverloadedError(responseCode, responseData))) {
       Utilities.sleep(GEMINI_RETRY_DELAY_MS * (attempt + 1));
       continue;
@@ -2424,9 +2734,9 @@ function callGeminiRawText(apiKey, contents, systemPrompt) {
   }
 }
 
-function callGeminiAndRespond(apiKey, contents, systemPrompt) {
+function callGeminiAndRespond(apiKey, contents, systemPrompt, callOptions) {
   try {
-    const text = callGeminiRawText(apiKey, contents, systemPrompt);
+    const text = callGeminiRawText(apiKey, contents, systemPrompt, callOptions);
     return jsonResponse({ status: "success", summary: text });
   } catch (error) {
     return jsonResponse({ status: "error", message: error.message || error.toString() });
@@ -2568,7 +2878,7 @@ function handleDailySummary(data) {
   const userPrompt = `[날짜] ${dateLabel}\n\n[오늘 작성한 활동 기록]\n${logText}`;
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
 
-  return callGeminiAndRespond(apiKey, contents, buildDailySummarySystemPrompt(includeFixedFirstItem, itemCount));
+  return callGeminiAndRespond(apiKey, contents, buildDailySummarySystemPrompt(includeFixedFirstItem, itemCount), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
 }
 
 // ===== 이번주 업무 요약 =====
@@ -2602,7 +2912,7 @@ function handleWeeklySummary(data) {
   const userPrompt = `[기간] ${periodLabel}\n\n[이번 주 활동 기록]\n${logText}`;
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
 
-  return callGeminiAndRespond(apiKey, contents, buildWeeklySummarySystemPrompt());
+  return callGeminiAndRespond(apiKey, contents, buildWeeklySummarySystemPrompt(), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
 }
 
 // ===== 목표수립 (OKR) =====

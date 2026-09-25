@@ -316,6 +316,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 스냅샷을 기준으로 이 기기에서 바뀐 부분만 골라 서버 최신 내용 위에 다시 얹음 (resolveSyncConflict)
         let serverBaseUpdatedAt = null;
         let lastSyncedSnapshot = null;
+        // 서버(Code.gs)가 "바뀐 항목/달만 보내는 저장(partial)"을 처리할 수 있는 버전인지. 로그인/불러오기 응답의
+        // supportsPartialSave로 알게 되며, 구버전 서버면 예전처럼 매번 전체 상태를 보냄
+        let serverSupportsPartialSave = false;
 
         // 로그인 성공(자동 로그인 또는 직접 로그인) 후에만 호출됨. 로그인되기 전까지는
         // 이 함수가 아예 실행되지 않으므로, 화면에는 로그인 모달 외에 아무 데이터도 그려지지 않음
@@ -916,7 +919,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     categoryColors = isBrandNewAccountCategories ? Object.assign({}, DEFAULT_CATEGORY_COLORS) : (data.categoryColors || {});
                     categoryDefaultCollapsed = (data.categoryDefaultCollapsed && typeof data.categoryDefaultCollapsed === 'object') ? data.categoryDefaultCollapsed : {};
                     categoryBoxHeights = data.categoryBoxHeights || {};
-                    dateCategoryBoxHeights = data.dateCategoryBoxHeights || {};
+                    dateCategoryBoxHeights = pruneDateCategoryBoxHeights(data.dateCategoryBoxHeights || {});
                     hiddenCategoriesByDate = data.hiddenCategoriesByDate || {};
                     dateCategoryOrder = data.dateCategoryOrder || {};
                     collapsedUpcomingCardIds = new Set(Array.isArray(data.collapsedUpcomingCardIds) ? data.collapsedUpcomingCardIds : []);
@@ -965,6 +968,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         recordRevisions = data.recordRevisions;
                     }
                     serverBaseUpdatedAt = data.serverUpdatedAt || null;
+                    serverSupportsPartialSave = data.supportsPartialSave === true;
 
                     cacheAllToLocalStorage();
 
@@ -1010,6 +1014,23 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return stripSyncCredentials(JSON.parse(JSON.stringify(getFullState())));
         }
 
+        // 날짜별 박스 높이 중 쓸모없는 값(0 이하/숫자 아님)과 빈 날짜를 정리함. 예전 버전은 날짜를 옮길 때
+        // 화면에서 빠지는 박스의 높이를 0으로 저장해서 이런 값이 날짜 수만큼 쌓여 있음
+        function pruneDateCategoryBoxHeights(heights) {
+            const out = {};
+            if (!heights || typeof heights !== 'object' || Array.isArray(heights)) return out;
+            for (const date in heights) {
+                const day = heights[date];
+                if (!day || typeof day !== 'object') continue;
+                const kept = {};
+                for (const cat in day) {
+                    if (typeof day[cat] === 'number' && day[cat] > 0) kept[cat] = day[cat];
+                }
+                if (Object.keys(kept).length) out[date] = kept;
+            }
+            return out;
+        }
+
         // 충돌 안내에 표시할 이름 (화면 크기/접힘 상태 같은 사소한 설정은 안내하지 않음)
         const SYNC_FIELD_LABELS = {
             events: '일정', categories: '카테고리', categoryColors: '카테고리 색상', todo: '할일', freeNotesPages: '메모장',
@@ -1018,24 +1039,121 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             archivedCategories: '보관 카테고리', aiTemplate: 'AI 템플릿', categoryImages: '첨부 이미지'
         };
 
+        function syncSame(a, b) {
+            return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+        }
+        function isSyncPlainObject(v) {
+            return v !== null && typeof v === 'object' && !Array.isArray(v);
+        }
+        // 할일/일정/메모장 페이지/흐름도처럼 항목마다 고유 id가 있는 목록인지
+        function isSyncIdArray(arr) {
+            if (!Array.isArray(arr)) return false;
+            const ids = new Set();
+            for (const item of arr) {
+                if (!isSyncPlainObject(item) || (typeof item.id !== 'string' && typeof item.id !== 'number')) return false;
+                ids.add(String(item.id));
+            }
+            return ids.size === arr.length;
+        }
+        function isSyncPrimitiveArray(arr) {
+            return Array.isArray(arr) && arr.every(x => x === null || typeof x !== 'object');
+        }
+
+        // 3-way 병합: base(마지막으로 서버와 맞춘 값) 기준으로 이 기기(l)와 서버(s)의 변경을 합침.
+        // 객체는 키 단위, id가 있는 목록은 항목 단위, 문자열 목록은 추가/삭제 단위로 내려가며 합치고,
+        // 같은 칸을 양쪽에서 다르게 고친 경우에만 conflict=true로 알림(이때는 이 기기 내용 우선,
+        // 한쪽은 지우고 한쪽은 고쳤다면 고친 쪽을 남김)
+        function mergeSyncValue(b, l, s) {
+            if (syncSame(l, b)) return { value: s, conflict: false };
+            if (syncSame(s, b)) return { value: l, conflict: false };
+            if (syncSame(l, s)) return { value: l, conflict: false };
+
+            if (isSyncPlainObject(l) && isSyncPlainObject(s) && (b == null || isSyncPlainObject(b))) {
+                const bo = isSyncPlainObject(b) ? b : {};
+                const out = {};
+                let conflict = false;
+                const keys = Object.keys(l).concat(Object.keys(s).filter(k => !Object.prototype.hasOwnProperty.call(l, k)));
+                for (const k of keys) {
+                    const r = mergeSyncValue(bo[k], l[k], s[k]);
+                    if (r.conflict) conflict = true;
+                    if (r.value !== undefined) out[k] = r.value;
+                }
+                return { value: out, conflict };
+            }
+
+            if (isSyncIdArray(l) && isSyncIdArray(s) && (b == null || isSyncIdArray(b))) {
+                const toMap = arr => new Map((arr || []).map(item => [String(item.id), item]));
+                const bm = toMap(b), sm = toMap(s), lm = toMap(l);
+                const out = [];
+                let conflict = false;
+                for (const item of l) { // 이 기기의 순서를 기준으로
+                    const id = String(item.id);
+                    const r = mergeSyncValue(bm.get(id), item, sm.get(id));
+                    if (r.conflict) conflict = true;
+                    if (r.value !== undefined) out.push(r.value);
+                }
+                // 이 기기에 없는 서버 항목: 서버에서 새로 추가됐거나(→ 추가), 이 기기에서 지웠거나(→ 서버에서 안 고쳤으면 삭제)
+                let prevId = null;
+                for (const item of s) {
+                    const id = String(item.id);
+                    if (!lm.has(id)) {
+                        const r = mergeSyncValue(bm.get(id), undefined, item);
+                        if (r.conflict) conflict = true;
+                        if (r.value !== undefined) {
+                            const prevIdx = prevId === null ? -1 : out.findIndex(x => String(x.id) === prevId);
+                            out.splice(prevIdx + 1, 0, r.value); // 서버 목록에서 바로 앞 항목 뒤에 끼워 넣음
+                        }
+                    }
+                    if (out.some(x => String(x.id) === id)) prevId = id;
+                }
+                return { value: out, conflict };
+            }
+
+            if (isSyncPrimitiveArray(l) && isSyncPrimitiveArray(s) && (b == null || isSyncPrimitiveArray(b))) {
+                const key = v => JSON.stringify(v);
+                const bSet = new Set((b || []).map(key)), lSet = new Set(l.map(key)), sSet = new Set(s.map(key));
+                const out = l.filter(v => !(bSet.has(key(v)) && !sSet.has(key(v)))); // 서버에서 지운 건 뺌
+                const outSet = new Set(out.map(key));
+                let prev = null;
+                for (const v of s) {
+                    const k = key(v);
+                    if (!outSet.has(k) && !lSet.has(k) && !bSet.has(k)) { // 서버에서 새로 추가된 것
+                        const prevIdx = prev === null ? -1 : out.findIndex(x => key(x) === prev);
+                        out.splice(prevIdx + 1, 0, v);
+                        outSet.add(k);
+                    }
+                    if (outSet.has(k)) prev = k;
+                }
+                return { value: out, conflict: false };
+            }
+
+            // 더 쪼갤 수 없는 값을 양쪽에서 다르게 바꿈
+            if (l === undefined) return { value: s, conflict: true }; // 이 기기는 지웠지만 서버는 고침 → 고친 쪽을 남김
+            return { value: l, conflict: true };
+        }
+
         // base(마지막으로 서버와 맞춘 상태) 기준으로 이 기기(local)와 서버(server) 각각의 변경을 합침.
         // - 활동기록: 날짜·카테고리 칸 단위로, 이 기기에서 고친 칸만 이 기기 내용으로 덮음
         //   (양쪽이 같은 칸을 고쳤으면 이 기기 내용을 쓰고, 서버 쪽 내용은 수정 이력에 보관)
-        // - 나머지 항목: 이 기기에서만 바뀐 항목은 이 기기 내용, 양쪽 다 바뀐 항목은 서버 내용
+        // - 나머지 항목: 이 기기에서만 바뀐 항목은 이 기기 내용, 양쪽 다 바뀐 항목은 mergeSyncValue로
+        //   할일·일정 같은 목록은 항목 단위까지 내려가서 합침(예전에는 서버 내용으로 통째로 덮여 이 기기 변경이 사라졌음)
+        // base/local은 바뀐 항목만 담은 일부분이어도 됨(로그인 때 되살리는 미전송 변경분 - readPendingOutbox 참고)
         function mergeSyncStates(base, local, server) {
             const result = { merged: {}, keptLocal: [], conflicted: [], recordConflicts: [] };
             if (!base) return result; // 기준점이 없으면 안전하게 서버 내용을 그대로 씀
-            const same = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
 
             for (const key of Object.keys(local)) {
                 if (key === 'records' || key === 'recordRevisions') continue;
-                if (same(local[key], base[key])) continue; // 이 기기에서 안 바뀜
-                if (same(server[key], base[key])) { result.merged[key] = local[key]; result.keptLocal.push(key); }
-                else if (!same(local[key], server[key])) result.conflicted.push(key);
+                if (syncSame(local[key], base[key])) continue; // 이 기기에서 안 바뀜
+                if (syncSame(server[key], base[key])) { result.merged[key] = local[key]; result.keptLocal.push(key); continue; }
+                if (syncSame(local[key], server[key])) continue;
+                const r = mergeSyncValue(base[key], local[key], server[key]);
+                if (!syncSame(r.value, server[key])) { result.merged[key] = r.value; result.keptLocal.push(key); }
+                if (r.conflict) result.conflicted.push(key);
             }
 
             // 수정 이력은 칸별 보관함이라 양쪽 것을 합침
-            if (local.recordRevisions && !same(local.recordRevisions, base.recordRevisions)) {
+            if (local.recordRevisions && !syncSame(local.recordRevisions, base.recordRevisions)) {
                 result.merged.recordRevisions = Object.assign({}, local.recordRevisions, server.recordRevisions || {});
             }
 
@@ -1060,6 +1178,114 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return result;
         }
 
+        // ===== 아직 서버에 못 올라간 변경분 보관함 (outbox) =====
+        // 이 앱은 새로고침할 때마다 로그아웃 상태로 시작하고, 다시 로그인하면 서버 데이터로 화면과 로컬
+        // 캐시를 통째로 덮어씀. 그래서 와이파이가 끊겨 저장이 실패한 채 창을 닫으면 그 변경분이 그대로
+        // 사라졌음. 이제는 "마지막으로 서버와 맞춘 상태 대비 바뀐 부분(칸/항목)"만 사번별로 따로 보관해두고,
+        // 다음 로그인 때 서버 최신 내용 위에 다시 얹어 저장함
+        const PENDING_OUTBOX_PREFIX = 'pendingSync:';
+
+        // base와 local을 비교해 바뀐 항목(최상위 키)과 바뀐 활동기록 칸만 뽑아냄. mergeSyncStates에 그대로 넣을 수 있는 형태
+        function diffSyncStates(base, local) {
+            const diff = { base: {}, local: {}, count: 0 };
+            for (const key of Object.keys(local)) {
+                if (key === 'records') continue;
+                if (syncSame(local[key], base[key])) continue;
+                diff.base[key] = base[key];
+                diff.local[key] = local[key];
+                diff.count++;
+            }
+            const lRec = local.records || {}, bRec = base.records || {};
+            const bOut = {}, lOut = {};
+            const dates = new Set(Object.keys(lRec).concat(Object.keys(bRec)));
+            for (const d of dates) {
+                const cats = new Set(Object.keys(lRec[d] || {}).concat(Object.keys(bRec[d] || {})));
+                for (const c of cats) {
+                    const l = (lRec[d] || {})[c] || '';
+                    const b = (bRec[d] || {})[c] || '';
+                    if (l === b) continue;
+                    (lOut[d] = lOut[d] || {})[c] = l;
+                    (bOut[d] = bOut[d] || {})[c] = b;
+                    diff.count++;
+                }
+            }
+            if (Object.keys(lOut).length) { diff.base.records = bOut; diff.local.records = lOut; }
+            return diff;
+        }
+
+        function pendingOutboxKey(employeeId) {
+            return PENDING_OUTBOX_PREFIX + employeeId;
+        }
+
+        function readPendingOutbox(employeeId) {
+            if (!employeeId) return null;
+            let raw = null;
+            try { raw = localStorage.getItem(pendingOutboxKey(employeeId)); } catch (e) { return null; }
+            if (!raw) return null;
+            const parsed = safeJsonParse(raw, {}, 'pendingSync');
+            if (!isSyncPlainObject(parsed.base) || !isSyncPlainObject(parsed.local)) return null;
+            return parsed;
+        }
+
+        function clearPendingOutbox() {
+            if (!currentEmployeeId) return;
+            try { localStorage.removeItem(pendingOutboxKey(currentEmployeeId)); } catch (e) { /* 무시 */ }
+        }
+
+        // 지금 상태(snapshot)가 마지막으로 서버와 맞춘 상태와 다르면 그 차이를 보관하고, 같으면 보관함을 비움
+        function writePendingOutbox(snapshot) {
+            if (!currentEmployeeId || !initialLoadDone || !lastSyncedSnapshot) return;
+            const diff = diffSyncStates(lastSyncedSnapshot, snapshot || snapshotSyncState());
+            if (diff.count === 0) { clearPendingOutbox(); return; }
+            safeSetItem(pendingOutboxKey(currentEmployeeId), JSON.stringify({
+                v: 1, savedAt: Date.now(), baseUpdatedAt: serverBaseUpdatedAt, count: diff.count, base: diff.base, local: diff.local
+            }));
+        }
+
+        function hasPendingOutbox() {
+            return !!readPendingOutbox(currentEmployeeId);
+        }
+
+        // 서버 내용이 이미 화면에 반영되고 lastSyncedSnapshot이 서버 상태인 시점에 호출: base 대비 이 기기의
+        // 변경분(localState)을 그 위에 다시 얹음. 탭 복귀/저장 충돌 때와 로그인 때(미전송 변경분) 같이 씀
+        async function applyLocalChangesOnServerState(base, localState, serverData) {
+            const serverState = lastSyncedSnapshot;
+            const result = mergeSyncStates(base, localState, serverState);
+            if (result.keptLocal.length > 0 || result.merged.recordRevisions) {
+                await loadAllFromServer(Object.assign({}, serverData, result.merged));
+                lastSyncedSnapshot = serverState; // 서버에는 아직 합친 내용이 안 올라갔으므로 기준점은 서버 상태 그대로
+                // 양쪽에서 같은 칸을 고친 경우 다른 기기 내용을 잃지 않도록 수정 이력에 보관
+                result.recordConflicts.forEach(rc => pushRecordRevision(rc.date, rc.category, rc.serverValue, true));
+                if (selectedDate && typeof renderRecordForm === 'function') renderRecordForm();
+            }
+            return result;
+        }
+
+        function describeMergeResult(result, prefix) {
+            let msg = prefix;
+            if (result.recordConflicts.length) msg += ` · 같은 칸을 양쪽에서 고친 ${result.recordConflicts.length}건은 이 기기 내용으로 저장(다른 기기 내용은 🕘 수정 이력에 보관)`;
+            const labels = result.conflicted.map(k => SYNC_FIELD_LABELS[k]).filter(Boolean);
+            if (labels.length) msg += ` · [${labels.join(', ')}]은 양쪽에서 같은 부분을 고쳐 이 기기 내용을 우선 적용함`;
+            return msg;
+        }
+
+        // 로그인 직후(서버 데이터를 막 화면에 반영한 뒤) 호출: 지난번에 서버에 못 올린 변경분이 있으면 되살려서 저장함
+        async function restorePendingOutboxAfterLogin(serverData) {
+            const outbox = readPendingOutbox(currentEmployeeId);
+            if (!outbox || !lastSyncedSnapshot) return;
+            try {
+                const result = await applyLocalChangesOnServerState(outbox.base, outbox.local, serverData);
+                if (result.keptLocal.length === 0 && !result.merged.recordRevisions) {
+                    clearPendingOutbox(); // 이미 서버에 반영돼 있었음(예: 창을 닫을 때 보낸 마지막 저장이 도착함)
+                    return;
+                }
+                showAppToast(describeMergeResult(result, '지난번에 서버에 저장되지 못한 변경 내용을 되살려 다시 저장합니다'), 'info');
+                queueSync();
+            } catch (err) {
+                console.error('미전송 변경분 복원 실패:', err);
+            }
+        }
+
         let lastServerCheckAt = 0;
         let conflictResolveInProgress = false;
 
@@ -1077,25 +1303,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (!serverData || serverData.status === 'error') throw new Error((serverData && serverData.message) || '서버 최신 내용을 받지 못했습니다');
 
                 await loadAllFromServer(serverData); // 화면 = 서버 최신 내용, 기준점도 서버 버전으로 갱신
-                const serverState = lastSyncedSnapshot;
-                const { merged, keptLocal, conflicted, recordConflicts } = mergeSyncStates(base, localState, serverState);
-
-                if (keptLocal.length > 0 || merged.recordRevisions) {
-                    await loadAllFromServer(Object.assign({}, serverData, merged));
-                    lastSyncedSnapshot = serverState; // 서버에는 아직 합친 내용이 안 올라갔으므로 기준점은 서버 상태 그대로
-                    // 양쪽에서 같은 칸을 고친 경우 다른 기기 내용을 잃지 않도록 수정 이력에 보관
-                    recordConflicts.forEach(rc => pushRecordRevision(rc.date, rc.category, rc.serverValue, true));
-                    if (selectedDate && typeof renderRecordForm === 'function') renderRecordForm();
-                }
-
-                const labels = conflicted.map(k => SYNC_FIELD_LABELS[k]).filter(Boolean);
-                let msg = keptLocal.length > 0
+                const result = await applyLocalChangesOnServerState(base, localState, serverData);
+                const keptLocal = result.keptLocal.length > 0;
+                showAppToast(describeMergeResult(result, keptLocal
                     ? '다른 기기에서 저장한 내용을 받아와 이 기기의 변경 내용과 합쳤습니다'
-                    : '다른 기기에서 저장한 최신 내용으로 갱신했습니다';
-                if (recordConflicts.length) msg += ` · 같은 칸을 양쪽에서 고친 ${recordConflicts.length}건은 이 기기 내용으로 저장(다른 기기 내용은 🕘 수정 이력에 보관)`;
-                if (labels.length) msg += ` · 양쪽에서 함께 바뀐 [${labels.join(', ')}]은 다른 기기 내용이 적용됨`;
-                showAppToast(msg, 'info');
-                return keptLocal.length > 0;
+                    : '다른 기기에서 저장한 최신 내용으로 갱신했습니다'), 'info');
+                return keptLocal;
             } finally {
                 conflictResolveInProgress = false;
             }
@@ -1125,7 +1338,49 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             showSyncStatus('☁️ 저장 대기 중...', 'syncing');
             syncTimeout = setTimeout(syncToServer, 800);
         }
-        
+
+        // 활동기록을 달별로 묶음 { "2026-09": { "2026-09-01": {...} } }
+        function groupRecordsByMonth(recs) {
+            const out = {};
+            for (const d in (recs || {})) {
+                const ym = d.slice(0, 7);
+                (out[ym] = out[ym] || {})[d] = recs[d];
+            }
+            return out;
+        }
+
+        // 서버로 보낼 내용. 서버가 지원하고 기준점(마지막으로 서버와 맞춘 상태)이 있으면 바뀐 항목과 바뀐 달만
+        // 보냄(partial) - 예전에는 글자 하나만 고쳐도 몇 년치 기록 전체를 매번 올려서, 기록이 쌓일수록 저장이
+        // 느려지고 서버 잠금을 오래 잡아 다른 사람 저장까지 밀렸음. 기준점이 없으면 예전처럼 전체를 보냄
+        function buildSyncPayload(fullState, snapshot) {
+            if (!serverSupportsPartialSave || !lastSyncedSnapshot || !fullState.baseUpdatedAt) return fullState;
+            const base = lastSyncedSnapshot;
+            const payload = {
+                employeeId: fullState.employeeId,
+                passwordHash: fullState.passwordHash,
+                baseUpdatedAt: fullState.baseUpdatedAt,
+                partial: true
+            };
+            for (const key of Object.keys(snapshot)) {
+                if (key === 'records') continue;
+                if (!syncSame(snapshot[key], base[key])) payload[key] = snapshot[key];
+            }
+            const localMonths = groupRecordsByMonth(snapshot.records);
+            const baseMonths = groupRecordsByMonth(base.records);
+            const months = Array.from(new Set(Object.keys(localMonths).concat(Object.keys(baseMonths))))
+                .filter(ym => !syncSame(localMonths[ym], baseMonths[ym]));
+            if (months.length) {
+                payload.recordsMonths = months;
+                payload.records = {};
+                months.forEach(ym => Object.assign(payload.records, localMonths[ym] || {}));
+            }
+            return payload;
+        }
+
+        function isEmptyPartialPayload(payload) {
+            return payload.partial === true && Object.keys(payload).length === 4;
+        }
+
         // 다른 사람의 저장과 겹쳐서 서버 락 대기 시간(30초)을 넘겼거나 네트워크가 잠깐 끊긴
         // 경우처럼 "다시 시도하면 될 수도 있는" 실패만 재시도함. 몇 초 뒤 재시도, 그래도 안 되면
         // 조금 더 기다렸다가 마지막으로 한 번 더 시도(총 3번). 비밀번호 불일치처럼 다시 시도해도
@@ -1153,10 +1408,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             for (let attempt = 0; attempt <= SYNC_RETRY_DELAYS_MS.length; attempt++) {
                 showSyncStatus(attempt === 0 ? '☁️ 저장 중...' : `☁️ 저장 재시도 중... (${attempt}/${SYNC_RETRY_DELAYS_MS.length})`, 'syncing');
                 try {
-                    const body = JSON.stringify(getFullState());
+                    const fullState = getFullState();
+                    const snapshot = stripSyncCredentials(JSON.parse(JSON.stringify(fullState)));
+                    const payload = buildSyncPayload(fullState, snapshot);
+                    if (isEmptyPartialPayload(payload)) { // 서버와 달라진 게 없음
+                        clearPendingOutbox();
+                        showSyncStatus('☁️ 저장됨', 'ok');
+                        return true;
+                    }
+                    writePendingOutbox(snapshot); // 응답을 못 받고 창이 닫혀도 다음 로그인 때 되살릴 수 있게 먼저 보관
                     const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                         method: 'POST',
-                        body
+                        body: JSON.stringify(payload)
                     });
                     if (!res.ok) throw new Error('응답 오류');
                     const resultData = await res.json();
@@ -1173,10 +1436,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         }
                         console.error('서버가 저장을 거부함:', resultData.message);
                         showSyncStatus('⚠️ ' + (resultData.message || '저장 거부됨'), 'error');
+                        if (resultData.tooLarge) showAppToast('⚠️ ' + resultData.message, 'error');
                         return false;
                     }
                     if (resultData && resultData.serverUpdatedAt) serverBaseUpdatedAt = resultData.serverUpdatedAt;
-                    lastSyncedSnapshot = stripSyncCredentials(JSON.parse(body)); // 방금 서버에 올린 내용이 새 기준점
+                    lastSyncedSnapshot = snapshot; // 방금 서버에 올린 내용이 새 기준점
+                    writePendingOutbox(); // 보내는 사이 새로 바뀐 게 없으면 보관함이 비워짐
                     if (resultData && resultData.recordsSkipped) {
                         console.warn('서버가 활동기록 저장을 보류함(다른 항목은 저장됨):', resultData.message);
                         showSyncStatus('⚠️ 활동기록 저장 보류됨 (다른 변경사항은 저장됨)', 'error');
@@ -1191,7 +1456,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         continue;
                     }
                     console.error('서버 저장 실패:', err);
-                    showSyncStatus('⚠️ 저장 실패 (로컬에는 저장됨)', 'error');
+                    showSyncStatus('⚠️ 저장 실패 (이 기기에 보관됨 · 인터넷이 연결되거나 다음 로그인 때 자동으로 다시 올림)', 'error');
                     return false;
                 }
             }
@@ -1642,14 +1907,32 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 페이지를 닫거나 새로고침할 때도 입력 중이던 내용 저장 시도
         // captureCurrentFormToRecords는 calendar-activity.js에 있어서, 그 파일이 로드되지 못했거나
         // 로컬 저장이 실패해도 아래 sendBeacon(마지막 서버 저장)은 반드시 실행되도록 따로 감쌈
-        window.addEventListener('beforeunload', () => {
+        // - 서버 데이터를 다 받기 전(initialLoadDone=false)에는 이 기기의 오래됐을 수 있는 데이터를 올리지 않음
+        // - sendBeacon은 보통 64KB까지만 보낼 수 있어서, 예전처럼 전체 상태를 보내면 기록이 조금만 쌓여도
+        //   조용히 실패했음. 이제는 바뀐 부분만 보내고(buildSyncPayload), 그래도 크면 보내지 않음.
+        //   어느 경우든 바뀐 부분은 먼저 미전송 보관함(outbox)에 남겨서 다음 로그인 때 되살림
+        const BEACON_MAX_BYTES = 60000;
+        function flushPendingChangesOnExit(sendBeaconToo) {
+            if (!initialLoadDone || !currentEmployeeId) return;
             try {
                 if (typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
             } catch (e) { /* 무시 */ }
             try {
-                const blob = new Blob([JSON.stringify(getFullState())], { type: 'text/plain' });
-                navigator.sendBeacon(GOOGLE_APPS_SCRIPT_URL, blob);
+                const fullState = getFullState();
+                const snapshot = stripSyncCredentials(JSON.parse(JSON.stringify(fullState)));
+                writePendingOutbox(snapshot);
+                if (!sendBeaconToo) return;
+                const payload = buildSyncPayload(fullState, snapshot);
+                if (isEmptyPartialPayload(payload)) return;
+                const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain' });
+                if (blob.size <= BEACON_MAX_BYTES) navigator.sendBeacon(GOOGLE_APPS_SCRIPT_URL, blob);
             } catch (e) { /* 무시 */ }
+        }
+        window.addEventListener('beforeunload', () => flushPendingChangesOnExit(true));
+        // 모바일 브라우저는 앱 전환/탭 종료 때 beforeunload를 안 부르는 경우가 많아서, 화면이 가려질 때도 보관함을 갱신함
+        window.addEventListener('pagehide', () => flushPendingChangesOnExit(false));
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') flushPendingChangesOnExit(false);
         });
         
         // ===== 사번별 로그인 =====
@@ -1823,6 +2106,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         // (여기서 서버를 또 호출하면 느린 GAS 왕복을 로그인마다 불필요하게 두 번 하게 됨)
                         await initAppUI();
                         await loadAllFromServer(result);
+                        await restorePendingOutboxAfterLogin(result); // 지난번에 서버에 못 올린 변경분이 있으면 되살림
                     }
                 } else {
                     errEl.textContent = result.message || '로그인에 실패했습니다';
@@ -2129,7 +2413,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         ];
 
         function logout() {
-            confirmModal('로그아웃할까요? 다시 사번과 비밀번호를 입력해야 합니다.', () => {
+            const pendingNotice = hasPendingOutbox()
+                ? '\n\n아직 서버에 저장되지 못한 변경 내용이 있습니다. 이 기기에 보관해두었다가 다음에 이 기기에서 로그인하면 다시 저장합니다.'
+                : '';
+            confirmModal('로그아웃할까요? 다시 사번과 비밀번호를 입력해야 합니다.' + pendingNotice, () => {
                 localStorage.removeItem('employeeId');
                 localStorage.removeItem('passwordHash');
                 ACCOUNT_SCOPED_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));

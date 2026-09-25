@@ -757,15 +757,22 @@
                 const category = box.dataset.category;
                 const observer = new ResizeObserver(() => {
                     if (box.classList.contains('collapsed')) return;
+                    // 다른 날짜로 넘어가며 박스가 화면에서 빠질 때도 높이 0으로 한 번 호출되므로 무시함
+                    if (!box.isConnected) return;
                     // offsetHeight(테두리 포함 전체 높이)를 사용해야
                     // 저장/복원 시 적용하는 style height와 기준이 일치함
                     const h = Math.round(box.offsetHeight);
-                    if (!dateCategoryBoxHeights[dateForResize]) dateCategoryBoxHeights[dateForResize] = {};
-                    if (dateCategoryBoxHeights[dateForResize][category] !== h) {
-                        dateCategoryBoxHeights[dateForResize][category] = h;
-                        queueCategoryHeightSave();
+                    // 사용자가 모서리를 직접 끌어 크기를 바꾼 경우(브라우저가 style.height를 넣어줌)에만 저장함.
+                    // 예전에는 날짜를 열기만 해도 자동 높이가 저장돼, 열어본 날짜 수만큼 값이 끝없이 쌓이고
+                    // 날짜를 누를 때마다 서버 저장까지 일어났음
+                    if (h > 0 && box.style.height) {
+                        if (!dateCategoryBoxHeights[dateForResize]) dateCategoryBoxHeights[dateForResize] = {};
+                        if (dateCategoryBoxHeights[dateForResize][category] !== h) {
+                            dateCategoryBoxHeights[dateForResize][category] = h;
+                            queueCategoryHeightSave();
+                        }
                     }
-                    
+
                     // 박스 크기가 어떤 이유로든 바뀔 때마다(수동 드래그 포함) textarea가 그 공간을 채우도록 함.
                     // mouseup 이벤트만으로는 브라우저에 따라 놓치는 경우가 있어 ResizeObserver로 이중 보강
                     fillTextareaToFitBox(box, category);

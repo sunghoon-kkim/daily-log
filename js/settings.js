@@ -138,6 +138,7 @@
                         statusEl.textContent = `✅ ${data.restoredDateCount || 0}일치를 되돌렸습니다. 화면을 새로고침합니다...`;
                         statusEl.className = 'ai-status success';
                         await loadAllFromServer(); // 되돌린 내용을 화면에 반영
+                        clearPendingOutbox(); // 되돌리기 전에 못 올린 변경분이 다음 로그인 때 되돌린 내용 위에 다시 얹히지 않게 함
                         loadMyBackups(); // 방금 만들어진 "되돌리기 전" 백업이 목록에 보이도록 새로고침
                     } else {
                         statusEl.textContent = '⚠️ ' + (data.message || '복구에 실패했습니다');
