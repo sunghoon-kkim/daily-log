@@ -341,6 +341,36 @@
             <div class="ai-status" data-empty-message-group="ai" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 AI 기능이 없습니다. 관리자에게 문의해주세요.</div>
             <div class="ai-status error" id="aiApiKeyMissingMsg" style="display:none; margin-bottom:20px;">🔑 환경설정 탭에서 AI API 키를 입력해주세요.</div>
 
+            <div class="ai-container" data-feature="askMyLog" style="margin-bottom: 25px;">
+                <h3 style="margin-bottom: 10px;">💬 내 기록에게 물어보기</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 16px;">활동기록·정비이력·일정·개선과제·메모에서 관련 내용을 찾아, <b>기록에 적힌 것만</b> 근거로 답합니다. 답의 [#번호]를 누르면 원본 기록을 확인할 수 있고, 기록에 없으면 "찾을 수 없습니다"라고 답합니다.</p>
+                <div class="ai-revise-row">
+                    <input type="text" id="askLogInput" class="ai-revise-input" placeholder="예: 3번 냉동기 작년에 뭐 교체했지?" onkeydown="if (event.key === 'Enter' && !event.isComposing) askMyLog()">
+                    <button class="ai-revise-btn" id="askLogBtn" onclick="askMyLog()">💬 질문하기</button>
+                </div>
+                <div class="ask-log-examples">
+                    <button type="button" class="quick-preset-btn" onclick="fillAskLogExample('보일러 트립 났을 때 원인이랑 조치 정리해줘')">보일러 트립 원인·조치</button>
+                    <button type="button" class="quick-preset-btn" onclick="fillAskLogExample('최근 3개월 동안 누설 관련 기록 알려줘')">최근 3개월 누설 기록</button>
+                    <button type="button" class="quick-preset-btn" onclick="fillAskLogExample('냉각탑 마지막으로 정비한 게 언제야?')">냉각탑 마지막 정비</button>
+                </div>
+                <div class="ai-loading" id="askLogLoading">🔎 질문을 이해하는 중입니다...</div>
+
+                <div class="ai-result-block" id="askLogResultBlock" style="display:none;">
+                    <div class="ai-block-label-row">
+                        <label class="ai-block-label">답변</label>
+                        <button class="ai-copy-btn" onclick="copyAskLogAnswer()">📋 복사</button>
+                    </div>
+                    <div class="ask-log-answer" id="askLogAnswer"></div>
+                    <div class="ai-status error" id="askLogWarning" style="display:none; margin-top:10px;"></div>
+                    <div class="ask-log-meta" id="askLogMeta"></div>
+                    <details class="ask-log-sources-details" id="askLogSourcesDetails">
+                        <summary>📚 AI가 참고한 원본 기록 보기</summary>
+                        <div id="askLogSources"></div>
+                    </details>
+                </div>
+                <div class="ai-status" id="askLogStatus"></div>
+            </div>
+
             <div class="ai-container" data-feature="dailySummary">
                 <h3 style="margin-bottom: 10px;">📝 일일 업무 요약 (퇴근 전 보고용)</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 20px;">날짜를 선택하면 그날 작성한 활동기록·예정작업을 바탕으로, 팀에 공유하는 번호 목록 형태로 짧게 정리해줍니다.</p>
@@ -609,6 +639,47 @@
         <div id="trend" class="tab-content">
             <div class="ai-status" data-empty-message-group="trend" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 기능이 없습니다. 관리자에게 문의해주세요.</div>
             <div class="ai-status error" id="trendApiKeyMissingMsg" style="display:none; margin-bottom:20px;">🔑 환경설정 탭에서 AI API 키를 입력해주세요.</div>
+
+            <div class="query-container" data-feature="gaugePhotoReading" style="margin-bottom: 25px;">
+                <h3 style="margin-bottom: 10px;">📷 계기판 사진으로 기록하기</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 16px;">압력계·온도계·유량계·운전 패널을 찍으면 AI가 수치를 읽어줍니다. <b>읽은 값은 사진과 대조해 확인·수정한 뒤에</b> 활동기록에 남기고, 같은 설비의 판독값을 모아 경향 분석으로 보낼 수 있습니다. 사진은 저장되지 않습니다.</p>
+
+                <div class="trend-input-row">
+                    <div class="query-control-group" style="flex:1;">
+                        <label>설비명 (선택 — 적어두면 같은 설비끼리 묶어서 경향을 봅니다)</label>
+                        <input type="text" id="gaugeEquipmentInput" placeholder="예: 1번 보일러" list="equipmentNameList">
+                    </div>
+                </div>
+
+                <input type="file" id="gaugePhotoInput" accept="image/*" capture="environment" multiple style="display:none;" onchange="handleGaugePhotoInput(this)">
+                <div class="gauge-photo-row">
+                    <button type="button" class="add-category-btn" onclick="document.getElementById('gaugePhotoInput').click()">📷 사진 찍기 / 선택</button>
+                    <span class="gauge-photo-hint">최대 4장까지 한 번에 판독</span>
+                </div>
+                <div class="gauge-thumbs" id="gaugePhotoThumbs"></div>
+
+                <button class="ai-generate-btn" id="gaugeReadBtn" onclick="readGaugePhotos()" style="margin-top:14px;" disabled>🔍 수치 읽기</button>
+                <div class="ai-loading" id="gaugeLoading">🤖 사진 속 계기를 읽는 중입니다...</div>
+
+                <div class="ai-result-block" id="gaugeResultBlock" style="display:none;">
+                    <label class="ai-block-label">판독 결과 — 사진과 대조해 틀린 값은 바로 고쳐주세요</label>
+                    <div class="gauge-table-wrap">
+                        <table class="gauge-table">
+                            <thead><tr><th>항목</th><th>값</th><th>단위</th><th>판독 상태</th><th></th></tr></thead>
+                            <tbody id="gaugeReadingsBody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="ai-copy-btn" onclick="addGaugeReadingRow()" style="margin-top:8px;">➕ 줄 추가</button>
+
+                    <div class="gauge-save-row">
+                        <input type="date" id="gaugeDateInput">
+                        <select id="gaugeCategorySelect"></select>
+                        <button type="button" class="add-category-btn" onclick="saveGaugeToRecord()">📅 활동기록에 추가</button>
+                        <button type="button" class="ai-revise-btn" data-feature="trendAnalysis" onclick="sendGaugeToTrend()">📈 경향 분석으로 보내기</button>
+                    </div>
+                </div>
+                <div class="ai-status" id="gaugeStatus"></div>
+            </div>
 
             <div class="query-container" data-feature="trendAnalysis">
                 <h3 style="margin-bottom: 10px;">📈 설비 데이터 경향 분석</h3>
@@ -1585,6 +1656,7 @@
     <script src="js/calendar-activity.js"></script>
     <script src="js/todo-memo.js"></script>
     <script src="js/ai-helper.js"></script>
+    <script src="js/ask-log.js"></script>
     <script src="js/savings-projects.js"></script>
     <script src="js/trend-analysis.js"></script>
     <script src="js/maintenance.js"></script>

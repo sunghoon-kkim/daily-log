@@ -183,6 +183,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 key: 'ai',
                 label: '🤖 AI 도우미',
                 features: {
+                    askMyLog: '💬 내 기록에게 물어보기',
                     dailySummary: '📝 일일 업무 요약',
                     weeklySummary: '🗓️ 이번주 업무 요약',
                     monthlyFeedback: '🤖 AI 월별 피드백',
@@ -201,6 +202,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 key: 'trend',
                 label: '📈 설비 데이터 분석',
                 features: {
+                    gaugePhotoReading: '📷 계기판 사진 판독',
                     trendAnalysis: '📈 설비 데이터 경향 분석'
                 }
             },
@@ -686,7 +688,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const trendMsgEl = document.getElementById('trendApiKeyMissingMsg');
             if (trendMsgEl) trendMsgEl.style.display = hasKey ? 'none' : 'block';
 
-            ['dailySummaryBtn', 'weeklySummaryBtn', 'aiGenerateBtn', 'aiReviseBtn', 'trendAnalyzeBtn', 'trendReviseBtn'].forEach(id => {
+            ['askLogBtn', 'dailySummaryBtn', 'weeklySummaryBtn', 'aiGenerateBtn', 'aiReviseBtn', 'trendAnalyzeBtn', 'trendReviseBtn'].forEach(id => {
                 const btn = document.getElementById(id);
                 if (btn) btn.disabled = !hasKey;
             });

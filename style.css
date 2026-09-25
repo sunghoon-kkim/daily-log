@@ -3343,6 +3343,255 @@ html {
             color: #888;
             word-break: keep-all;
         }
+
+        .ask-log-examples {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .ask-log-answer {
+            white-space: pre-wrap;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
+            line-height: 1.7;
+            font-size: 14px;
+            padding: 14px 16px;
+            border: 2px solid #1dd1a1;
+            border-radius: 8px;
+            background: #f6fffb;
+        }
+
+        .ask-log-cite {
+            display: inline-block;
+            margin: 0 2px;
+            padding: 0 7px;
+            border: none;
+            border-radius: 10px;
+            background: #e8ebfd;
+            color: #4453c4;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.6;
+            cursor: pointer;
+            vertical-align: baseline;
+        }
+
+        .ask-log-cite.invalid {
+            background: #fdeaea;
+            color: #c0392b;
+            cursor: default;
+        }
+
+        .ask-log-meta {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #888;
+            word-break: keep-all;
+        }
+
+        .ask-log-sources-details {
+            margin-top: 12px;
+        }
+
+        .ask-log-sources-details summary {
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            padding: 6px 0;
+        }
+
+        .ask-log-source {
+            margin-top: 8px;
+            padding: 10px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+
+        .ask-log-source.cited {
+            border-color: #8f9bf0;
+            background: #f4f5ff;
+        }
+
+        .ask-log-source.flash {
+            animation: askLogFlash 1.2s ease;
+        }
+
+        @keyframes askLogFlash {
+            0%, 40% { box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.55); }
+            100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
+        }
+
+        .ask-log-source-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+
+        .ask-log-source-head > span:nth-child(2) {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .ask-log-source-num {
+            font-weight: 700;
+            color: #4453c4;
+        }
+
+        .ask-log-source-text {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .gauge-photo-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 14px;
+        }
+
+        .gauge-photo-hint {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .gauge-thumbs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .gauge-thumb {
+            position: relative;
+            width: 88px;
+            height: 88px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #ddd;
+        }
+
+        .gauge-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .gauge-thumb-num {
+            position: absolute;
+            left: 4px;
+            top: 4px;
+            padding: 0 6px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .gauge-thumb-remove {
+            position: absolute;
+            right: 4px;
+            top: 4px;
+            width: 22px;
+            height: 22px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 14px;
+            line-height: 22px;
+            padding: 0;
+            cursor: pointer;
+        }
+
+        .gauge-table-wrap {
+            overflow-x: auto;
+            margin-top: 8px;
+        }
+
+        .gauge-table {
+            width: 100%;
+            min-width: 460px;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .gauge-table th {
+            text-align: left;
+            font-weight: 600;
+            color: #666;
+            padding: 6px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .gauge-table td {
+            padding: 4px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .gauge-table input {
+            width: 100%;
+            padding: 7px 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            box-sizing: border-box;
+        }
+
+        .gauge-row.conf-medium td:nth-child(2) input {
+            border-color: #f0b429;
+            background: #fff8e6;
+        }
+
+        .gauge-row.conf-low td:nth-child(2) input {
+            border-color: #e74c3c;
+            background: #fdeeee;
+        }
+
+        .gauge-conf {
+            white-space: nowrap;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .gauge-row.conf-medium .gauge-conf { color: #b7791f; font-weight: 600; }
+        .gauge-row.conf-low .gauge-conf { color: #c0392b; font-weight: 600; }
+
+        .gauge-row-remove {
+            border: none;
+            background: none;
+            color: #999;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .gauge-save-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px dashed #ccc;
+        }
+
+        .gauge-save-row input[type="date"],
+        .gauge-save-row select {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 13px;
+        }
         
         .ai-status {
             margin-top: 15px;
@@ -5497,4 +5746,78 @@ body {
 /* 기본은 라이트(color-scheme: only light). 사용자가 다크모드를 직접 고른 경우에만 스크롤바·기본 입력칸도 어둡게 */
 :root.dark-mode {
     color-scheme: dark;
+}
+
+/* 내 기록에게 물어보기 / 계기판 사진 판독 - 다크모드 */
+.dark-mode .ask-log-answer {
+    background: #1a3a30;
+    border-color: #1dd1a1;
+    color: var(--d-text1);
+}
+
+.dark-mode .ask-log-cite {
+    background: #2f3566;
+    color: #b7c0ff;
+}
+
+.dark-mode .ask-log-cite.invalid {
+    background: #4a2326;
+    color: #ff9a8f;
+}
+
+.dark-mode .ask-log-sources-details summary,
+.dark-mode .ask-log-source-head,
+.dark-mode .ask-log-meta,
+.dark-mode .gauge-photo-hint,
+.dark-mode .gauge-conf,
+.dark-mode .gauge-table th {
+    color: var(--d-text2);
+}
+
+.dark-mode .ask-log-source {
+    background: var(--d-bg2);
+    border-color: var(--d-border);
+}
+
+.dark-mode .ask-log-source.cited {
+    background: #262a4a;
+    border-color: #5b66c9;
+}
+
+.dark-mode .ask-log-source-num {
+    color: #b7c0ff;
+}
+
+.dark-mode .gauge-thumb {
+    border-color: var(--d-border);
+}
+
+.dark-mode .gauge-table th,
+.dark-mode .gauge-table td {
+    border-color: var(--d-border);
+}
+
+.dark-mode .gauge-table input,
+.dark-mode .gauge-save-row input[type="date"],
+.dark-mode .gauge-save-row select {
+    background: var(--d-bg3);
+    border-color: var(--d-border);
+    color: var(--d-text1);
+}
+
+.dark-mode .gauge-row.conf-medium td:nth-child(2) input {
+    background: #3a3218;
+    border-color: #f0b429;
+}
+
+.dark-mode .gauge-row.conf-low td:nth-child(2) input {
+    background: #3f1f22;
+    border-color: #e74c3c;
+}
+
+.dark-mode .gauge-row.conf-medium .gauge-conf { color: #f0c05a; }
+.dark-mode .gauge-row.conf-low .gauge-conf { color: #ff9a8f; }
+
+.dark-mode .gauge-save-row {
+    border-color: var(--d-border);
 }

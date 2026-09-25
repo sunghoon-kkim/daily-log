@@ -2,7 +2,7 @@
 // (Google Sheets 데이터 동기화는 항상 네트워크로 이루어지므로, 오프라인이어도 화면은 뜨지만
 //  최신 데이터 동기화는 인터넷이 연결되어야 정상 작동합니다)
 
-const CACHE_NAME = 'activity-calendar-v5';
+const CACHE_NAME = 'activity-calendar-v6';
 // index.html에 인라인이던 CSS/JS를 style.css/script.js로 분리하면서 캐싱 대상도 같이 추가함.
 // (예전에 이 파일들을 실제로 만들지 않은 채로 캐싱만 시도했다가 cache.addAll이 통째로 실패해서
 //  install 자체가 항상 실패하던 버그가 있었음 - 이번엔 실제로 존재하는 파일들이라 안전함)
@@ -17,6 +17,7 @@ const CORE_ASSETS = [
   './js/calendar-activity.js',
   './js/todo-memo.js',
   './js/ai-helper.js',
+  './js/ask-log.js',
   './js/savings-projects.js',
   './js/trend-analysis.js',
   './js/maintenance.js',

@@ -1080,6 +1080,9 @@ function doPost(e) {
     if (data.action === "goalRevise") return handleGoalRevise(data);
     if (data.action === "trendAnalysis") return handleTrendAnalysis(data);
     if (data.action === "trendRevise") return handleTrendRevise(data);
+    if (data.action === "askLogPlan") return handleAskLogPlan(data);
+    if (data.action === "askLog") return handleAskLog(data);
+    if (data.action === "gaugeRead") return handleGaugeRead(data);
     if (data.action === "signup") return handleSignup(data);
     if (data.action === "changePassword") return handleChangePassword(data);
     if (data.action === "requestPasswordReset") return handleRequestPasswordReset(data);
@@ -3210,6 +3213,165 @@ function handleTrendRevise(data) {
   contents.push({ role: "user", parts: [{ text: instruction }] });
 
   return callGeminiAndRespond(apiKey, contents, buildTrendSystemPrompt());
+}
+
+// AI 응답에서 JSON 부분만 떼어 파싱(코드블록 표시나 앞뒤 설명이 붙어 와도 처리). 실패하면 null
+function extractJsonFromAiText(text) {
+  const s = String(text || "");
+  const start = s.search(/[\[{]/);
+  const end = Math.max(s.lastIndexOf("}"), s.lastIndexOf("]"));
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(s.slice(start, end + 1));
+  } catch (e) {
+    return null;
+  }
+}
+
+// ===== 내 기록에게 물어보기 =====
+// 1단계(askLogPlan): 질문에서 검색어/기간만 뽑음. 실제 기록 검색은 화면(브라우저)이 함
+// 2단계(askLog): 화면이 찾아 보낸 기록만 근거로 답함
+function buildAskLogPlanSystemPrompt() {
+  return (
+    "당신은 설비 유지보수 업무일지 검색을 돕는 도우미입니다. 사용자의 질문을 읽고, 일지에서 관련 기록을 찾기 위한 검색어와 기간만 뽑아주세요. 질문에 답하지는 마세요.\n\n" +
+    "=== 검색어(keywords) ===\n" +
+    "- 질문의 대상이 되는 설비명, 부품명, 현상, 작업 내용을 반드시 포함하세요.\n" +
+    "- 현장 일지에서 같은 뜻으로 쓰일 만한 표기 변형과 동의어도 함께 넣으세요. (예: 갈았다 → 교체, 교환 / 샌다 → 누설, 누수 / 3번 냉동기 → 3번 냉동기, 냉동기 3, 3호기, #3)\n" +
+    "- 조사(은/는/을/를/에 등)나 어미는 붙이지 말고, 한두 단어짜리 짧은 검색어로 2~12개 만드세요.\n" +
+    "- '뭐', '언제', '기록', '내용'처럼 검색에 도움이 안 되는 말은 넣지 마세요.\n\n" +
+    "=== 기간(from/to) ===\n" +
+    "- 질문에 기간 표현(작년, 지난달, 올해 3월, 최근 한 달 등)이 있을 때만 [오늘 날짜] 기준으로 계산해 YYYY-MM-DD로 채우세요.\n" +
+    "- 기간 표현이 없으면 둘 다 빈 문자열로 두세요. 임의로 기간을 좁히지 마세요.\n\n" +
+    "=== 출력 형식 ===\n" +
+    "다른 설명 없이 JSON 객체 하나만 출력하세요:\n" +
+    '{"keywords": ["검색어1", "검색어2"], "from": "", "to": ""}'
+  );
+}
+
+function handleAskLogPlan(data) {
+  const apiKey = resolveApiKey(data);
+  if (!apiKey) return missingKeyResponse();
+
+  const question = String(data.question || "").trim();
+  if (!question) return jsonResponse({ status: "error", message: "질문을 입력해주세요." });
+
+  const userPrompt = `[오늘 날짜] ${data.today || ""}\n[질문] ${question}`;
+  const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
+
+  try {
+    const raw = callGeminiRawText(apiKey, contents, buildAskLogPlanSystemPrompt(), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
+    const parsed = extractJsonFromAiText(raw) || {};
+    const keywords = (Array.isArray(parsed.keywords) ? parsed.keywords : [])
+      .map(k => String(k || "").trim())
+      .filter(k => k && k.length <= 30)
+      .slice(0, 15);
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+    return jsonResponse({
+      status: "success",
+      keywords: keywords,
+      from: isDate(parsed.from) ? parsed.from : "",
+      to: isDate(parsed.to) ? parsed.to : ""
+    });
+  } catch (error) {
+    return jsonResponse({ status: "error", message: error.message || error.toString() });
+  }
+}
+
+function buildAskLogSystemPrompt() {
+  return (
+    "당신은 사용자가 직접 작성한 설비 업무일지를 찾아 읽고 질문에 답하는 도우미입니다. 아래 [검색된 기록]이 당신이 아는 전부입니다.\n\n" +
+    "=== 절대 원칙 (어떤 경우에도 반드시 지킬 것) ===\n" +
+    "- 없는 말을 있는 것처럼 절대 지어내지 마세요. 이것이 가장 중요한 규칙입니다.\n" +
+    "- 답변에 쓰는 모든 사실(날짜, 수치, 설비명, 부품명, 원인, 조치, 담당자, 결과)은 반드시 [검색된 기록]에 실제로 적혀 있는 것이어야 합니다.\n" +
+    "- 기록에 없는 내용을 추측하거나, 일반적인 설비 지식으로 빈칸을 채우거나, 그럴듯하게 보충하지 마세요.\n" +
+    "- 기록에 원인이 적혀 있지 않으면 원인을 쓰지 마세요. 기록에 결과가 적혀 있지 않으면 결과를 쓰지 마세요.\n" +
+    "- 기록 내용을 요약할 때도 원문의 의미를 바꾸거나 부풀리지 마세요. 애매하면 원문 표현을 그대로 옮기세요.\n" +
+    "- [검색된 기록]에서 답을 찾을 수 없으면 \"기록에서 찾을 수 없습니다.\"라고만 답하세요. 비슷한 다른 기록이 있으면 '질문과 정확히 일치하는 기록은 없지만 관련 기록은 이렇습니다'라고 구분해서 알려주세요.\n" +
+    "- 일부만 기록에 있으면, 있는 부분만 답하고 없는 부분은 '기록 없음'이라고 분명히 밝히세요.\n" +
+    "- 권고, 추천, 일반적인 조언은 덧붙이지 마세요. 사용자가 명시적으로 의견을 물어도 기록에 근거한 사실만 정리하세요.\n\n" +
+    "=== 출처 표기 ===\n" +
+    "- 사실을 쓴 문장 끝마다 근거가 된 기록 번호를 [#번호] 형식으로 붙이세요. (예: 3번 냉동기 오일필터 교체함 [#4])\n" +
+    "- 출처 번호를 붙일 수 없는 문장은 쓰지 마세요. [검색된 기록]에 없는 번호를 만들어내지 마세요.\n" +
+    "- 날짜가 있는 기록은 문장 안에 날짜도 함께 쓰세요.\n\n" +
+    "=== 답변 형식 ===\n" +
+    "- 첫 줄에 질문에 대한 한 줄 결론을 쓰고, 이어서 근거가 되는 기록을 날짜순으로 '- ' 목록으로 정리하세요.\n" +
+    "- 마크다운 기호(**, # 등)는 쓰지 말고 순수 텍스트로 쓰세요."
+  );
+}
+
+function handleAskLog(data) {
+  const apiKey = resolveApiKey(data);
+  if (!apiKey) return missingKeyResponse();
+
+  const question = String(data.question || "").trim();
+  const contextText = String(data.contextText || "").trim();
+  if (!question) return jsonResponse({ status: "error", message: "질문을 입력해주세요." });
+  // 근거가 하나도 없으면 AI를 부르지 않음 - 부르면 그럴듯한 답을 지어낼 여지만 생김
+  if (!contextText) return jsonResponse({ status: "success", summary: "기록에서 찾을 수 없습니다." });
+
+  const userPrompt = `[오늘 날짜] ${data.today || ""}\n\n[질문]\n${question}\n\n[검색된 기록]\n${contextText}`;
+  const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
+  return callGeminiAndRespond(apiKey, contents, buildAskLogSystemPrompt());
+}
+
+// ===== 계기판 사진 판독 =====
+const GAUGE_MAX_IMAGES = 4;
+
+function buildGaugeReadSystemPrompt() {
+  return (
+    "당신은 설비 현장의 계기(압력계, 온도계, 유량계, 레벨계, 디지털 표시기, 운전 패널 화면)를 사진으로 판독하는 도우미입니다.\n\n" +
+    "=== 절대 원칙 ===\n" +
+    "- 사진에서 실제로 보이는 값만 읽으세요. 없는 값을 지어내거나 추측으로 숫자를 채우지 마세요.\n" +
+    "- 흐리거나, 반사되거나, 가려져서 확실히 읽을 수 없으면 value를 빈 문자열로 두고 confidence를 \"low\"로, note에 이유를 적으세요.\n" +
+    "- 바늘식(아날로그) 계기는 바늘 위치와 눈금 간격을 근거로 읽고, 눈금 사이 값을 어림한 경우 confidence는 \"medium\" 이하로 하세요.\n" +
+    "- 디지털 숫자가 선명하게 보이면 confidence는 \"high\"입니다.\n" +
+    "- 단위는 계기에 표시된 것만 쓰세요. 표시가 없으면 빈 문자열로 두세요. 단위를 추측하지 마세요.\n\n" +
+    "=== 항목 이름(label) ===\n" +
+    "- 계기에 적힌 태그 번호나 항목명(예: PI-101, 공급압력, TOC)이 보이면 그대로 쓰세요.\n" +
+    "- 보이지 않으면 '압력계(왼쪽)', '디지털 표시기(상단)'처럼 종류와 위치로 구분하세요.\n" +
+    "- 한 사진에 계기가 여러 개면 각각 따로 항목을 만드세요.\n\n" +
+    "=== 설비명(equipment) ===\n" +
+    "- 사진 속 명판이나 태그에서 설비명이 확인되면 쓰고, 아니면 [사용자 메모]의 설비명을 쓰세요. 둘 다 없으면 빈 문자열로 두세요.\n\n" +
+    "=== 출력 형식 ===\n" +
+    "다른 설명 없이 JSON 객체 하나만 출력하세요:\n" +
+    '{"equipment": "", "readings": [{"photo": 1, "label": "항목명", "value": "4.2", "unit": "kg/cm²", "confidence": "high", "note": ""}]}\n' +
+    "photo는 몇 번째 사진인지(1부터)입니다. 계기를 하나도 찾지 못했으면 readings를 빈 배열로 두세요."
+  );
+}
+
+function handleGaugeRead(data) {
+  const apiKey = resolveApiKey(data);
+  if (!apiKey) return missingKeyResponse();
+
+  const images = (Array.isArray(data.images) ? data.images : [])
+    .filter(img => img && /^image\/(jpeg|png|webp)$/.test(img.mimeType) && typeof img.data === "string" && img.data)
+    .slice(0, GAUGE_MAX_IMAGES);
+  if (images.length === 0) return jsonResponse({ status: "error", message: "판독할 사진이 없습니다." });
+
+  const hint = String(data.hint || "").trim();
+  const parts = images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
+  parts.push({ text: `[사진 ${images.length}장]\n[사용자 메모] 설비명: ${hint || "(없음)"}` });
+  const contents = [{ role: "user", parts: parts }];
+
+  try {
+    const raw = callGeminiRawText(apiKey, contents, buildGaugeReadSystemPrompt());
+    const parsed = extractJsonFromAiText(raw);
+    if (!parsed || !Array.isArray(parsed.readings)) {
+      return jsonResponse({ status: "error", message: "판독 결과를 해석하지 못했습니다. 다시 시도해주세요." });
+    }
+    const confidences = ["high", "medium", "low"];
+    const readings = parsed.readings.slice(0, 30).map(r => ({
+      photo: Number(r && r.photo) || 1,
+      label: String((r && r.label) || "").trim(),
+      value: String((r && r.value) == null ? "" : r.value).trim(),
+      unit: String((r && r.unit) || "").trim(),
+      confidence: confidences.indexOf(r && r.confidence) >= 0 ? r.confidence : "low",
+      note: String((r && r.note) || "").trim()
+    }));
+    return jsonResponse({ status: "success", equipment: String(parsed.equipment || "").trim(), readings: readings });
+  } catch (error) {
+    return jsonResponse({ status: "error", message: error.message || error.toString() });
+  }
 }
 
 // ===== 날짜별 읽기용 표 만들기 (시트 동기화) =====

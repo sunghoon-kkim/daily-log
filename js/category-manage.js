@@ -349,6 +349,7 @@
                 <button class="category-select-btn${archivedCategories.includes(category) ? ' archived' : ''}" data-category="${escapeHtml(category)}" onclick="selectCategoryForQuery('${escapeForOnclickArg(category)}')">${archivedCategories.includes(category) ? '📦 ' : ''}${escapeHtml(category)}</button>
             `).join('');
             if (typeof refreshSearchCategoryOptions === 'function') refreshSearchCategoryOptions();
+            if (typeof refreshGaugeCategoryOptions === 'function') refreshGaugeCategoryOptions();
             // 다시 그려도 기존 선택 상태가 유지되게 함
             container.querySelectorAll('.category-select-btn').forEach(btn => {
                 btn.classList.toggle('selected', selectedCategoriesForQuery.has(btn.dataset.category));
