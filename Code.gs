@@ -2788,6 +2788,13 @@ function buildSystemPrompt() {
     "- 과거 피드백의 개선 과제와 관련해 이번 달 [일일 기록 원본]에 실제로 수행한 내역이 있는 경우에만 그 연계 성과로 기술하세요. [일일 기록 원본]에 없는 사실을 과거 이력만 보고 지어내거나 과장하는 것은 엄격히 금지합니다.\n" +
     "- 과거 이력과 연계할 근거가 [일일 기록 원본]에 없다면, 억지로 연결짓지 말고 이번 달 기록된 사실 위주로만 작성하세요.\n" +
     "- [과거 피드백 이력]이 주어지지 않으면 이번 달 [일일 기록 원본]만 근거로 작성하세요.\n\n" +
+    "=== [직전 개선 과제 이행 점검 대상] 활용 원칙 (함께 주어질 때만 해당) ===\n" +
+    "목표는 지난달 지적·계획된 개선 과제가 이번 달에 어떻게 이어졌는지 보여줘, 월별 피드백이 성장 흐름으로 읽히게 하는 것입니다.\n" +
+    "- 이 블록의 개선 과제를 항목별로 나눠, 각각에 대해 [일일 기록 원본]에서 관련 실행 기록을 찾으세요.\n" +
+    "- 실행 근거가 있으면: '잘한점(한일)'의 ③ 실행 전략 및 노력 과정 또는 ④ 성과 및 결과에 '전월 개선 과제(과제 요지) 이행: 실제 기록 내용' 형태로, 기록에 있는 날짜·설비·조치를 인용해 기술하세요.\n" +
+    "- 일부만 실행했으면: 한 부분은 '잘한점'에, 남은 부분은 '개선/보완할 점'에 '전월 과제 지속 추진: ...'으로 이어서 기술하세요.\n" +
+    "- 실행 근거가 없으면: 이행했다고 쓰지 말고, '개선/보완할 점'의 ① 부족했던 점에 '전월 과제(과제 요지) 미이행/이월'로 솔직하게 적고 ② 개선·보완 계획에 이번 달에는 어떻게 실천할지 구체적으로 제시하세요.\n" +
+    "- 팀장/상사가 제시한 개선 방향을 본인 계획보다 우선해서 점검하세요.\n\n" +
     "=== 출력 형식 (매우 중요) ===\n" +
     "다른 설명 없이 아래 JSON 객체 '하나만' 출력하세요:\n" +
     '{"good": "잘한점 내용", "improve": "개선점 내용"}\n' +
@@ -2803,9 +2810,12 @@ function handleSummarize(data) {
   const logText = data.logText || "";
   const periodLabel = data.periodLabel || "";
   const feedbackHistoryText = data.feedbackHistoryText || "";
+  const prevImproveCheckText = data.prevImproveCheckText || "";
 
+  // ai-helper.js doGenerateAISummary의 userPromptText와 똑같이 맞춰야 함(수정 요청 때 그 문자열을 대화 맥락으로 다시 보냄)
   const historyBlock = feedbackHistoryText ? `\n\n[과거 피드백 이력]\n${feedbackHistoryText}` : "";
-  const userPrompt = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}${historyBlock}`;
+  const checkBlock = prevImproveCheckText ? `\n\n[직전 개선 과제 이행 점검 대상]\n${prevImproveCheckText}` : "";
+  const userPrompt = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}${historyBlock}${checkBlock}`;
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
 
   return callGeminiSplitAndRespond(apiKey, contents, buildSystemPrompt());

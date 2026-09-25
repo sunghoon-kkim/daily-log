@@ -3328,6 +3328,21 @@ html {
             opacity: 0.6;
             cursor: not-allowed;
         }
+
+        .ai-save-history-row {
+            margin-top: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .ai-save-history-hint {
+            flex: 1 1 240px;
+            font-size: 12px;
+            color: #888;
+            word-break: keep-all;
+        }
         
         .ai-status {
             margin-top: 15px;

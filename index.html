@@ -465,6 +465,11 @@
                             <button class="ai-revise-btn" id="aiReviseBtn" onclick="reviseAISummary()">🔄 수정 반영</button>
                         </div>
                     </div>
+
+                    <div class="ai-save-history-row" data-feature="monthlyFeedbackHistory">
+                        <button class="add-category-btn" id="aiSaveToHistoryBtn" onclick="saveAIFeedbackToHistory()">💾 피드백 이력에 저장</button>
+                        <span class="ai-save-history-hint">저장해두면 다음 달 피드백을 만들 때 이 달의 개선할 점을 얼마나 실천했는지 AI가 점검합니다</span>
+                    </div>
                 </div>
                 
                 <div class="ai-status" id="aiStatus"></div>

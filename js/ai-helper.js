@@ -342,6 +342,7 @@
         }
 
         let aiConversationHistory = []; // [{role:'user'|'model', text:'...'}] - raw(JSON원문)을 저장해 맥락 유지
+        let lastGeneratedFeedbackMonth = ''; // 생성 후 기간 입력을 바꿔도 "이력에 저장"은 생성했던 달로 들어가야 함
 
         // "생성하기"는 대화로 다듬어온 내용(aiConversationHistory)을 확인 없이 통째로 덮어썼음.
         // 최초 생성 직후엔 history가 정확히 2개(사용자 프롬프트+모델 응답)이고, 다듬기(revise)를
@@ -384,7 +385,10 @@
                 logText += `\n\n[등록된 개선/절감 과제 현황]\n${projectsSummary}`;
             }
 
-            const feedbackHistoryText = buildFeedbackHistoryContextText();
+            // 기간이 달을 걸쳐도(예: 8/26~9/25) 피드백은 끝나는 달의 것으로 봄
+            const targetMonth = endStr.slice(0, 7);
+            const feedbackHistoryText = buildFeedbackHistoryContextText(targetMonth);
+            const prevImproveCheckText = buildPrevImproveCheckText(targetMonth);
 
             btn.disabled = true;
             reviseBtn.disabled = true;
@@ -404,6 +408,7 @@
                         logText: logText,
                         periodLabel: periodLabel,
                         feedbackHistoryText: feedbackHistoryText,
+                        prevImproveCheckText: prevImproveCheckText,
                         userApiKey: personalAiApiKey
                     })
                 });
@@ -420,8 +425,13 @@
                     
                     // 새로운 요약을 생성했으니 대화 히스토리도 새로 시작
                     // (서버가 자기 응답 그대로를 model 턴으로 기억해야 다음 수정 요청에서 형식을 유지함)
+                    // Code.gs handleSummarize의 userPrompt와 똑같이 맞춰야 수정 요청 때 맥락이 유지됨
                     const historyBlock = feedbackHistoryText ? `\n\n[과거 피드백 이력]\n${feedbackHistoryText}` : '';
-                    const userPromptText = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}${historyBlock}`;
+                    const checkBlock = prevImproveCheckText ? `\n\n[직전 개선 과제 이행 점검 대상]\n${prevImproveCheckText}` : '';
+                    const userPromptText = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}${historyBlock}${checkBlock}`;
+                    lastGeneratedFeedbackMonth = targetMonth;
+                    const saveBtn = document.getElementById('aiSaveToHistoryBtn');
+                    if (saveBtn) saveBtn.textContent = `💾 ${formatYearMonthLabel(targetMonth)} 피드백 이력에 저장`;
                     aiConversationHistory = [
                         { role: 'user', text: userPromptText },
                         { role: 'model', text: data.raw || JSON.stringify({ good: data.good, improve: data.improve }) }
@@ -637,12 +647,18 @@
             statusEl.className = 'ai-status success';
         }
 
-        // 지금까지 저장된 월별 피드백 이력을 AI 월별 피드백 생성 프롬프트에 참고 컨텍스트로 넣기 좋은
-        // 텍스트로 합침(오래된 달 → 최근 달 순). 내용이 하나도 없는 달은 건너뜀
-        function buildFeedbackHistoryContextText() {
-            const months = Object.keys(monthlyFeedbacks).sort();
+        const FEEDBACK_HISTORY_LOOKBACK_MONTHS = 3;
+
+        // 대상 월 바로 이전 N개월(오래된 달 → 최근 달). 대상 월 자신과 그 이후 달은 참고하면 안 됨
+        function getFeedbackLookbackMonths(targetMonth) {
+            const months = [];
+            for (let i = FEEDBACK_HISTORY_LOOKBACK_MONTHS; i >= 1; i--) months.push(shiftYearMonth(targetMonth, -i));
+            return months;
+        }
+
+        function buildFeedbackHistoryContextText(targetMonth) {
             const parts = [];
-            for (const ym of months) {
+            for (const ym of getFeedbackLookbackMonths(targetMonth)) {
                 const r = monthlyFeedbacks[ym];
                 if (!r) continue;
                 const lines = [];
@@ -655,6 +671,55 @@
                 if (lines.length > 0) parts.push(`[${ym}]\n${lines.join('\n')}`);
             }
             return parts.join('\n\n');
+        }
+
+        // 참고 범위 안에서 개선할 점이 적혀 있는 가장 최근 달 하나 - AI가 항목별로 이행 여부를 점검할 대상
+        function buildPrevImproveCheckText(targetMonth) {
+            const months = getFeedbackLookbackMonths(targetMonth).reverse();
+            for (const ym of months) {
+                const r = monthlyFeedbacks[ym];
+                if (!r || (!r.selfImprove && !r.receivedImprove)) continue;
+                const lines = [`[${ym}]`];
+                if (r.receivedImprove) lines.push(`팀장/상사가 제시한 개선 방향: ${r.receivedImprove}`);
+                if (r.selfImprove) lines.push(`본인이 세운 개선/보완 계획: ${r.selfImprove}`);
+                return lines.join('\n');
+            }
+            return '';
+        }
+
+        function saveAIFeedbackToHistory() {
+            if (!checkEditPermission()) return;
+            const statusEl = document.getElementById('aiStatus');
+            const ym = lastGeneratedFeedbackMonth;
+            const good = document.getElementById('aiGoodTextarea').value.trim();
+            const improve = document.getElementById('aiImproveTextarea').value.trim();
+            if (!ym || (!good && !improve)) {
+                statusEl.textContent = '저장할 피드백 내용이 없습니다';
+                statusEl.className = 'ai-status error';
+                return;
+            }
+
+            const existing = monthlyFeedbacks[ym] || {};
+            const doSave = () => {
+                const historyFormDirty = isFeedbackHistoryFormDirty();
+                monthlyFeedbacks[ym] = { ...existing, selfGood: good, selfImprove: improve, updatedAt: new Date().toISOString() };
+                safeSetItem('monthlyFeedbacks', JSON.stringify(monthlyFeedbacks));
+                queueSync();
+                // 이력 폼에 저장 안 한 수정이 있으면 그 입력을 날리지 않도록 화면은 그대로 둠
+                if (!historyFormDirty) {
+                    currentFeedbackHistoryMonth = ym;
+                    renderFeedbackHistoryForm();
+                }
+                statusEl.textContent = `✅ ${formatYearMonthLabel(ym)} 피드백 이력(자가 피드백)에 저장되었습니다`;
+                statusEl.className = 'ai-status success';
+            };
+
+            const willOverwrite = (existing.selfGood && existing.selfGood !== good) || (existing.selfImprove && existing.selfImprove !== improve);
+            if (willOverwrite) {
+                confirmModal(`${formatYearMonthLabel(ym)} 이력에 이미 저장된 자가 피드백이 있습니다. 지금 내용으로 덮어쓸까요? (평가등급과 상사 피드백은 그대로 유지됩니다)`, doSave, { confirmLabel: '덮어쓰기' });
+            } else {
+                doSave();
+            }
         }
 
         // ===== 목표수립 (KPI/핵심역량/성장계획/핵심가치/기타) - 전체 내용 한 번에 입력, 체크한 항목만 생성/개별 수정 =====
