@@ -309,6 +309,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 서버(Code.gs)가 recordRevisions를 별도 대용량 필드로 저장할 수 있는 버전인지. 구버전 서버에 보내면
         // 프로필 셀(5만자 제한)에 섞여 들어가므로, 서버가 지원한다고 알려준 경우에만 동기화 대상에 포함함
         let serverSupportsRecordRevisions = false;
+        // 여러 기기 동시 사용 보호: 마지막으로 서버와 맞춘 저장 버전과, 그 시점의 데이터 스냅샷.
+        // 저장 시 버전을 함께 보내 서버가 "그 사이 다른 기기가 저장했는지" 판단하게 하고, 충돌 나면
+        // 스냅샷을 기준으로 이 기기에서 바뀐 부분만 골라 서버 최신 내용 위에 다시 얹음 (resolveSyncConflict)
+        let serverBaseUpdatedAt = null;
+        let lastSyncedSnapshot = null;
 
         // 로그인 성공(자동 로그인 또는 직접 로그인) 후에만 호출됨. 로그인되기 전까지는
         // 이 함수가 아예 실행되지 않으므로, 화면에는 로그인 모달 외에 아무 데이터도 그려지지 않음
@@ -410,6 +415,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             // 자동으로 재동기화를 시도함(로그인 전이거나 아직 서버 데이터를 못 받아온 상태면
             // queueSync 안에서 알아서 무시됨)
             window.addEventListener('online', () => queueSync());
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') checkServerForNewerData();
+            });
 
             loadTeamReportParts(); // 회원가입 모달의 소속(파트) 선택지를 채우기 위해 로그인 전에도 불러옴
 
@@ -797,6 +805,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 weekdayTemplates
             };
             if (serverSupportsRecordRevisions) state.recordRevisions = recordRevisions;
+            if (serverBaseUpdatedAt) state.baseUpdatedAt = serverBaseUpdatedAt;
             return state;
         }
 
@@ -952,6 +961,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (data.recordRevisions && typeof data.recordRevisions === 'object' && !Array.isArray(data.recordRevisions)) {
                         recordRevisions = data.recordRevisions;
                     }
+                    serverBaseUpdatedAt = data.serverUpdatedAt || null;
 
                     cacheAllToLocalStorage();
 
@@ -971,6 +981,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (typeof renderWaterFlowDiagramTabs === 'function') renderWaterFlowDiagramTabs();
                     if (typeof renderWaterFlowCanvas === 'function') renderWaterFlowCanvas();
                     applyEditLockUI(); // 방금 받아온 이름을 상단 계정 표시에 반영
+                    lastSyncedSnapshot = snapshotSyncState(); // 지금 화면 = 서버 내용인 시점을 충돌 판단 기준으로 기억
+                    lastServerCheckAt = Date.now();
                 }
 
                 showSyncStatus('☁️ 동기화됨', 'ok');
@@ -984,6 +996,125 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         let syncTimeout = null;
+        function stripSyncCredentials(state) {
+            delete state.employeeId;
+            delete state.passwordHash;
+            delete state.baseUpdatedAt;
+            return state;
+        }
+
+        function snapshotSyncState() {
+            return stripSyncCredentials(JSON.parse(JSON.stringify(getFullState())));
+        }
+
+        // 충돌 안내에 표시할 이름 (화면 크기/접힘 상태 같은 사소한 설정은 안내하지 않음)
+        const SYNC_FIELD_LABELS = {
+            events: '일정', categories: '카테고리', categoryColors: '카테고리 색상', todo: '할일', freeNotesPages: '메모장',
+            maintenanceSchedule: '정비계획', savingsProjects: '개선과제', waterFlowDiagrams: '흐름도',
+            monthlyFeedbacks: '월별 피드백', recordSnippets: '상용구', weekdayTemplates: '요일 템플릿',
+            archivedCategories: '보관 카테고리', aiTemplate: 'AI 템플릿', categoryImages: '첨부 이미지'
+        };
+
+        // base(마지막으로 서버와 맞춘 상태) 기준으로 이 기기(local)와 서버(server) 각각의 변경을 합침.
+        // - 활동기록: 날짜·카테고리 칸 단위로, 이 기기에서 고친 칸만 이 기기 내용으로 덮음
+        //   (양쪽이 같은 칸을 고쳤으면 이 기기 내용을 쓰고, 서버 쪽 내용은 수정 이력에 보관)
+        // - 나머지 항목: 이 기기에서만 바뀐 항목은 이 기기 내용, 양쪽 다 바뀐 항목은 서버 내용
+        function mergeSyncStates(base, local, server) {
+            const result = { merged: {}, keptLocal: [], conflicted: [], recordConflicts: [] };
+            if (!base) return result; // 기준점이 없으면 안전하게 서버 내용을 그대로 씀
+            const same = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+
+            for (const key of Object.keys(local)) {
+                if (key === 'records' || key === 'recordRevisions') continue;
+                if (same(local[key], base[key])) continue; // 이 기기에서 안 바뀜
+                if (same(server[key], base[key])) { result.merged[key] = local[key]; result.keptLocal.push(key); }
+                else if (!same(local[key], server[key])) result.conflicted.push(key);
+            }
+
+            // 수정 이력은 칸별 보관함이라 양쪽 것을 합침
+            if (local.recordRevisions && !same(local.recordRevisions, base.recordRevisions)) {
+                result.merged.recordRevisions = Object.assign({}, local.recordRevisions, server.recordRevisions || {});
+            }
+
+            const lRec = local.records || {}, bRec = base.records || {}, sRec = server.records || {};
+            const mergedRecords = JSON.parse(JSON.stringify(sRec));
+            let recordChanged = false;
+            const dates = new Set(Object.keys(lRec).concat(Object.keys(bRec)));
+            for (const d of dates) {
+                const cats = new Set(Object.keys(lRec[d] || {}).concat(Object.keys(bRec[d] || {})));
+                for (const c of cats) {
+                    const l = (lRec[d] || {})[c] || '';
+                    const b = (bRec[d] || {})[c] || '';
+                    const sv = (sRec[d] || {})[c] || '';
+                    if (l === b || l === sv) continue; // 이 기기에서 안 고쳤거나 이미 같음
+                    if (sv !== b) result.recordConflicts.push({ date: d, category: c, serverValue: sv });
+                    if (!mergedRecords[d]) mergedRecords[d] = {};
+                    mergedRecords[d][c] = l;
+                    recordChanged = true;
+                }
+            }
+            if (recordChanged) { result.merged.records = mergedRecords; result.keptLocal.push('records'); }
+            return result;
+        }
+
+        let lastServerCheckAt = 0;
+        let conflictResolveInProgress = false;
+
+        // 서버에 더 최신 내용이 있을 때: 서버 내용을 받아 화면에 반영한 뒤, 이 기기에서 바뀐 부분만 다시 얹음.
+        // preloadedServerData가 있으면(탭 복귀 확인에서 이미 받아온 경우) 그걸 씀
+        async function resolveSyncConflict(preloadedServerData) {
+            if (conflictResolveInProgress) return;
+            conflictResolveInProgress = true;
+            try {
+                if (selectedDate && typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
+                clearTimeout(syncTimeout);
+                const base = lastSyncedSnapshot;
+                const localState = snapshotSyncState();
+                const serverData = preloadedServerData || await fetchLoadDataWithRetry();
+                if (!serverData || serverData.status === 'error') throw new Error((serverData && serverData.message) || '서버 최신 내용을 받지 못했습니다');
+
+                await loadAllFromServer(serverData); // 화면 = 서버 최신 내용, 기준점도 서버 버전으로 갱신
+                const serverState = lastSyncedSnapshot;
+                const { merged, keptLocal, conflicted, recordConflicts } = mergeSyncStates(base, localState, serverState);
+
+                if (keptLocal.length > 0 || merged.recordRevisions) {
+                    await loadAllFromServer(Object.assign({}, serverData, merged));
+                    lastSyncedSnapshot = serverState; // 서버에는 아직 합친 내용이 안 올라갔으므로 기준점은 서버 상태 그대로
+                    // 양쪽에서 같은 칸을 고친 경우 다른 기기 내용을 잃지 않도록 수정 이력에 보관
+                    recordConflicts.forEach(rc => pushRecordRevision(rc.date, rc.category, rc.serverValue, true));
+                    if (selectedDate && typeof renderRecordForm === 'function') renderRecordForm();
+                }
+
+                const labels = conflicted.map(k => SYNC_FIELD_LABELS[k]).filter(Boolean);
+                let msg = keptLocal.length > 0
+                    ? '다른 기기에서 저장한 내용을 받아와 이 기기의 변경 내용과 합쳤습니다'
+                    : '다른 기기에서 저장한 최신 내용으로 갱신했습니다';
+                if (recordConflicts.length) msg += ` · 같은 칸을 양쪽에서 고친 ${recordConflicts.length}건은 이 기기 내용으로 저장(다른 기기 내용은 🕘 수정 이력에 보관)`;
+                if (labels.length) msg += ` · 양쪽에서 함께 바뀐 [${labels.join(', ')}]은 다른 기기 내용이 적용됨`;
+                showAppToast(msg);
+                return keptLocal.length > 0;
+            } finally {
+                conflictResolveInProgress = false;
+            }
+        }
+
+        // 다른 탭/앱에 갔다가 돌아왔을 때 서버에 더 최신 저장본이 있으면 받아옴 (예: 낮에 휴대폰으로 쓴 내용을
+        // 아침부터 열어둔 PC가 모른 채 예전 내용으로 덮어쓰는 것을 미리 막음). 서버 요청을 아끼려고 30초에 한 번만 확인
+        async function checkServerForNewerData() {
+            if (!initialLoadDone || !currentEmployeeId || !currentPasswordHash || !serverBaseUpdatedAt) return;
+            if (conflictResolveInProgress || Date.now() - lastServerCheckAt < 30000) return;
+            lastServerCheckAt = Date.now();
+            try {
+                const data = await fetchLoadDataWithRetry();
+                if (!data || data.status === 'error' || !data.serverUpdatedAt) return;
+                if (Number(data.serverUpdatedAt) === Number(serverBaseUpdatedAt)) return;
+                const hasLocalChanges = await resolveSyncConflict(data);
+                if (hasLocalChanges) queueSync();
+            } catch (err) {
+                console.warn('서버 최신 내용 확인 실패:', err);
+            }
+        }
+
         function queueSync() {
             if (!initialLoadDone) return; // 서버 최신 데이터를 아직 다 못 받아온 상태에서는 저장 자체를 하지 않음
             if (!currentEmployeeId) return; // 로그인 전에는 저장할 계정 자체가 없음
@@ -1006,16 +1137,31 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 클라이언트는 그냥 매번 보내고 서버 응답만 보면 됨
         const SYNC_RETRY_DELAYS_MS = [3000, 8000];
 
-        async function syncToServer() {
+        // 저장 요청이 겹쳐 나가면(자동저장 + 저장 버튼 등) 두 번째 요청이 첫 번째가 올린 버전과 "충돌"로
+        // 잘못 판정될 수 있으므로, 저장은 항상 한 번에 하나씩 순서대로 보냄
+        let syncQueueTail = Promise.resolve();
+        function syncToServer() {
+            const run = syncQueueTail.then(() => syncToServerOnce());
+            syncQueueTail = run.catch(() => {});
+            return run;
+        }
+
+        async function syncToServerOnce(isRetryAfterConflict) {
             for (let attempt = 0; attempt <= SYNC_RETRY_DELAYS_MS.length; attempt++) {
                 showSyncStatus(attempt === 0 ? '☁️ 저장 중...' : `☁️ 저장 재시도 중... (${attempt}/${SYNC_RETRY_DELAYS_MS.length})`, 'syncing');
                 try {
+                    const body = JSON.stringify(getFullState());
                     const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                         method: 'POST',
-                        body: JSON.stringify(getFullState())
+                        body
                     });
                     if (!res.ok) throw new Error('응답 오류');
                     const resultData = await res.json();
+                    if (resultData && resultData.conflict && !isRetryAfterConflict) {
+                        // 다른 기기가 먼저 저장함 → 서버 최신 내용에 이 기기 변경분을 합친 뒤 한 번 더 저장
+                        await resolveSyncConflict();
+                        return await syncToServerOnce(true);
+                    }
                     if (resultData && resultData.status === 'error') {
                         const isLockTimeout = (resultData.message || '').includes('다른 저장 요청이 진행 중');
                         if (isLockTimeout && attempt < SYNC_RETRY_DELAYS_MS.length) {
@@ -1026,6 +1172,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         showSyncStatus('⚠️ ' + (resultData.message || '저장 거부됨'), 'error');
                         return false;
                     }
+                    if (resultData && resultData.serverUpdatedAt) serverBaseUpdatedAt = resultData.serverUpdatedAt;
+                    lastSyncedSnapshot = stripSyncCredentials(JSON.parse(body)); // 방금 서버에 올린 내용이 새 기준점
                     if (resultData && resultData.recordsSkipped) {
                         console.warn('서버가 활동기록 저장을 보류함(다른 항목은 저장됨):', resultData.message);
                         showSyncStatus('⚠️ 활동기록 저장 보류됨 (다른 변경사항은 저장됨)', 'error');
@@ -1483,6 +1631,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             editUnlocked = false;
             currentEmployeeId = '';
             currentPasswordHash = '';
+            serverBaseUpdatedAt = null; // 다른 계정으로 로그인할 때 이전 계정의 저장 버전/기준점이 섞이지 않게 함
+            lastSyncedSnapshot = null;
             applyEditLockUI();
             openLoginModal(true); // true = 로그인 전까지 닫을 수 없는 강제 모드
         }

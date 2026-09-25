@@ -1682,6 +1682,7 @@ function handleSaveState(data, rawBody) {
   // 충돌할 일이 없는데, 락(스크립트 전체가 공유하는 잠금) 안에서 매번 전체를 다시 그리면
   // 그동안 다른 모든 사람의 저장 요청이 불필요하게 대기하게 됨
   let readableUpdatePayload = null;
+  let newServerUpdatedAt = null;
   let recordsSafetyBlocked = false;
   let existingRecordCount = 0;
   try {
@@ -1708,6 +1709,21 @@ function handleSaveState(data, rawBody) {
     const denialMessage = getAccountAccessDenialMessage(existingProfile);
     if (denialMessage) {
       return jsonResponse({ status: "error", message: denialMessage });
+    }
+
+    // 여러 기기 동시 사용 보호: 클라이언트가 마지막으로 받은 서버 저장 버전(baseUpdatedAt)이 지금 서버
+    // 버전과 다르면, 그 사이 다른 기기가 저장한 것이므로 덮어쓰지 않고 충돌로 돌려보냄. 클라이언트가
+    // 서버 최신 내용을 받아 자기 변경분과 합친 뒤 다시 저장함. baseUpdatedAt을 안 보내는 예전 버전
+    // 화면(캐시)이나 서버에 아직 버전이 없는 계정은 예전처럼 그대로 저장함
+    const clientBase = data.baseUpdatedAt;
+    if (!data.forceOverwrite && clientBase !== undefined && clientBase !== null &&
+        existingProfile.serverUpdatedAt && Number(clientBase) !== Number(existingProfile.serverUpdatedAt)) {
+      return jsonResponse({
+        status: "error",
+        conflict: true,
+        serverUpdatedAt: existingProfile.serverUpdatedAt,
+        message: "다른 기기에서 더 최근에 저장된 내용이 있습니다."
+      });
     }
 
     // Records 시트를 이 요청 안에서 딱 한 번만 읽어서, 기존 기록 조회와 아래 저장 시
@@ -1763,6 +1779,7 @@ function handleSaveState(data, rawBody) {
     const dataToSave = {};
     for (const key in data) {
       if (key === 'employeeId' || key === 'passwordHash' || key === 'records') continue;
+      if (key === 'baseUpdatedAt' || key === 'forceOverwrite' || key === 'serverUpdatedAt') continue; // 저장 버전은 서버만 관리
       if (LARGE_FIELD_KEYS.indexOf(key) !== -1) continue; // ProfileLargeFields 시트로 따로 저장함 (아래 saveLargeFieldsForUser)
       dataToSave[key] = data[key];
     }
@@ -1784,6 +1801,9 @@ function handleSaveState(data, rawBody) {
     if (existingProfile.disabledReason) dataToSave.disabledReason = existingProfile.disabledReason;
     if (existingProfile.failedLoginCount) dataToSave.failedLoginCount = existingProfile.failedLoginCount;
     if (existingProfile.lockedAt) dataToSave.lockedAt = existingProfile.lockedAt;
+    // 이번 저장의 새 버전. 응답으로 돌려줘서 클라이언트가 다음 저장 때 기준 버전으로 씀
+    newServerUpdatedAt = Math.max(Date.now(), Number(existingProfile.serverUpdatedAt || 0) + 1);
+    dataToSave.serverUpdatedAt = newServerUpdatedAt;
     // records는 더 이상 프로필 셀에 저장하지 않음 - Records 시트로 따로 저장함 (아래 saveRecordsForUser)
     const jsonToSave = JSON.stringify(dataToSave);
 
@@ -1806,12 +1826,13 @@ function handleSaveState(data, rawBody) {
   if (recordsSafetyBlocked) {
     return jsonResponse({
       status: "success",
+      serverUpdatedAt: newServerUpdatedAt,
       recordsSkipped: true,
       message: "활동기록 " + existingRecordCount + "일치가 저장되어 있는데 이번 요청은 빈 데이터라 활동기록만 저장하지 않았습니다(다른 변경사항은 정상 저장됨). 정말로 기록을 전부 지운 것이 맞다면 페이지를 새로고침한 뒤 다시 저장해주세요."
     });
   }
 
-  return jsonResponse({ status: "success" });
+  return jsonResponse({ status: "success", serverUpdatedAt: newServerUpdatedAt });
 }
 
 // 이 사번의 자동 백업 목록 조회 (설정 탭 "자동 백업"에서 씀).
@@ -1919,6 +1940,13 @@ function handleRestoreFromBackup(data) {
     // 백업에 들어있던 날짜만 그 시점 값으로 덮어쓰고, 백업에 없는 날짜(다른 달 등)는 지금 값을 그대로 둠
     const mergedRecords = Object.assign({}, currentRecords, backupRecords);
     saveRecordsForUser(employeeId, mergedRecords, recordsRows);
+
+    // 기록이 바뀌었으므로 저장 버전도 올려서, 열려 있는 다른 기기가 예전 화면으로 덮어쓰지 않고
+    // 충돌로 감지해 최신 내용을 다시 받아가게 함
+    try {
+      const restoredProfile = Object.assign({}, existingProfile, { serverUpdatedAt: Math.max(Date.now(), Number(existingProfile.serverUpdatedAt || 0) + 1) });
+      usersSheet.getRange(row, 3).setValue(JSON.stringify(restoredProfile));
+    } catch (versionErr) {}
 
     readableUpdatePayload = Object.assign({}, existingProfile, { records: mergedRecords });
     restoredDateCount = Object.keys(backupRecords).length;
