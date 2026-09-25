@@ -1491,6 +1491,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // (로그인 안 한 상태에서 뒤에 아무 데이터도 없는 빈 화면이 노출되는 걸 막기 위함)
         function openLoginModal(forced) {
             document.getElementById('loginErrorMsg').style.display = 'none';
+            document.getElementById('loginInfoMsg').style.display = 'none';
             document.getElementById('loginCapsLockWarning').style.display = 'none';
             document.getElementById('loginCancelBtn').style.display = forced ? 'none' : 'inline-block';
             document.getElementById('loginModal').dataset.forced = forced ? 'true' : 'false';
@@ -1530,6 +1531,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const password = pwInput.value;
 
             errEl.style.display = 'none';
+            document.getElementById('loginInfoMsg').style.display = 'none';
             if (!employeeId) { errEl.textContent = '사번을 입력해주세요'; errEl.style.display = 'block'; return; }
             if (!password) { errEl.textContent = '비밀번호를 입력해주세요'; errEl.style.display = 'block'; return; }
 
@@ -1728,21 +1730,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const result = await res.json();
 
                 if (result.status === 'success') {
-                    currentEmployeeId = employeeId;
-                    currentPasswordHash = passwordHash;
-                    currentUserName = name;
-                    currentUserDepartment = department;
-                    safeSetItem('accountName', name);
-                    safeSetItem('accountDepartment', department);
-                    editUnlocked = true;
-                    isAdmin = false; // 관리자 계정은 이미 시트에 만들어져 있어 회원가입으로는 절대 생성되지 않음(중복 사번으로 거부됨)
-
-                    closeSignupModal(); // editUnlocked가 이미 true라 로그인 모달로 되돌아가지 않음
-                    applyEditLockUI();
-
-                    await initAppUI();
-                    await loadAllFromServer();
-                    showStatus('👋 회원가입이 완료되었습니다. 환영합니다!', 'success');
+                    // 신규 가입 계정은 서버(Code.gs handleSignup)에서 항상 "관리자 승인 대기" 상태로 만들어져
+                    // 승인 전에는 로그인/불러오기/저장이 전부 거부됨. 예전에는 여기서 바로 로그인된 것처럼
+                    // 화면을 열어서 "환영합니다" + 동기화 오류 + 로그아웃 확인창이 한꺼번에 뜨고, 그 상태로
+                    // 입력한 내용은 저장되지 않았음. 이제는 승인 안내만 보여주고 로그인 화면으로 돌려보냄
+                    closeSignupModal(); // 로그인 전 상태이므로 로그인 모달로 돌아감
+                    document.getElementById('loginEmployeeIdInput').value = employeeId;
+                    document.getElementById('loginPasswordInput').value = '';
+                    const infoEl = document.getElementById('loginInfoMsg');
+                    infoEl.textContent = '✅ 가입 신청이 접수되었습니다. 관리자 승인 후 이 사번으로 로그인해주세요.';
+                    infoEl.style.display = 'block';
                 } else {
                     errEl.textContent = result.message || '회원가입에 실패했습니다';
                     errEl.style.display = 'block';
