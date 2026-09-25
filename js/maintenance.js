@@ -161,19 +161,24 @@
                     ${m.cycle ? `<div class="project-card-row"><b>주기:</b> ${escapeHtml(m.cycle)}</div>` : ''}
                     ${(m.cycle && !parseCycleIntervalMonths(m.cycle)) ? `<div class="project-card-row maint-cycle-warning">⚠️ 주기 표현을 자동으로 인식하지 못해, 등록된 차기 점검월만 표시돼요. ("3개월", "격월", "분기", "반기", "매년" 등으로 적으면 반복월이 자동 계산됩니다)</div>` : ''}
                     ${m.sop ? `<div class="project-card-row"><b>SOP:</b> ${escapeHtml(m.sop)}</div>` : ''}
-                    ${m.lastDone ? `<div class="project-card-row"><b>이전 완료:</b> ${escapeHtml(m.lastDone)}</div>` : ''}
+                    ${renderMaintenanceLastDoneRow(m)}
                     ${showAck ? `
                     <label class="maint-ack-row" onclick="event.stopPropagation()">
                         <input type="checkbox" ${acked ? 'checked' : ''} onchange="toggleMaintenanceAck('${m.id}')">
                         사전 인지 완료 (기안, 재고 확보 등)
                     </label>` : ''}
+                    <div class="maint-card-actions" onclick="event.stopPropagation()">
+                        <button class="result-action-btn" onclick="openMaintenanceCompleteModal('${m.id}')">✅ 완료 처리</button>
+                    </div>
                 </div>
             `;
             }).join('');
 
             return `
                 <div class="maintenance-equipment-group" style="margin-bottom:24px;">
-                    <div class="result-date">🔧 ${escapeHtml(equipmentName)}</div>
+                    <div class="result-date maint-group-title">🔧 ${escapeHtml(equipmentName)}
+                        ${(equipmentName !== '(설비 미지정)' && !isFeatureDisabled('equipmentTimeline')) ? `<button class="result-action-btn" onclick="openEquipmentTimeline('${escapeForOnclickArg(equipmentName)}')" title="이 설비의 활동기록·정비 완료 이력을 시간순으로 보기">📜 설비 이력</button>` : ''}
+                    </div>
                     ${cardsHtml}
                 </div>
             `;
@@ -271,6 +276,7 @@
                 document.getElementById('maintNextDueInput').value = m.nextDue || '';
                 document.getElementById('maintNoteInput').value = m.note || '';
                 deleteBtn.style.display = 'inline-block';
+                renderMaintenanceCompletionHistory(m);
             } else {
                 title.textContent = '🔧 정비계획 추가';
                 document.getElementById('maintEquipmentInput').value = '';
@@ -282,6 +288,7 @@
                 document.getElementById('maintNextDueInput').value = '';
                 document.getElementById('maintNoteInput').value = '';
                 deleteBtn.style.display = 'none';
+                renderMaintenanceCompletionHistory(null);
             }
 
             modal.classList.add('active');
@@ -344,3 +351,176 @@
             });
         }
 
+
+        // ===== 정비 완료 이력 (완료할 때마다 누적) =====
+        // 예전에는 "이전 완료일"(lastDone) 한 칸만 있어서 수정할 때마다 과거 실적이 덮어써졌음.
+        // 이제 완료 처리 시 completions 배열에 한 줄씩 쌓고, lastDone은 가장 최근 완료일로 맞춰서
+        // 기존 화면/데이터(lastDone만 쓰던 코드)와 그대로 호환되게 함
+        let completingMaintenanceId = null;
+
+        function getMaintenanceCompletions(m) {
+            return (m && Array.isArray(m.completions)) ? m.completions : [];
+        }
+
+        function renderMaintenanceLastDoneRow(m) {
+            const completions = getMaintenanceCompletions(m);
+            if (completions.length > 0) {
+                const latest = completions[completions.length - 1];
+                return `<div class="project-card-row"><b>이전 완료:</b> ${escapeHtml(latest.date)} <span class="maint-completion-count">(누적 ${completions.length}회)</span></div>`;
+            }
+            return m.lastDone ? `<div class="project-card-row"><b>이전 완료:</b> ${escapeHtml(m.lastDone)}</div>` : '';
+        }
+
+        // "YYYY-MM-DD" 완료일 + 주기(개월) → 다음 예정월 "YYYY-MM". 주기를 알아들을 수 없으면 null
+        function computeNextDueFromCompletion(dateStr, cycleText) {
+            const interval = parseCycleIntervalMonths(cycleText);
+            if (!interval || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr || '')) return null;
+            const [y, mo] = dateStr.split('-').map(Number);
+            const idx = y * 12 + (mo - 1) + interval;
+            return `${Math.floor(idx / 12)}-${String(idx % 12 + 1).padStart(2, '0')}`;
+        }
+
+        function renderMaintenanceCompletionHistory(m) {
+            const field = document.getElementById('maintCompletionHistoryField');
+            const listEl = document.getElementById('maintCompletionHistory');
+            if (!field || !listEl) return;
+            if (!m) { field.style.display = 'none'; listEl.innerHTML = ''; return; }
+            field.style.display = '';
+            const completions = getMaintenanceCompletions(m).slice().reverse();
+            const itemsHtml = completions.length === 0
+                ? '<div class="maint-completion-empty">아직 누적된 완료 이력이 없습니다.</div>'
+                : completions.map(c => `
+                    <div class="maint-completion-item">
+                        <span class="maint-completion-date">${escapeHtml(c.date)}</span>
+                        <span class="maint-completion-note">${escapeHtml(c.note || '')}</span>
+                        <button type="button" class="category-tag-delete" onclick="deleteMaintenanceCompletion('${m.id}', '${c.id}')" aria-label="이 완료 이력 삭제">✕</button>
+                    </div>`).join('');
+            listEl.innerHTML = itemsHtml + `<button type="button" class="result-action-btn" style="margin-top:8px;" onclick="openMaintenanceCompleteModal('${m.id}')">✅ 완료 기록 추가</button>`;
+        }
+
+        function refreshMaintenanceCompleteHint() {
+            const hintEl = document.getElementById('maintCompleteNextDueHint');
+            const m = maintenanceSchedule.find(x => x.id === completingMaintenanceId);
+            if (!hintEl || !m) return;
+            const date = document.getElementById('maintCompleteDateInput').value;
+            const nextDue = computeNextDueFromCompletion(date, m.cycle);
+            hintEl.textContent = nextDue
+                ? `주기(${m.cycle})에 따라 차기 점검 예정이 ${nextDue}로 자동 변경되고 상태는 "예정"이 됩니다.`
+                : '주기를 자동으로 인식하지 못해 차기 점검 예정은 그대로 두고, 상태만 "완료"로 바뀝니다.';
+        }
+
+        function openMaintenanceCompleteModal(itemId) {
+            if (!checkEditPermission()) return;
+            const m = maintenanceSchedule.find(x => x.id === itemId);
+            if (!m) return;
+            completingMaintenanceId = itemId;
+
+            document.getElementById('maintCompleteTarget').textContent = `${m.equipment || ''} - ${m.item || '점검'}`;
+            document.getElementById('maintCompleteDateInput').value = formatDate(new Date());
+            document.getElementById('maintCompleteNoteInput').value = '';
+
+            const select = document.getElementById('maintCompleteCategorySelect');
+            let preferred = '';
+            try { preferred = localStorage.getItem('maintCompleteCategory') || ''; } catch (e) { /* 무시 */ }
+            select.innerHTML = categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+            select.value = categories.includes(preferred) ? preferred : (categories[0] || '');
+            document.getElementById('maintCompleteLogCheckbox').checked = categories.length > 0;
+
+            refreshMaintenanceCompleteHint();
+            document.getElementById('maintCompleteModal').classList.add('active');
+            applyFormLockState();
+        }
+
+        function closeMaintenanceCompleteModal() {
+            document.getElementById('maintCompleteModal').classList.remove('active');
+            completingMaintenanceId = null;
+        }
+
+        // 활동기록 끝에 한 줄 덧붙임. 번호 매기기("1. ") 형식으로 쓰던 내용이면 다음 번호를 이어서 붙임
+        function appendLineToRecord(dateStr, category, line) {
+            if (selectedDate) captureCurrentFormToRecords(); // 화면에 입력 중이던 내용이 나중에 이 줄을 덮어쓰지 않도록 먼저 확정
+            if (!records[dateStr]) records[dateStr] = {};
+            const old = (records[dateStr][category] || '').replace(/\s+$/, '');
+            let newLine = line;
+            if (!old) {
+                newLine = '1. ' + line;
+            } else {
+                const lastLine = old.split('\n').pop();
+                const numMatch = lastLine.match(/^(\d+)\.\s/);
+                if (numMatch) newLine = (parseInt(numMatch[1], 10) + 1) + '. ' + line;
+            }
+            pushRecordRevision(dateStr, category, records[dateStr][category]);
+            records[dateStr][category] = old ? old + '\n' + newLine : newLine;
+            // 그 날짜에서 숨겨둔 카테고리였다면 방금 적은 내용이 안 보이지 않도록 다시 표시
+            if (hiddenCategoriesByDate[dateStr] && hiddenCategoriesByDate[dateStr].includes(category)) {
+                hiddenCategoriesByDate[dateStr] = hiddenCategoriesByDate[dateStr].filter(c => c !== category);
+                saveHiddenCategoriesToStorage();
+            }
+            saveRecordsToStorage();
+        }
+
+        function confirmMaintenanceComplete() {
+            if (!checkEditPermission()) return;
+            const m = maintenanceSchedule.find(x => x.id === completingMaintenanceId);
+            if (!m) { closeMaintenanceCompleteModal(); return; }
+
+            const date = document.getElementById('maintCompleteDateInput').value;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showAppToast('완료일을 선택해주세요'); return; }
+            const note = document.getElementById('maintCompleteNoteInput').value.trim();
+            const logToRecord = document.getElementById('maintCompleteLogCheckbox').checked;
+            const category = document.getElementById('maintCompleteCategorySelect').value;
+
+            if (!Array.isArray(m.completions)) m.completions = [];
+            m.completions.push({ id: 'mc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), date, note, loggedAt: new Date().toISOString() });
+            m.completions.sort((a, b) => a.date.localeCompare(b.date));
+            const latest = m.completions[m.completions.length - 1].date;
+            m.lastDone = latest;
+            // 과거 날짜의 완료를 뒤늦게 입력한 경우(최근 완료가 아님)엔 일정은 건드리지 않음
+            if (latest === date) {
+                const nextDue = computeNextDueFromCompletion(date, m.cycle);
+                if (nextDue) { m.nextDue = nextDue; m.status = '예정'; }
+                else m.status = '완료';
+            }
+            m.updatedAt = formatDate(new Date());
+
+            if (logToRecord && category) {
+                safeSetItem('maintCompleteCategory', category);
+                appendLineToRecord(date, category, `[정비완료] ${m.equipment || ''}${m.item ? ' - ' + m.item : ''}${note ? ' : ' + note : ''}`);
+            }
+
+            safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
+            queueSync();
+            closeMaintenanceCompleteModal();
+
+            // 정비계획 수정 모달이 같은 항목으로 열려 있으면, 거기서 "저장"을 눌러도 방금 바뀐 값이
+            // 예전 값으로 되돌아가지 않도록 입력칸도 최신 값으로 맞춰줌
+            if (editingMaintenanceId === m.id) {
+                pickMaintenanceStatus(m.status);
+                document.getElementById('maintLastDoneInput').value = m.lastDone || '';
+                document.getElementById('maintNextDueInput').value = m.nextDue || '';
+                renderMaintenanceCompletionHistory(m);
+            }
+
+            renderMaintenanceSchedule();
+            renderCalendar();
+            if (selectedDate === date) renderRecordForm();
+            showAppToast(logToRecord && category ? `완료 처리했습니다 (${date} 활동기록 [${category}]에도 기록됨)` : '완료 처리했습니다');
+        }
+
+        function deleteMaintenanceCompletion(itemId, completionId) {
+            if (!checkEditPermission()) return;
+            const m = maintenanceSchedule.find(x => x.id === itemId);
+            if (!m) return;
+            confirmModal('이 완료 이력을 삭제할까요?\n(활동기록에 남긴 내용과 차기 점검 예정은 자동으로 되돌리지 않습니다)', () => {
+                m.completions = getMaintenanceCompletions(m).filter(c => c.id !== completionId);
+                if (m.completions.length > 0) m.lastDone = m.completions[m.completions.length - 1].date;
+                m.updatedAt = formatDate(new Date());
+                safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
+                queueSync();
+                if (editingMaintenanceId === m.id) {
+                    document.getElementById('maintLastDoneInput').value = m.lastDone || '';
+                    renderMaintenanceCompletionHistory(m);
+                }
+                renderMaintenanceSchedule();
+            });
+        }

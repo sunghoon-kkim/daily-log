@@ -1874,7 +1874,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment',
-            'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions'
+            'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory'
         ];
 
         function logout() {
@@ -1939,9 +1939,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 // 이때 querySelector는 DOM에 먼저 나오는(밑에 깔린) 모달을 집어올 수 있으므로
                 // 항상 confirmActionModal이 열려 있으면 그것부터(맨 위에 있는 것부터) 닫음
                 const confirmModalEl = document.getElementById('confirmActionModal');
+                // 모달 위에 다른 모달(정비 완료 처리 등)이 겹쳐 뜨는 경우도 있으므로, DOM상 가장 뒤(맨 위에 보이는) 모달부터 닫음
+                const activeModals = document.querySelectorAll('.modal-overlay.active');
                 const openModal = confirmModalEl.classList.contains('active')
                     ? confirmModalEl
-                    : document.querySelector('.modal-overlay.active');
+                    : activeModals[activeModals.length - 1];
                 if (!openModal) return;
 
                 e.preventDefault();
@@ -1958,6 +1960,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'eventModal') closeEventModal();
             else if (id === 'projectModal') closeProjectModal();
             else if (id === 'maintenanceModal') closeMaintenanceModal();
+            else if (id === 'maintCompleteModal') closeMaintenanceCompleteModal();
+            else if (id === 'recordSnippetModal') closeRecordSnippetModal();
+            else if (id === 'recordRevisionModal') closeRecordRevisionModal();
             else if (id === 'waterFlowBlockModal') closeWaterFlowBlockModal();
             else if (id === 'waterFlowDiagramModal') closeWaterFlowDiagramModal();
             else if (id === 'waterFlowConnectionModal') closeWaterFlowConnectionModal();

@@ -95,15 +95,18 @@
         }
 
         // 카테고리 목록이 바뀔 때마다(추가/삭제/보관/이름변경) 통합 검색의 카테고리 선택지도 갱신
+        // (키워드 발생 통계의 카테고리 선택지도 같은 목록을 씀)
         function refreshSearchCategoryOptions() {
-            const select = document.getElementById('searchCategorySelect');
-            if (!select) return;
-            const current = select.value;
             const all = getAllRecordCategories();
-            select.innerHTML = '<option value="">전체 카테고리</option>' + all.map(c =>
-                `<option value="${escapeHtml(c)}">${archivedCategories.includes(c) ? '📦 ' : ''}${escapeHtml(c)}</option>`
-            ).join('');
-            select.value = all.includes(current) ? current : '';
+            ['searchCategorySelect', 'keywordStatsCategory'].forEach(id => {
+                const select = document.getElementById(id);
+                if (!select) return;
+                const current = select.value;
+                select.innerHTML = '<option value="">전체 카테고리</option>' + all.map(c =>
+                    `<option value="${escapeHtml(c)}">${archivedCategories.includes(c) ? '📦 ' : ''}${escapeHtml(c)}</option>`
+                ).join('');
+                select.value = all.includes(current) ? current : '';
+            });
         }
 
         function collectKeywordSearchResults(query) {

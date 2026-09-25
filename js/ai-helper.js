@@ -58,7 +58,7 @@
             for (const dateStr of dates) {
                 const rec = records[dateStr];
                 const parts = [];
-                for (const category of categories) {
+                for (const category of getAllRecordCategories()) { // 보관한 카테고리의 과거 기록도 요약 대상에 포함
                     if (rec[category] && rec[category].trim() !== '') {
                         parts.push(`  [${category}] ${rec[category].trim()}`);
                     }

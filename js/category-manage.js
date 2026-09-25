@@ -42,6 +42,15 @@
                     if (key.endsWith('::' + name)) delete categoryCollapseOverride[key];
                 }
                 for (const date in records) delete records[date][name];
+                delete recordSnippets[name];
+                for (const dow in weekdayTemplates) {
+                    if (weekdayTemplates[dow]) delete weekdayTemplates[dow][name];
+                }
+                for (const key of Object.keys(recordRevisions)) {
+                    if (key.endsWith('|' + name)) delete recordRevisions[key];
+                }
+                safeSetItem('recordRevisions', JSON.stringify(recordRevisions));
+                saveRecordSnippetsToStorage();
                 for (const date in categoryImages) delete categoryImages[date][name];
                 for (const date in hiddenCategoriesByDate) {
                     hiddenCategoriesByDate[date] = hiddenCategoriesByDate[date].filter(c => c !== name);
@@ -164,6 +173,28 @@
                 selectedCategoriesForQuery.delete(oldName);
                 selectedCategoriesForQuery.add(newName);
             }
+
+            // 상용구 / 요일 템플릿 / 수정 이력도 카테고리 이름을 키로 쓰므로 함께 옮김
+            if (Object.prototype.hasOwnProperty.call(recordSnippets, oldName)) {
+                recordSnippets[newName] = recordSnippets[oldName];
+                delete recordSnippets[oldName];
+            }
+            for (const dow in weekdayTemplates) {
+                const tpl = weekdayTemplates[dow];
+                if (tpl && Object.prototype.hasOwnProperty.call(tpl, oldName)) {
+                    tpl[newName] = tpl[oldName];
+                    delete tpl[oldName];
+                }
+            }
+            const revisionSuffix = '|' + oldName;
+            for (const key of Object.keys(recordRevisions)) {
+                if (key.endsWith(revisionSuffix)) {
+                    recordRevisions[key.slice(0, -revisionSuffix.length) + '|' + newName] = recordRevisions[key];
+                    delete recordRevisions[key];
+                }
+            }
+            safeSetItem('recordRevisions', JSON.stringify(recordRevisions));
+            saveRecordSnippetsToStorage();
 
             const oldSuffix = '::' + oldName;
             for (const key of Object.keys(categoryCollapseOverride)) {

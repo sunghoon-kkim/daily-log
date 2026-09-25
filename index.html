@@ -53,6 +53,7 @@
                 <button class="upcoming-toggle-btn" id="upcomingToggleBtn" onclick="toggleUpcomingWidget()">숨기기</button>
             </div>
             <div class="upcoming-widget" id="upcomingWidget"></div>
+            <div class="open-issues-widget" id="openIssuesWidget" data-feature="openIssues"></div>
             <div class="main-content">
                 <div class="calendar-box">
                     <div class="calendar-header">
@@ -209,6 +210,53 @@
                 </div>
                 <div class="query-results" id="queryResults">
                     <div class="no-result">카테고리를 선택하고 검색 버튼을 클릭하세요</div>
+                </div>
+            </div>
+
+            <div class="query-container" style="margin-top: 20px;" id="equipmentTimelineSection" data-feature="equipmentTimeline">
+                <h3 style="margin-bottom: 10px;">🔧 설비별 이력 타임라인</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">설비명을 입력하면 활동기록·정비 완료 이력·일정·개선과제에서 그 설비가 언급된 내용을 시간순으로 모아 보여줍니다. 약칭이 여러 개면 <b>|</b>로 구분하세요 (예: 냉동기 2호|R-2).</p>
+                <div class="search-row">
+                    <input type="text" id="equipmentTimelineInput" class="search-input" list="equipmentNameList" placeholder="설비명 (정비계획에 등록된 설비는 자동완성)" onfocus="refreshEquipmentNameList()" onkeydown="if(event.key==='Enter') renderEquipmentTimeline()">
+                    <datalist id="equipmentNameList"></datalist>
+                    <button class="query-btn" onclick="renderEquipmentTimeline()">조회</button>
+                </div>
+                <div class="search-options-row">
+                    <select id="equipmentTimelinePeriod" class="search-option-select" onchange="if (document.getElementById('equipmentTimelineInput').value.trim()) renderEquipmentTimeline()" aria-label="설비 이력 기간">
+                        <option value="">전체 기간</option>
+                        <option value="12">최근 1년</option>
+                        <option value="36">최근 3년</option>
+                    </select>
+                </div>
+                <div class="ai-block-label-row" style="margin: 0 0 10px 0;">
+                    <span id="equipmentTimelineSummary" style="color:#666; font-size:13px;"></span>
+                    <button class="ai-copy-btn" onclick="downloadEquipmentTimelineCsv()">⬇️ 이력 내보내기</button>
+                </div>
+                <div id="equipmentTimelineResults">
+                    <div class="no-result">설비명을 입력하고 조회 버튼을 클릭하세요</div>
+                </div>
+            </div>
+
+            <div class="query-container" style="margin-top: 20px;" data-feature="keywordStats">
+                <h3 style="margin-bottom: 10px;">📊 키워드 발생 통계</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">이상·고장 키워드가 월별로 며칠이나 기록됐는지 집계해 반복·재발 여부를 확인합니다. 쉼표로 최대 5개, 같은 뜻의 표현은 <b>|</b>로 묶으세요.</p>
+                <div class="search-row">
+                    <input type="text" id="keywordStatsInput" class="search-input" placeholder="예: 누설|누수, 트립|정지, 알람" onkeydown="if(event.key==='Enter') renderKeywordStats()">
+                    <button class="query-btn" onclick="renderKeywordStats()">집계</button>
+                </div>
+                <div class="search-options-row">
+                    <select id="keywordStatsPeriod" class="search-option-select" onchange="if (document.getElementById('keywordStatsInput').value.trim()) renderKeywordStats()" aria-label="통계 기간">
+                        <option value="6">최근 6개월</option>
+                        <option value="12" selected>최근 12개월</option>
+                        <option value="24">최근 24개월</option>
+                    </select>
+                    <select id="keywordStatsCategory" class="search-option-select" onchange="if (document.getElementById('keywordStatsInput').value.trim()) renderKeywordStats()" aria-label="통계 카테고리">
+                        <option value="">전체 카테고리</option>
+                    </select>
+                    <button class="ai-copy-btn" onclick="downloadKeywordStatsCsv()">⬇️ 통계 내보내기</button>
+                </div>
+                <div id="keywordStatsResults">
+                    <div class="no-result">키워드를 입력하고 집계 버튼을 클릭하세요</div>
                 </div>
             </div>
         </div>
@@ -1153,11 +1201,78 @@
                 <label>비고</label>
                 <textarea id="maintNoteInput" class="notes-textarea" style="min-height:70px;" placeholder="참고사항을 자유롭게 적어주세요"></textarea>
             </div>
+            <div class="modal-field" id="maintCompletionHistoryField" style="display:none;">
+                <label>완료 이력 (최근 순)</label>
+                <div id="maintCompletionHistory" class="maint-completion-history"></div>
+            </div>
 
             <div class="modal-buttons">
                 <button class="modal-btn modal-save-btn" onclick="saveMaintenanceItem()">저장</button>
                 <button class="modal-btn modal-delete-btn" id="deleteMaintenanceBtn" onclick="deleteMaintenanceItem()" style="display:none;">삭제</button>
                 <button class="modal-btn modal-cancel-btn" onclick="closeMaintenanceModal()">취소</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="maintCompleteModal" role="dialog" aria-modal="true">
+        <div class="modal-box">
+            <h3>✅ 정비 완료 처리</h3>
+            <div class="maint-complete-target" id="maintCompleteTarget"></div>
+
+            <div class="modal-field">
+                <label>완료일</label>
+                <input type="date" id="maintCompleteDateInput" onchange="refreshMaintenanceCompleteHint()">
+            </div>
+            <div class="modal-field">
+                <label>작업 내용 / 특이사항 (선택)</label>
+                <textarea id="maintCompleteNoteInput" class="notes-textarea" style="min-height:60px;" placeholder="예: 필터 교체, 차압 0.3 → 0.1bar"></textarea>
+            </div>
+            <div class="modal-field">
+                <label class="search-scope-label"><input type="checkbox" id="maintCompleteLogCheckbox" checked> 완료일의 활동기록에도 한 줄 남기기</label>
+                <select id="maintCompleteCategorySelect" class="search-option-select" aria-label="기록할 카테고리" style="margin-top:6px;"></select>
+            </div>
+            <div class="search-help-text" id="maintCompleteNextDueHint" style="margin:0 0 10px 0;"></div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-save-btn" onclick="confirmMaintenanceComplete()">완료 처리</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeMaintenanceCompleteModal()">취소</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="recordSnippetModal" role="dialog" aria-modal="true">
+        <div class="modal-box">
+            <h3 id="recordSnippetModalTitle">📌 상용구</h3>
+            <div class="record-snippet-list" id="recordSnippetList"></div>
+
+            <div class="modal-field" style="margin-top:12px;">
+                <label>새 상용구 추가</label>
+                <div class="search-row" style="margin-bottom:0;">
+                    <input type="text" id="recordSnippetInput" class="search-input" maxlength="300" placeholder="예: 순회점검 결과 이상 없음" onkeydown="if(event.key==='Enter') addRecordSnippet()">
+                    <button class="query-btn" onclick="addRecordSnippet()">추가</button>
+                </div>
+            </div>
+
+            <div class="modal-field">
+                <label id="weekdayTemplateLabel">🗓️ 요일 템플릿</label>
+                <div class="search-help-text" id="weekdayTemplateInfo" style="margin:0 0 8px 0;"></div>
+                <div class="query-export-buttons">
+                    <button type="button" class="result-action-btn" onclick="saveCurrentAsWeekdayTemplate()">현재 내용을 템플릿으로 저장</button>
+                    <button type="button" class="result-action-btn primary" id="applyWeekdayTemplateBtn" onclick="applyWeekdayTemplateToCategory()">템플릿 넣기</button>
+                    <button type="button" class="result-action-btn" id="deleteWeekdayTemplateBtn" onclick="deleteWeekdayTemplate()">템플릿 삭제</button>
+                </div>
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-cancel-btn" onclick="closeRecordSnippetModal()">닫기</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="recordRevisionModal" role="dialog" aria-modal="true">
+        <div class="modal-box modal-box-wide">
+            <h3 id="recordRevisionModalTitle">🕘 수정 이력</h3>
+            <p class="search-help-text" style="margin:0 0 10px 0;">내용을 고치기 직전 상태가 편집할 때마다(10분 단위) 최근 5개까지 보관됩니다.</p>
+            <div class="record-revision-list" id="recordRevisionList"></div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-cancel-btn" onclick="closeRecordRevisionModal()">닫기</button>
             </div>
         </div>
     </div>
@@ -1433,5 +1548,7 @@
     <script src="js/team-report.js"></script>
     <script src="js/settings.js"></script>
     <script src="js/admin.js"></script>
+    <script src="js/history-insights.js"></script>
+    <script src="js/record-tools.js"></script>
 </body>
 </html>

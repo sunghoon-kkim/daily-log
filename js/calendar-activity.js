@@ -557,6 +557,7 @@
                 
                 const val = textarea.value.trim();
                 if (records[selectedDate][category] !== val) {
+                    pushRecordRevision(selectedDate, category, records[selectedDate][category]); // 덮어쓰기 전 내용 보관 (편집 세션당 1회)
                     records[selectedDate][category] = val;
                     changed = true;
                 }
@@ -714,6 +715,7 @@
                             <div class="category-name" style="color:${color}">${categoryHtml}</div>
                             <div class="category-header-actions">
                                 ${(!content && findPreviousRecord(selectedDate, category)) ? `<button class="category-prev-btn" draggable="false" onclick="loadPreviousRecord('${categoryArg}')" title="이전에 작성한 기록 불러오기">↓ 이전 기록</button>` : ''}
+                                ${typeof buildRecordToolButtons === 'function' ? buildRecordToolButtons(selectedDate, category, categoryArg) : ''}
                                 <button class="category-collapse-btn" draggable="false" onclick="toggleCategoryCollapse('${categoryArg}')" title="접기/펼치기">▾</button>
                                 <button class="category-hide-btn" draggable="false" onclick="hideCategoryForDate('${categoryArg}')" title="이 날짜에서 숨기기" aria-label="이 날짜에서 숨기기">✕</button>
                             </div>
@@ -724,6 +726,7 @@
                 `;
             }
 
+            if (typeof buildWeekdayTemplateBanner === 'function') html += buildWeekdayTemplateBanner(selectedDate);
             html += `<div class="expanded-categories-area">${expandedHtml}</div>`;
 
             if (hiddenCategories.length > 0) {

@@ -235,7 +235,9 @@
             const prevItems = (teamReportPreviousWeekData && teamReportPreviousWeekData[section]) || [];
 
             container.innerHTML = rows.map(row => {
-                const options = categories.map(c => `<option value="${escapeHtml(c)}" ${c === row.category ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+                // 보관한 카테고리로 채워진 줄이면 선택지에서 사라져 엉뚱한 카테고리로 보이지 않도록 그 값도 함께 넣어줌
+                const rowCategoryOptions = (row.category && !categories.includes(row.category)) ? categories.concat(row.category) : categories;
+                const options = rowCategoryOptions.map(c => `<option value="${escapeHtml(c)}" ${c === row.category ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
                 const hasPrev = !row.content && prevItems.some(it => it.category === row.category);
                 const prevBtn = hasPrev
                     ? `<button type="button" class="category-prev-btn" onclick="loadPreviousTeamReportContent('${section}','${row.id}')" title="지난주 같은 카테고리에 적었던 내용 불러오기">↓ 이전 기록</button>`
