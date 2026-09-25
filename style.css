@@ -4556,3 +4556,98 @@ body.edit-locked .custom-color-swatch {
     cursor: not-allowed !important;
 }
 
+
+/* ===== 이력 관리 기능 확장: 통합 검색 옵션 / 조회 내보내기 / 카테고리 보관 / 작성 누락 ===== */
+.search-help-text {
+    color: #888;
+    font-size: 12px;
+    margin: -12px 0 12px 0;
+    line-height: 1.5;
+}
+
+.search-options-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 16px;
+}
+
+.search-option-select {
+    padding: 7px 10px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 13px;
+    background: white;
+    color: #333;
+    max-width: 100%;
+}
+
+.search-scope-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: #555;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.query-export-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.category-select-btn.archived {
+    border-style: dashed;
+}
+
+.archived-category-tag {
+    opacity: 0.85;
+    border-style: dashed;
+}
+
+.archived-category-count {
+    font-size: 12px;
+    color: #888;
+    margin-left: 8px;
+}
+
+.month-record-rate {
+    font-size: 12px;
+    font-weight: 600;
+    color: #2e7d32;
+}
+
+.month-record-rate:empty {
+    display: none !important;
+}
+
+.month-record-rate.has-missing {
+    color: #d84343;
+}
+
+.day.record-missing {
+    background-image: linear-gradient(135deg, rgba(255, 107, 107, 0.55) 0 10px, transparent 10px);
+}
+
+.dark-mode .search-option-select {
+    background: var(--d-bg3);
+    color: var(--d-text1);
+    border-color: var(--d-border);
+}
+
+.dark-mode .search-scope-label,
+.dark-mode .archived-category-count,
+.dark-mode .search-help-text {
+    color: var(--d-text3);
+}
+
+.dark-mode .month-record-rate {
+    color: #7bd88f;
+}
+
+.dark-mode .month-record-rate.has-missing {
+    color: #ff8a8a;
+}

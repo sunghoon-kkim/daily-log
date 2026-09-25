@@ -145,7 +145,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 key: 'calendar',
                 label: '📅 달력 & 활동기록',
                 features: {
-                    activityRecord: '📅 달력 & 활동기록'
+                    activityRecord: '📅 달력 & 활동기록',
+                    missingRecordIndicator: '🟥 작성 누락 표시 & 작성률',
+                    openIssues: '📋 미결 사항 추적',
+                    recordSnippets: '📌 상용구 & 요일 템플릿',
+                    recordRevisions: '🕘 수정 이력 & 되돌리기'
                 }
             },
             {
@@ -160,7 +164,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 label: '🔍 검색 & 조회',
                 features: {
                     keywordSearch: '🔎 통합 검색',
-                    periodQuery: '📆 기간별 카테고리 조회'
+                    periodQuery: '📆 기간별 카테고리 조회',
+                    equipmentTimeline: '🔧 설비별 이력 타임라인',
+                    keywordStats: '📊 키워드 발생 통계'
                 }
             },
             {
@@ -292,7 +298,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let maintenanceViewMode = 'detail'; // 정비계획 목록 보기 모드 (detail: 자세히 보기, simple: 간단히 보기). 화면 상태값이라 저장하지 않음
         let savingsStatusFilter = '전체'; // 개선/절감 과제 목록 상태 필터. 화면 상태값이라 저장하지 않음
         let savingsCategoryFilter = '전체'; // 개선/절감 과제 목록 카테고리 필터. 화면 상태값이라 저장하지 않음
-        
+        // 보관(아카이브)한 카테고리. 입력 화면(달력 & 활동기록)에서는 빠지지만 records의 과거 내용은
+        // 지우지 않고 그대로 두어, 검색/기간 조회/설비 이력/통계에서는 계속 조회되게 함 (getAllRecordCategories 참고)
+        let archivedCategories = [];
+        let recordSnippets = {};   // { "수처리": ["순회점검 이상 없음", ...] } - 카테고리별 상용구
+        let weekdayTemplates = {}; // { "1": { "수처리": "1. 주간점검 ..." } } - 요일(0=일~6=토)별 카테고리 템플릿
+        // 날짜·카테고리별 직전 내용 보관함. { "2026-09-25|수처리": [{ ts, v }] } (오래된 것 → 최신 순)
+        // 편집 세션 단위(10분)로 한 번만 쌓고, 전체 크기에 상한을 둬서 저장 공간/시트 셀 한도를 넘지 않게 함
+        let recordRevisions = {};
+        // 서버(Code.gs)가 recordRevisions를 별도 대용량 필드로 저장할 수 있는 버전인지. 구버전 서버에 보내면
+        // 프로필 셀(5만자 제한)에 섞여 들어가므로, 서버가 지원한다고 알려준 경우에만 동기화 대상에 포함함
+        let serverSupportsRecordRevisions = false;
+
         // 로그인 성공(자동 로그인 또는 직접 로그인) 후에만 호출됨. 로그인되기 전까지는
         // 이 함수가 아예 실행되지 않으므로, 화면에는 로그인 모달 외에 아무 데이터도 그려지지 않음
         // (이전에 이 브라우저에 남아있던 캐시 데이터가 로그인 전에 잠깐이라도 보이는 걸 방지)
@@ -314,6 +331,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             loadDisabledTabIds();
             loadPersonalAiApiKey();
             loadDisabledFeatures();
+            loadRecordHistoryToolsState();
             notesContent = localStorage.getItem('freeNotes') || '';
             const storedFreeNotesPages = localStorage.getItem('freeNotesPages');
             freeNotesPages = storedFreeNotesPages ? safeJsonParse(storedFreeNotesPages, [], 'freeNotesPages') : [];
@@ -539,6 +557,82 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             disabledFeatures = stored ? safeJsonParse(stored, [], 'disabledFeatures') : [];
         }
 
+        function loadRecordHistoryToolsState() {
+            const storedArchived = localStorage.getItem('archivedCategories');
+            archivedCategories = storedArchived ? safeJsonParse(storedArchived, [], 'archivedCategories').filter(c => typeof c === 'string') : [];
+            const storedSnippets = localStorage.getItem('recordSnippets');
+            recordSnippets = storedSnippets ? safeJsonParse(storedSnippets, {}, 'recordSnippets') : {};
+            const storedTemplates = localStorage.getItem('weekdayTemplates');
+            weekdayTemplates = storedTemplates ? safeJsonParse(storedTemplates, {}, 'weekdayTemplates') : {};
+            const storedRevisions = localStorage.getItem('recordRevisions');
+            recordRevisions = storedRevisions ? safeJsonParse(storedRevisions, {}, 'recordRevisions') : {};
+        }
+
+        function saveArchivedCategoriesToStorage() {
+            safeSetItem('archivedCategories', JSON.stringify(archivedCategories));
+            queueSync();
+        }
+
+        function saveRecordSnippetsToStorage() {
+            safeSetItem('recordSnippets', JSON.stringify(recordSnippets));
+            safeSetItem('weekdayTemplates', JSON.stringify(weekdayTemplates));
+            queueSync();
+        }
+
+        // 입력 화면에 쓰는 활성 카테고리 + 보관한 카테고리. 과거 이력을 읽는 곳(검색/조회/통계/설비 이력/
+        // 작성 누락 판단)은 반드시 이걸 써야 보관한 카테고리의 기록까지 빠짐없이 조회됨
+        function getAllRecordCategories() {
+            return categories.concat(archivedCategories.filter(c => !categories.includes(c)));
+        }
+
+        // 이 날짜에 (보관 카테고리 포함) 무엇이든 적어둔 내용이 있는지
+        function hasAnyRecordContent(dateStr) {
+            const rec = records[dateStr];
+            if (!rec) return false;
+            return Object.keys(rec).some(c => typeof rec[c] === 'string' && rec[c].trim() !== '');
+        }
+
+        const RECORD_REVISION_SESSION_MS = 10 * 60 * 1000; // 이 시간 안에 이어진 수정은 한 번의 편집으로 보고 직전 내용을 한 번만 보관
+        const RECORD_REVISION_MAX_PER_KEY = 5;
+        const RECORD_REVISION_MAX_TOTAL_CHARS = 20000;
+
+        // records[dateStr][category]를 새 값으로 덮어쓰기 "직전"에 호출해서 이전 내용을 보관함.
+        // force=true면 편집 세션 규칙과 관계없이 무조건 보관(되돌리기 직전의 현재 내용 등)
+        function pushRecordRevision(dateStr, category, oldValue, force) {
+            if (!dateStr || !category) return;
+            if (typeof oldValue !== 'string' || oldValue.trim() === '') return;
+            const key = dateStr + '|' + category;
+            const list = Array.isArray(recordRevisions[key]) ? recordRevisions[key] : [];
+            const last = list[list.length - 1];
+            const now = Date.now();
+            if (last && last.v === oldValue) return;
+            if (!force && last && now - (last.ts || 0) < RECORD_REVISION_SESSION_MS) return;
+            list.push({ ts: now, v: oldValue });
+            while (list.length > RECORD_REVISION_MAX_PER_KEY) list.shift();
+            recordRevisions[key] = list;
+            trimRecordRevisionsToLimit();
+            safeSetItem('recordRevisions', JSON.stringify(recordRevisions));
+        }
+
+        // 전체 크기가 상한을 넘으면 가장 오래된 보관본부터 지움
+        function trimRecordRevisionsToLimit() {
+            let size = JSON.stringify(recordRevisions).length;
+            if (size <= RECORD_REVISION_MAX_TOTAL_CHARS) return;
+            const all = [];
+            for (const key in recordRevisions) {
+                (recordRevisions[key] || []).forEach(entry => all.push({ key, entry }));
+            }
+            all.sort((a, b) => (a.entry.ts || 0) - (b.entry.ts || 0));
+            for (const { key, entry } of all) {
+                if (size <= RECORD_REVISION_MAX_TOTAL_CHARS) break;
+                const list = recordRevisions[key];
+                const idx = list.indexOf(entry);
+                if (idx !== -1) list.splice(idx, 1);
+                if (list.length === 0) delete recordRevisions[key];
+                size -= JSON.stringify(entry).length + key.length;
+            }
+        }
+
         // 관리자가 계정별로 꺼둔 기능이거나, 코드 레벨에서 강제로 꺼둔(FORCE_DISABLED_FEATURES) 기능이면 true
         function isFeatureDisabled(key) {
             return disabledFeatures.includes(key) || FORCE_DISABLED_FEATURES.includes(key);
@@ -667,7 +761,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function getFullState() {
             syncActiveWaterFlowDiagramData(); // 지금 보고 있는 흐름도의 최신 블록/연결선을 waterFlowDiagrams에 반영해둠
             syncActiveFreeNotesPageData(); // 지금 보고 있는 메모장의 최신 내용을 freeNotesPages에 반영해둠
-            return {
+            const state = {
                 employeeId: currentEmployeeId,
                 passwordHash: currentPasswordHash,
                 name: currentUserName,
@@ -697,8 +791,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 trendSpec,
                 maintenanceSchedule,
                 waterFlowDiagrams,
-                currentWaterFlowDiagramId
+                currentWaterFlowDiagramId,
+                archivedCategories,
+                recordSnippets,
+                weekdayTemplates
             };
+            if (serverSupportsRecordRevisions) state.recordRevisions = recordRevisions;
+            return state;
         }
 
         function cacheAllToLocalStorage() {
@@ -732,6 +831,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
             safeSetItem('accountName', currentUserName);
             safeSetItem('accountDepartment', currentUserDepartment);
+            safeSetItem('archivedCategories', JSON.stringify(archivedCategories));
+            safeSetItem('recordSnippets', JSON.stringify(recordSnippets));
+            safeSetItem('weekdayTemplates', JSON.stringify(weekdayTemplates));
+            safeSetItem('recordRevisions', JSON.stringify(recordRevisions));
         }
 
         // 이 기기가 서버에서 최신 데이터를 완전히 받아오기 전까지는 절대 로컬(오래됐을 수 있는) 데이터를
@@ -838,6 +941,17 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         waterFlowConnections = Array.isArray(data.waterFlowConnections) ? data.waterFlowConnections : [];
                     }
                     ensureActiveWaterFlowDiagram();
+                    archivedCategories = Array.isArray(data.archivedCategories)
+                        ? data.archivedCategories.filter(c => typeof c === 'string' && !categories.includes(c))
+                        : [];
+                    recordSnippets = (data.recordSnippets && typeof data.recordSnippets === 'object' && !Array.isArray(data.recordSnippets)) ? data.recordSnippets : {};
+                    weekdayTemplates = (data.weekdayTemplates && typeof data.weekdayTemplates === 'object' && !Array.isArray(data.weekdayTemplates)) ? data.weekdayTemplates : {};
+                    // 서버가 수정 이력을 대용량 필드로 따로 저장할 수 있는 버전이면 그때부터 동기화함.
+                    // 서버에 아직 이력이 없으면(구버전 서버 사용 중이던 기간) 이 기기에 쌓아둔 로컬 이력을 그대로 유지
+                    serverSupportsRecordRevisions = Array.isArray(data.largeFieldKeys) && data.largeFieldKeys.includes('recordRevisions');
+                    if (data.recordRevisions && typeof data.recordRevisions === 'object' && !Array.isArray(data.recordRevisions)) {
+                        recordRevisions = data.recordRevisions;
+                    }
 
                     cacheAllToLocalStorage();
 
@@ -1759,7 +1873,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
             'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
-            'accountName', 'accountDepartment'
+            'accountName', 'accountDepartment',
+            'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions'
         ];
 
         function logout() {

@@ -18,6 +18,12 @@
             }
             
             const today = new Date();
+            const todayStr = formatDate(today);
+            // 작성 누락 표시: 처음 기록을 시작한 날 이후의 지난 근무일 중 아무 카테고리에도 내용이 없는 날
+            const showMissing = !isFeatureDisabled('missingRecordIndicator');
+            const firstRecordDate = showMissing ? getFirstRecordDate() : null;
+            let workdayCount = 0;
+            let writtenCount = 0;
             for (let d = 1; d <= lastDate; d++) {
                 const dateObj = new Date(year, month, d);
                 const dateStr = formatDate(dateObj);
@@ -32,6 +38,19 @@
                 if (isToday) classes += ' today';
                 if (isSelected) classes += ' selected';
                 if (isInHighlightedRange) classes += ' range-highlight';
+                let dayTitleAttr = '';
+                if (firstRecordDate && dateStr >= firstRecordDate && dateStr <= todayStr && !isNonWorkingDay(dateStr, dateObj)) {
+                    const written = hasAnyRecordContent(dateStr);
+                    // 오늘은 아직 하루가 끝나지 않았으므로, 이미 작성했을 때만 작성률 계산에 포함
+                    if (dateStr < todayStr || written) {
+                        workdayCount++;
+                        if (written) writtenCount++;
+                    }
+                    if (!written && dateStr < todayStr) {
+                        classes += ' record-missing';
+                        dayTitleAttr = ' title="활동기록 작성 누락 (근무일)"';
+                    }
+                }
                 
                 // 날짜 숫자 색상 클래스 결정 (공휴일 > 일요일 > 토요일 순 우선)
                 let numClass = '';
@@ -63,7 +82,7 @@
                 planHtml += '</div>';
                 
                 html += `
-                    <div class="${classes}" data-date="${dateStr}" onclick="selectDate('${dateStr}')">
+                    <div class="${classes}" data-date="${dateStr}"${dayTitleAttr} onclick="selectDate('${dateStr}')">
                         <button class="day-plus-btn" onclick="event.stopPropagation(); openEventModal(null, '${dateStr}')" aria-label="${dateStr} 일정 추가">+</button>
                         <div class="day-top">
                             <div class="day-number ${numClass}">${d}</div>
@@ -80,8 +99,41 @@
             }
             
             document.getElementById('daysContainer').innerHTML = html;
+
+            const rateEl = document.getElementById('monthRecordRate');
+            if (rateEl) {
+                if (showMissing && workdayCount > 0) {
+                    const missing = workdayCount - writtenCount;
+                    rateEl.textContent = `✍️ 작성률 ${writtenCount}/${workdayCount}일 (${Math.round(writtenCount / workdayCount * 100)}%)${missing > 0 ? ` · 누락 ${missing}일` : ''}`;
+                    rateEl.classList.toggle('has-missing', missing > 0);
+                } else {
+                    rateEl.textContent = '';
+                }
+            }
+
             renderUpcomingWidget();
+            if (typeof renderOpenIssuesWidget === 'function') renderOpenIssuesWidget();
             setupCalendarSwipe();
+        }
+
+        // 연차/휴가 등 개인 휴무 일정이 걸린 날은 근무일이 아니므로 작성 누락으로 보지 않음 (반차는 근무일)
+        const LEAVE_EVENT_PATTERN = /연차|휴가|휴무|병가|경조|공가|대휴|출산|육아휴직/;
+
+        function isNonWorkingDay(dateStr, dateObj) {
+            const dayOfWeek = dateObj.getDay();
+            if (dayOfWeek === 0 || dayOfWeek === 6) return true;
+            if (KR_HOLIDAYS[dateStr]) return true;
+            return events.some(ev => ev.title && dateStr >= ev.start && dateStr <= ev.end &&
+                LEAVE_EVENT_PATTERN.test(ev.title) && !/반차/.test(ev.title));
+        }
+
+        // 처음으로 무언가 기록한 날짜 (그 이전 날짜는 앱을 쓰기 전이라 누락으로 보지 않음)
+        function getFirstRecordDate() {
+            let first = null;
+            for (const dateStr in records) {
+                if ((!first || dateStr < first) && hasAnyRecordContent(dateStr)) first = dateStr;
+            }
+            return first;
         }
 
         // 캘린더 영역을 좌우로 드래그(마우스)/스와이프(터치)하면 이전달·다음달로 이동

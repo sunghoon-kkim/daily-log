@@ -58,6 +58,7 @@
                     <div class="calendar-header">
                         <div class="calendar-header-left">
                             <h2 id="monthYear" onclick="openMonthJumpModal()" style="cursor:pointer;" title="연/월 선택"></h2>
+                            <span class="month-record-rate" id="monthRecordRate" data-feature="missingRecordIndicator" title="이번 달 근무일(주말·공휴일·연차/휴가 일정 제외) 중 활동기록을 작성한 날의 비율"></span>
                         </div>
                         <div class="header-buttons">
                             <button class="add-event-btn" onclick="openEventModal(null, formatDate(currentDate))">➕ 일정 추가</button>
@@ -119,6 +120,12 @@
                 
                 <h4 style="color: #333; margin: 25px 0 15px 0; font-size: 16px;">등록된 카테고리</h4>
                 <div class="categories-list" id="categoriesList"></div>
+
+                <div id="archivedCategoriesSection" style="display:none;">
+                    <h4 style="color: #333; margin: 25px 0 8px 0; font-size: 16px;">📦 보관된 카테고리</h4>
+                    <p style="color: #666; font-size: 13px; margin-bottom: 12px;">입력 화면에서는 숨겨져 있지만 과거 기록은 그대로 남아 있어 검색·기간 조회·통계에서 계속 볼 수 있습니다.</p>
+                    <div class="categories-list" id="archivedCategoriesList"></div>
+                </div>
             </div>
         </div>
         
@@ -128,11 +135,37 @@
 
             <div class="query-container" data-feature="keywordSearch">
                 <h3 style="margin-bottom: 10px;">🔎 통합 검색</h3>
-                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">전체 기간, 전체 카테고리(예정작업 포함)에서 키워드로 검색합니다.</p>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">활동기록(보관 카테고리 포함)·예정작업·할일/메모·정비계획·개선과제에서 키워드로 검색합니다.</p>
                 
                 <div class="search-row">
-                    <input type="text" id="searchKeywordInput" class="search-input" placeholder="검색할 키워드 입력 (예: 벤트필터)" onkeydown="if(event.key==='Enter') performKeywordSearch()">
+                    <input type="text" id="searchKeywordInput" class="search-input" placeholder="예: 펌프 누설|누수 -완료" onkeydown="if(event.key==='Enter') performKeywordSearch()">
                     <button class="query-btn" onclick="performKeywordSearch()">검색</button>
+                </div>
+                <div class="search-help-text">띄어쓰기 = 모두 포함(AND) · <b>A|B</b> = 둘 중 하나(OR) · <b>-단어</b> = 제외 · <b>"따옴표"</b> = 구절 그대로</div>
+
+                <div class="search-options-row">
+                    <select id="searchPeriodSelect" class="search-option-select" onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()" aria-label="검색 기간">
+                        <option value="">전체 기간</option>
+                        <option value="1">최근 1개월</option>
+                        <option value="3">최근 3개월</option>
+                        <option value="6">최근 6개월</option>
+                        <option value="12">최근 1년</option>
+                        <option value="36">최근 3년</option>
+                    </select>
+                    <select id="searchCategorySelect" class="search-option-select" onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()" aria-label="검색 카테고리">
+                        <option value="">전체 카테고리</option>
+                    </select>
+                    <label class="search-scope-label"><input type="checkbox" id="searchScopeRecords" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 활동기록</label>
+                    <label class="search-scope-label"><input type="checkbox" id="searchScopeEvents" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 예정작업</label>
+                    <label class="search-scope-label"><input type="checkbox" id="searchScopeNotes" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 할일/메모</label>
+                    <label class="search-scope-label"><input type="checkbox" id="searchScopeMaintenance" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 정비계획</label>
+                    <label class="search-scope-label"><input type="checkbox" id="searchScopeProjects" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 개선과제</label>
+                </div>
+                <div class="search-help-text">※ 기간을 지정하면 날짜가 없는 자료(메모·할일·정비계획·개선과제)는 제외되고, 카테고리를 지정하면 활동기록만 검색합니다.</div>
+
+                <div class="ai-block-label-row" style="margin: 12px 0 8px 0;">
+                    <span id="searchResultCount" style="color:#666; font-size:13px;"></span>
+                    <button class="ai-copy-btn" onclick="downloadSearchResultsCsv()">⬇️ 검색 결과 내보내기</button>
                 </div>
                 
                 <div class="search-results" id="searchResults">
@@ -168,7 +201,11 @@
                 
                 <div class="ai-block-label-row" style="margin: 20px 0 15px 0;">
                     <h4 style="color: #333;">조회 결과</h4>
-                    <button class="ai-copy-btn" onclick="downloadQueryResultsCsv()">⬇️ 엑셀로 내보내기</button>
+                    <div class="query-export-buttons">
+                        <button class="ai-copy-btn" onclick="downloadQueryResultsCsv()" title="날짜·카테고리·내용 3열 목록">⬇️ 엑셀(목록)</button>
+                        <button class="ai-copy-btn" onclick="downloadQueryResultsPivotCsv()" title="날짜(행) × 카테고리(열) 표">⬇️ 엑셀(날짜×카테고리 표)</button>
+                        <button class="ai-copy-btn" onclick="printQueryReport()" title="인쇄 또는 PDF로 저장">🖨️ 보고서 인쇄</button>
+                    </div>
                 </div>
                 <div class="query-results" id="queryResults">
                     <div class="no-result">카테고리를 선택하고 검색 버튼을 클릭하세요</div>

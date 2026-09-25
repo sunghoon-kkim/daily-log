@@ -8,7 +8,8 @@ const LARGE_FIELDS_SHEET_NAME = "ProfileLargeFields"; // 흐름도/메모장/절
 // Users 시트 프로필 JSON 셀에는 5만자 제한이 있음(records가 예전에 이 문제로 Records 시트로
 // 분리됐던 것과 같은 이유). 이 필드들은 흐름도를 여러 개 만들거나 메모장을 여러 개 쓰는 등
 // 내용이 계속 쌓일 수 있어서 같은 문제가 재발하지 않도록 여기 나열된 것만 LARGE_FIELDS_SHEET_NAME으로 분리 저장함
-const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule', 'categoryImages', 'monthlyFeedbacks'];
+// recordRevisions: 활동기록 날짜·카테고리별 수정 이력(되돌리기용). 프론트가 전체 크기를 2만자 이내로 제한해서 보냄
+const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule', 'categoryImages', 'monthlyFeedbacks', 'recordRevisions'];
 // records를 Users 시트 셀 하나에 전부 담으면 몇 년 쌓였을 때 셀당 5만자 제한에 걸릴 수 있어서
 // 이 시트로 따로 분리했음. 한 행이 "한 사람의 한 달"이라 아무리 오래 써도 셀 크기가 안 커짐.
 const TEAM_REPORTS_SHEET_NAME = "TeamReports"; // (레거시) 예전 하루 단위 자유 텍스트 팀 보고 시트. 주간 보고로 개편된 뒤로는 더 이상 새로 쓰지 않고, 과거 기록 조회/계정 삭제 시 정리 용도로만 남겨둠
@@ -850,6 +851,8 @@ function handleLogin(employeeId, passwordHash) {
 
   parsedData.records = loadMergedRecords(employeeId, parsedData);
   applyLargeFieldsToProfile(employeeId, parsedData);
+  // 프론트는 이 목록에 recordRevisions가 있을 때만 수정 이력을 서버로 보냄(구버전 서버의 프로필 셀 5만자 한도 보호)
+  parsedData.largeFieldKeys = LARGE_FIELD_KEYS;
   // 프론트엔드는 더 이상 관리자 사번을 직접 알지 못하므로(공개 저장소 노출 방지), 이 계정이
   // 관리자인지를 서버가 판단해서 내려줌 - 화면 표시(관리자 화면 진입 등)에만 쓰고, 실제 권한
   // 검증은 여전히 서버의 verifyAdmin(ADMIN_EMPLOYEE_ID 대조)이 함
@@ -887,6 +890,8 @@ function handleLoad(employeeId, passwordHash) {
 
   parsedData.records = loadMergedRecords(employeeId, parsedData);
   applyLargeFieldsToProfile(employeeId, parsedData);
+  // 프론트는 이 목록에 recordRevisions가 있을 때만 수정 이력을 서버로 보냄(구버전 서버의 프로필 셀 5만자 한도 보호)
+  parsedData.largeFieldKeys = LARGE_FIELD_KEYS;
   // handleLogin과 동일한 이유로, 프론트가 화면 표시에만 쓸 수 있도록 관리자 여부를 함께 내려줌
   parsedData.isAdmin = (employeeId === ADMIN_EMPLOYEE_ID);
 
@@ -2884,7 +2889,8 @@ function updateReadableSheet(employeeId, data) {
   }
   sheet.clear();
 
-  const categories = data.categories || [];
+  // 보관(아카이브)한 카테고리의 과거 기록도 사람이 보는 시트에서 사라지지 않도록 뒤에 이어 붙임
+  const categories = (data.categories || []).concat((data.archivedCategories || []).filter(function(c) { return (data.categories || []).indexOf(c) === -1; }));
   const records = data.records || {};
   const events = data.events || [];
 

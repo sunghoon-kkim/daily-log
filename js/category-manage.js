@@ -6,6 +6,7 @@
             
             if (!name) { showAppToast('카테고리 이름을 입력해주세요'); return; }
             if (categories.includes(name)) { showAppToast('이미 존재하는 카테고리입니다'); return; }
+            if (archivedCategories.includes(name)) { showAppToast('보관된 카테고리에 같은 이름이 있습니다. 아래 "보관된 카테고리"에서 복원해주세요'); return; }
             
             categories.push(name);
             categoryColors[name] = COLOR_PALETTE[categories.length % COLOR_PALETTE.length];
@@ -27,11 +28,13 @@
                 return val && val.toString().trim() !== '';
             }).length;
             const message = affectedDateCount > 0
-                ? `'${name}' 카테고리를 삭제하시겠습니까?\n\n이 카테고리로 기록된 ${affectedDateCount}일치 내용이 함께 영구 삭제됩니다.`
+                ? `'${name}' 카테고리를 삭제하시겠습니까?\n\n이 카테고리로 기록된 ${affectedDateCount}일치 내용이 함께 영구 삭제됩니다.${archivedCategories.includes(name) ? '' : '\n(기록을 남겨두려면 삭제 대신 📦 보관을 사용하세요)'}`
                 : `'${name}' 카테고리를 삭제하시겠습니까?`;
 
             confirmModal(message, () => {
                 categories = categories.filter(c => c !== name);
+                const wasArchived = archivedCategories.includes(name);
+                archivedCategories = archivedCategories.filter(c => c !== name);
                 delete categoryColors[name];
                 delete categoryDefaultCollapsed[name];
                 selectedCategoriesForQuery.delete(name);
@@ -48,6 +51,7 @@
                 }
 
                 saveCategoriesToStorage();
+                if (wasArchived) saveArchivedCategoriesToStorage();
                 saveCategoryColorsToStorage();
                 saveCategoryDefaultCollapsedToStorage();
                 saveRecordsToStorage();
@@ -106,7 +110,7 @@
             const newName = document.getElementById('categoryRenameInput').value.trim();
             if (!newName) { showAppToast('카테고리 이름을 입력해주세요'); return; }
             if (newName === oldName) { closeCategoryRenameModal(); return; }
-            if (categories.includes(newName)) { showAppToast('이미 존재하는 카테고리입니다'); return; }
+            if (categories.includes(newName) || archivedCategories.includes(newName)) { showAppToast('이미 존재하는 카테고리입니다 (보관된 카테고리 포함)'); return; }
 
             const idx = categories.indexOf(oldName);
             if (idx === -1) { closeCategoryRenameModal(); return; }
@@ -202,13 +206,77 @@
                         <input type="color" class="category-color-input" value="${categoryColors[category] || '#667eea'}"
                             onchange="changeCategoryColor('${escapeForOnclickArg(category)}', this.value)" title="박스 색상 설정">
                         <button class="category-tag-edit" onclick="renameCategory('${escapeForOnclickArg(category)}')" title="이름 수정">✏️</button>
+                        <button class="category-tag-edit" onclick="archiveCategory('${escapeForOnclickArg(category)}')" title="보관: 입력 화면에서만 숨기고 과거 기록은 검색·조회에 그대로 남김">📦</button>
                         <button class="category-tag-delete" onclick="deleteCategory('${escapeForOnclickArg(category)}')" aria-label="${escapeHtml(category)} 카테고리 삭제">✕</button>
                     </div>
                 </div>
             `;
             }).join('');
 
+            renderArchivedCategories();
             if (typeof applyFormLockState === 'function') applyFormLockState();
+        }
+
+        // ===== 카테고리 보관(아카이브) =====
+        // 삭제와 달리 records의 과거 내용은 전혀 건드리지 않고, categories(입력 화면에 쓰는 목록)에서만
+        // 빼서 archivedCategories로 옮김. 검색/조회/통계/설비 이력은 getAllRecordCategories()로 계속 조회됨
+        function archiveCategory(name) {
+            if (!checkEditPermission()) return;
+            if (!categories.includes(name)) return;
+            // 활성 카테고리가 하나도 없으면 서버가 신규 계정으로 보고 기본 카테고리를 다시 채우므로 막음
+            if (categories.length <= 1) { showAppToast('카테고리가 최소 1개는 남아 있어야 합니다'); return; }
+
+            confirmModal(`'${name}' 카테고리를 보관할까요?\n\n활동기록 입력 화면에서는 보이지 않게 되지만, 지금까지 적은 기록은 지워지지 않고 검색·기간 조회·통계에서 계속 볼 수 있습니다. 언제든 다시 복원할 수 있습니다.`, () => {
+                if (selectedDate) captureCurrentFormToRecords(); // 보관 직전까지 입력한 내용을 먼저 확정
+                categories = categories.filter(c => c !== name);
+                if (!archivedCategories.includes(name)) archivedCategories.push(name);
+                saveCategoriesToStorage();
+                saveArchivedCategoriesToStorage();
+                renderCategories();
+                renderCategorySelector();
+                if (selectedDate) renderRecordForm();
+                renderCalendar();
+                showAppToast(`'${name}' 카테고리를 보관했습니다`);
+            });
+        }
+
+        function restoreArchivedCategory(name) {
+            if (!checkEditPermission()) return;
+            if (!archivedCategories.includes(name)) return;
+            archivedCategories = archivedCategories.filter(c => c !== name);
+            if (!categories.includes(name)) categories.push(name);
+            if (!categoryColors[name]) {
+                categoryColors[name] = COLOR_PALETTE[categories.length % COLOR_PALETTE.length];
+                saveCategoryColorsToStorage();
+            }
+            saveCategoriesToStorage();
+            saveArchivedCategoriesToStorage();
+            renderCategories();
+            renderCategorySelector();
+            if (selectedDate) renderRecordForm();
+            renderCalendar();
+            showAppToast(`'${name}' 카테고리를 복원했습니다`);
+        }
+
+        function renderArchivedCategories() {
+            const container = document.getElementById('archivedCategoriesList');
+            const section = document.getElementById('archivedCategoriesSection');
+            if (!container || !section) return;
+            section.style.display = archivedCategories.length ? '' : 'none';
+            container.innerHTML = archivedCategories.map(category => {
+                const count = Object.keys(records).filter(d => records[d] && typeof records[d][category] === 'string' && records[d][category].trim() !== '').length;
+                return `
+                <div class="category-tag archived-category-tag">
+                    <div class="category-tag-left">
+                        <span class="category-tag-name">📦 ${escapeHtml(category)}</span>
+                        <span class="archived-category-count">기록 ${count}일</span>
+                    </div>
+                    <div class="category-tag-actions">
+                        <button class="category-default-collapse-toggle" onclick="restoreArchivedCategory('${escapeForOnclickArg(category)}')">↩ 복원</button>
+                        <button class="category-tag-delete" onclick="deleteCategory('${escapeForOnclickArg(category)}')" aria-label="${escapeHtml(category)} 카테고리 영구 삭제" title="기록까지 영구 삭제">✕</button>
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         // 카테고리 관리 카드 순서 변경: categories 배열 순서를 바로 바꾸는 것이라, 날짜별로 순서를
@@ -245,9 +313,15 @@
         
         function renderCategorySelector() {
             const container = document.getElementById('categorySelector');
-            container.innerHTML = categories.map(category => `
-                <button class="category-select-btn" data-category="${escapeHtml(category)}" onclick="selectCategoryForQuery('${escapeForOnclickArg(category)}')">${escapeHtml(category)}</button>
+            // 보관한 카테고리도 과거 기록 조회 대상이므로 함께 보여줌(📦 표시)
+            container.innerHTML = getAllRecordCategories().map(category => `
+                <button class="category-select-btn${archivedCategories.includes(category) ? ' archived' : ''}" data-category="${escapeHtml(category)}" onclick="selectCategoryForQuery('${escapeForOnclickArg(category)}')">${archivedCategories.includes(category) ? '📦 ' : ''}${escapeHtml(category)}</button>
             `).join('');
+            if (typeof refreshSearchCategoryOptions === 'function') refreshSearchCategoryOptions();
+            // 다시 그려도 기존 선택 상태가 유지되게 함
+            container.querySelectorAll('.category-select-btn').forEach(btn => {
+                btn.classList.toggle('selected', selectedCategoriesForQuery.has(btn.dataset.category));
+            });
         }
         
         function selectCategoryForQuery(category) {
