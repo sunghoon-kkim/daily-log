@@ -113,6 +113,7 @@
 
             renderUpcomingWidget();
             if (typeof renderOpenIssuesWidget === 'function') renderOpenIssuesWidget();
+            if (typeof renderTodaySummary === 'function') renderTodaySummary();
             setupCalendarSwipe();
         }
 
@@ -715,9 +716,9 @@
                             <div class="category-name" style="color:${color}">${categoryHtml}</div>
                             <div class="category-header-actions">
                                 ${(!content && findPreviousRecord(selectedDate, category)) ? `<button class="category-prev-btn" draggable="false" onclick="loadPreviousRecord('${categoryArg}')" title="이전에 작성한 기록 불러오기">↓ 이전 기록</button>` : ''}
-                                ${typeof buildRecordToolButtons === 'function' ? buildRecordToolButtons(selectedDate, category, categoryArg) : ''}
                                 <button class="category-collapse-btn" draggable="false" onclick="toggleCategoryCollapse('${categoryArg}')" title="접기/펼치기">▾</button>
-                                <button class="category-hide-btn" draggable="false" onclick="hideCategoryForDate('${categoryArg}')" title="이 날짜에서 숨기기" aria-label="이 날짜에서 숨기기">✕</button>
+                                ${typeof buildRecordToolButtons === 'function' ? buildRecordToolButtons(selectedDate, category, categoryArg) : ''}
+                                ${typeof buildRecordToolButtons === 'function' ? '' : `<button class="category-hide-btn" draggable="false" onclick="hideCategoryForDate('${categoryArg}')" title="이 날짜에서 숨기기" aria-label="이 날짜에서 숨기기">✕</button>`}
                             </div>
                         </div>
                         <textarea id="category-${categoryHtml}" data-category="${categoryHtml}" placeholder="활동 내용을 입력하세요...">${escapeHtml(content)}</textarea>

@@ -193,6 +193,7 @@
         function renderMaintenanceSchedule() {
             const container = document.getElementById('maintenanceList');
             if (!container) return;
+            if (typeof renderTodaySummary === 'function') renderTodaySummary(); // 정비 일정이 바뀌면 오늘 요약의 "급한 정비"도 갱신
 
             const yearLabelEl = document.getElementById('maintenanceViewYearLabel');
             if (yearLabelEl) yearLabelEl.textContent = maintenanceViewYear + '년';

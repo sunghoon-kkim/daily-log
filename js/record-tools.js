@@ -9,19 +9,165 @@
 
         const WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
+        // 카테고리 머리글에는 자주 쓰는 ☐(미결 표시)만 두고, 나머지 도구(상용구/수정 이력/숨기기)는
+        // "⋯" 메뉴로 묶어서 휴대폰 화면에서도 머리글이 한 줄에 들어가게 함
         function buildRecordToolButtons(dateStr, category, categoryArg) {
             let html = '';
             if (!isFeatureDisabled('openIssues')) {
                 html += `<button class="category-prev-btn record-tool-btn" draggable="false" onclick="toggleOpenIssueMarker('${categoryArg}')" title="커서가 있는 줄을 미결 사항(☐)으로 표시/해제 - 해결 전까지 달력 위 '미결 사항'에서 계속 추적됩니다">☐</button>`;
             }
-            if (!isFeatureDisabled('recordSnippets')) {
-                html += `<button class="category-prev-btn record-tool-btn" draggable="false" onclick="openRecordSnippetModal('${categoryArg}')" title="상용구 / 요일 템플릿">📌</button>`;
-            }
             const revisions = recordRevisions[dateStr + '|' + category];
-            if (!isFeatureDisabled('recordRevisions') && Array.isArray(revisions) && revisions.length > 0) {
-                html += `<button class="category-prev-btn record-tool-btn" draggable="false" onclick="openRecordRevisionModal('${categoryArg}')" title="이 날짜·카테고리의 이전 내용 보기/되돌리기">🕘 ${revisions.length}</button>`;
-            }
+            const hasRevisions = !isFeatureDisabled('recordRevisions') && Array.isArray(revisions) && revisions.length > 0;
+            html += `<button class="category-collapse-btn category-menu-btn${hasRevisions ? ' has-badge' : ''}" draggable="false" onclick="openCategoryToolMenu(event, '${categoryArg}')" title="더보기 (상용구·수정 이력·숨기기)" aria-label="더보기" aria-haspopup="menu">⋯</button>`;
             return html;
+        }
+
+        function closeCategoryToolMenu() {
+            const menu = document.getElementById('categoryToolMenu');
+            if (menu) menu.remove();
+        }
+
+        function openCategoryToolMenu(e, category) {
+            e.stopPropagation();
+            const alreadyOpenFor = document.getElementById('categoryToolMenu');
+            if (alreadyOpenFor && alreadyOpenFor.dataset.category === category) { closeCategoryToolMenu(); return; }
+            closeCategoryToolMenu();
+
+            const items = [];
+            if (!isFeatureDisabled('recordSnippets')) {
+                items.push({ label: '📌 상용구 · 요일 템플릿', action: () => openRecordSnippetModal(category) });
+            }
+            const revisions = recordRevisions[selectedDate + '|' + category];
+            if (!isFeatureDisabled('recordRevisions') && Array.isArray(revisions) && revisions.length > 0) {
+                items.push({ label: `🕘 수정 이력 (${revisions.length})`, action: () => openRecordRevisionModal(category) });
+            }
+            items.push({ label: '🙈 이 날짜에서 숨기기', action: () => hideCategoryForDate(category) });
+
+            const menu = document.createElement('div');
+            menu.id = 'categoryToolMenu';
+            menu.className = 'category-tool-menu';
+            menu.dataset.category = category;
+            menu.setAttribute('role', 'menu');
+            items.forEach(item => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'category-tool-menu-item';
+                btn.setAttribute('role', 'menuitem');
+                btn.textContent = item.label;
+                btn.addEventListener('click', (ev) => { ev.stopPropagation(); closeCategoryToolMenu(); item.action(); });
+                menu.appendChild(btn);
+            });
+            document.body.appendChild(menu);
+
+            // 버튼 바로 아래에, 화면 밖으로 나가지 않게 위치를 맞춤
+            const rect = e.currentTarget.getBoundingClientRect();
+            const menuWidth = menu.offsetWidth || 200;
+            const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+            menu.style.left = left + 'px';
+            menu.style.top = (rect.bottom + 4) + 'px';
+        }
+
+        // 메뉴 바깥을 누르거나, 화면을 스크롤하거나, ESC를 누르면 메뉴를 닫음
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#categoryToolMenu')) closeCategoryToolMenu();
+        });
+        window.addEventListener('scroll', closeCategoryToolMenu, true);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCategoryToolMenu(); });
+
+        // ===== 오늘 요약 카드 =====
+        // 아침에 앱을 열면 오늘 챙길 것(오늘 기록/직전 근무일 누락/오늘 일정/급한 정비/오래된 미결)을 한 줄로 보여줌.
+        // 이미 있는 데이터를 모아 보여주기만 하고 새로 저장하는 것은 없음
+        function findPreviousWorkday(todayStr) {
+            const d = parseLocalDate(todayStr);
+            for (let i = 0; i < 14; i++) {
+                d.setDate(d.getDate() - 1);
+                const ds = formatDate(d);
+                if (!isNonWorkingDay(ds, d)) return ds;
+            }
+            return null;
+        }
+
+        function formatShortDateWithDay(dateStr) {
+            const d = parseLocalDate(dateStr);
+            return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAY_NAMES[d.getDay()]})`;
+        }
+
+        function jumpToDateRecord(dateStr) {
+            const d = parseLocalDate(dateStr);
+            currentDate = new Date(d.getFullYear(), d.getMonth(), 1);
+            switchTab('calendar');
+            selectDate(dateStr);
+            const recordBox = document.querySelector('#calendar .record-box');
+            if (recordBox) recordBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function focusOpenIssuesWidget() {
+            if (isOpenIssuesWidgetCollapsed()) toggleOpenIssuesWidget();
+            const el = document.getElementById('openIssuesWidget');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function renderTodaySummary() {
+            const el = document.getElementById('todaySummary');
+            if (!el) return;
+            if (isFeatureDisabled('todaySummary') || !editUnlocked) { el.innerHTML = ''; return; }
+
+            const todayStr = formatDate(new Date());
+            const chips = [];
+            const chip = (tone, icon, text, onclick) => chips.push(
+                `<button type="button" class="today-chip tone-${tone}" onclick="${onclick}"><span class="today-chip-icon" aria-hidden="true">${icon}</span>${text}</button>`
+            );
+
+            // 오늘 기록
+            const todayWritten = hasAnyRecordContent(todayStr);
+            chip(todayWritten ? 'ok' : 'neutral', todayWritten ? '✅' : '✍️', todayWritten ? '오늘 기록 작성함' : '오늘 기록 쓰기', `jumpToDateRecord('${todayStr}')`);
+
+            // 직전 근무일 누락
+            if (!isFeatureDisabled('missingRecordIndicator')) {
+                const prev = findPreviousWorkday(todayStr);
+                const first = getFirstRecordDate();
+                if (prev && first && prev >= first && !hasAnyRecordContent(prev)) {
+                    chip('alert', '⚠️', `${formatShortDateWithDay(prev)} 기록 누락`, `jumpToDateRecord('${prev}')`);
+                }
+            }
+
+            // 오늘 일정
+            const todayEvents = events.filter(ev => todayStr >= ev.start && todayStr <= ev.end);
+            if (todayEvents.length > 0) {
+                const names = todayEvents.slice(0, 2).map(ev => escapeHtml(ev.title)).join(', ');
+                chip('info', '📅', `오늘 일정 ${todayEvents.length}건: ${names}${todayEvents.length > 2 ? ' 외' : ''}`, `jumpToDateRecord('${todayStr}')`);
+            }
+
+            // 급한 정비 (정비계획 탭을 쓰는 경우만)
+            if (!disabledTabIds.includes('maintenance') && !isFeatureDisabled('maintenanceSchedule') && typeof getMaintenanceUrgency === 'function') {
+                let overdue = 0, thisMonth = 0;
+                maintenanceSchedule.forEach(m => {
+                    if (m.status === '보류') return; // 보류 항목은 급한 일로 보지 않음
+                    const u = getMaintenanceUrgency(m);
+                    if (u.level === 'overdue') overdue++;
+                    else if (u.level === 'urgent' && u.monthsUntil === 0) thisMonth++;
+                });
+                if (overdue + thisMonth > 0) {
+                    const parts = [];
+                    if (overdue) parts.push(`지연 ${overdue}`);
+                    if (thisMonth) parts.push(`이번 달 ${thisMonth}`);
+                    chip(overdue ? 'alert' : 'warn', '🔧', `정비 ${parts.join(' · ')}건`, `switchTab('maintenance')`);
+                }
+            }
+
+            // 미결 사항
+            if (!isFeatureDisabled('openIssues')) {
+                const issues = collectOpenIssues();
+                if (issues.length > 0) {
+                    const today = parseLocalDate(todayStr);
+                    const aged = issues.filter(i => (today - parseLocalDate(i.date)) / 86400000 >= 14).length;
+                    chip(aged ? 'warn' : 'neutral', '📋', `미결 ${issues.length}건${aged ? ` (2주 이상 ${aged})` : ''}`, 'focusOpenIssuesWidget()');
+                }
+            }
+
+            const d = parseLocalDate(todayStr);
+            el.innerHTML = `<div class="today-summary-title">🌅 오늘 · ${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_NAMES[d.getDay()]})</div>
+                <div class="today-summary-chips">${chips.join('')}</div>`;
         }
 
         // ===== 미결 사항 추적 =====

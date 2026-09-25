@@ -146,6 +146,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 label: '📅 달력 & 활동기록',
                 features: {
                     activityRecord: '📅 달력 & 활동기록',
+                    todaySummary: '🌅 오늘 요약 카드',
                     missingRecordIndicator: '🟥 작성 누락 표시 & 작성률',
                     openIssues: '📋 미결 사항 추적',
                     recordSnippets: '📌 상용구 & 요일 템플릿',
