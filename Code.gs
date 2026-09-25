@@ -3315,7 +3315,7 @@ function handleAskLog(data) {
 }
 
 // ===== 계기판 사진 판독 =====
-const GAUGE_MAX_IMAGES = 4;
+const GAUGE_MAX_IMAGES = 10;
 
 function buildGaugeReadSystemPrompt() {
   return (
@@ -3360,7 +3360,7 @@ function handleGaugeRead(data) {
       return jsonResponse({ status: "error", message: "판독 결과를 해석하지 못했습니다. 다시 시도해주세요." });
     }
     const confidences = ["high", "medium", "low"];
-    const readings = parsed.readings.slice(0, 30).map(r => ({
+    const readings = parsed.readings.slice(0, 80).map(r => ({
       photo: Number(r && r.photo) || 1,
       label: String((r && r.label) || "").trim(),
       value: String((r && r.value) == null ? "" : r.value).trim(),

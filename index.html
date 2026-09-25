@@ -642,19 +642,19 @@
 
             <div class="query-container" data-feature="gaugePhotoReading" style="margin-bottom: 25px;">
                 <h3 style="margin-bottom: 10px;">📷 계기판 사진으로 기록하기</h3>
-                <p style="color: #666; font-size: 14px; margin-bottom: 16px;">압력계·온도계·유량계·운전 패널을 찍으면 AI가 수치를 읽어줍니다. <b>읽은 값은 사진과 대조해 확인·수정한 뒤에</b> 활동기록에 남기고, 같은 설비의 판독값을 모아 경향 분석으로 보낼 수 있습니다. 사진은 저장되지 않습니다.</p>
+                <p style="color: #666; font-size: 14px; margin-bottom: 16px;">압력계·온도계·유량계·운전 패널을 찍으면 AI가 수치를 읽고, 설비명을 적어두면 그 설비의 과거 판독값과 비교해 <b>평소보다 높거나 낮은 값, 계속 오르거나 내리는 값</b>을 먼저 알려줍니다. <b>읽은 값은 사진과 대조해 확인·수정한 뒤에</b> 활동기록에 남기고, 같은 설비의 판독값을 모아 경향 분석으로 보낼 수 있습니다. 사진은 저장되지 않습니다.</p>
 
                 <div class="trend-input-row">
                     <div class="query-control-group" style="flex:1;">
                         <label>설비명 (선택 — 적어두면 같은 설비끼리 묶어서 경향을 봅니다)</label>
-                        <input type="text" id="gaugeEquipmentInput" placeholder="예: 1번 보일러" list="equipmentNameList">
+                        <input type="text" id="gaugeEquipmentInput" placeholder="예: 1번 보일러" list="equipmentNameList" oninput="onGaugeContextChange()">
                     </div>
                 </div>
 
                 <input type="file" id="gaugePhotoInput" accept="image/*" capture="environment" multiple style="display:none;" onchange="handleGaugePhotoInput(this)">
                 <div class="gauge-photo-row">
                     <button type="button" class="add-category-btn" onclick="document.getElementById('gaugePhotoInput').click()">📷 사진 찍기 / 선택</button>
-                    <span class="gauge-photo-hint">최대 4장까지 한 번에 판독</span>
+                    <span class="gauge-photo-hint">최대 10장까지 한 번에 판독</span>
                 </div>
                 <div class="gauge-thumbs" id="gaugePhotoThumbs"></div>
 
@@ -663,16 +663,17 @@
 
                 <div class="ai-result-block" id="gaugeResultBlock" style="display:none;">
                     <label class="ai-block-label">판독 결과 — 사진과 대조해 틀린 값은 바로 고쳐주세요</label>
+                    <div class="gauge-anomaly-summary info" id="gaugeAnomalySummary"></div>
                     <div class="gauge-table-wrap">
                         <table class="gauge-table">
-                            <thead><tr><th>항목</th><th>값</th><th>단위</th><th>판독 상태</th><th></th></tr></thead>
+                            <thead><tr><th>항목</th><th>값</th><th>단위</th><th>판독 상태</th><th>평소 대비</th><th></th></tr></thead>
                             <tbody id="gaugeReadingsBody"></tbody>
                         </table>
                     </div>
                     <button type="button" class="ai-copy-btn" onclick="addGaugeReadingRow()" style="margin-top:8px;">➕ 줄 추가</button>
 
                     <div class="gauge-save-row">
-                        <input type="date" id="gaugeDateInput">
+                        <input type="date" id="gaugeDateInput" onchange="onGaugeContextChange()">
                         <select id="gaugeCategorySelect"></select>
                         <button type="button" class="add-category-btn" onclick="saveGaugeToRecord()">📅 활동기록에 추가</button>
                         <button type="button" class="ai-revise-btn" data-feature="trendAnalysis" onclick="sendGaugeToTrend()">📈 경향 분석으로 보내기</button>

@@ -155,7 +155,7 @@
         
         // ===== 계기판 사진 판독 =====
         // 사진은 판독 요청에만 쓰고 어디에도 저장하지 않음. 판독값은 사람이 확인·수정한 뒤에만 기록됨
-        const GAUGE_MAX_PHOTOS = 4;
+        const GAUGE_MAX_PHOTOS = 10;
         const GAUGE_IMAGE_MAX_SIDE = 1600;
         const GAUGE_RECORD_MARK = '📷 계기판독';
         let gaugePhotos = []; // [{ mimeType, data(base64), previewUrl }]
@@ -173,7 +173,8 @@
                     canvas.height = Math.round(img.height * scale);
                     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
                     URL.revokeObjectURL(url);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    // 10장을 한 번에 보내도 요청 크기(Gemini 20MB)에 여유가 있도록 화질을 약간 낮춤
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
                     resolve({ mimeType: 'image/jpeg', data: dataUrl.split(',')[1], previewUrl: dataUrl });
                 };
                 img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지를 읽지 못했습니다')); };
@@ -253,8 +254,9 @@
                     document.getElementById('gaugeResultBlock').style.display = 'none';
                     return;
                 }
-                renderGaugeReadings();
                 refreshGaugeCategoryOptions();
+                gaugeHistoryCache = null;
+                renderGaugeReadings();
                 document.getElementById('gaugeResultBlock').style.display = 'block';
                 const unsure = gaugeReadings.filter(r => r.confidence !== 'high').length;
                 statusEl.textContent = unsure
@@ -273,6 +275,138 @@
 
         const GAUGE_CONFIDENCE_LABELS = { high: '선명', medium: '확인 필요', low: '불확실' };
 
+        // ----- 평소 대비 이상값 알림 -----
+        // AI가 아니라 활동기록에 남긴 같은 설비·같은 항목의 과거 판독값과 숫자로 비교함(근거가 명확하고 지어낼 여지가 없음)
+        const GAUGE_HISTORY_MAX = 20;
+        const GAUGE_MIN_HISTORY = 3;
+        let gaugeHistoryCache = null; // 한 번 그릴 때 계산해 두고, 값 입력 중에는 재사용
+
+        // equipment가 있으면 그 설비 태그가 붙은 줄만, 없으면 판독 줄 전부
+        function forEachGaugeRecordLine(equipment, callback) {
+            const equipmentTag = equipment ? `[${equipment}]` : '';
+            for (const dateStr of Object.keys(records).sort()) {
+                const rec = records[dateStr] || {};
+                for (const category of getAllRecordCategories()) {
+                    const content = rec[category];
+                    if (typeof content !== 'string' || !content.includes(GAUGE_RECORD_MARK)) continue;
+                    content.split('\n').forEach(line => {
+                        if (!line.includes(GAUGE_RECORD_MARK)) return;
+                        if (equipmentTag && !line.includes(equipmentTag)) return;
+                        const body = line.slice(line.indexOf(GAUGE_RECORD_MARK) + GAUGE_RECORD_MARK.length).replace(equipmentTag, '').trim();
+                        if (body) callback(dateStr, body);
+                    });
+                }
+            }
+        }
+
+        // "공급압력 4.2 kg/cm², 탱크 2 레벨 55 %" → 항목/숫자/단위. 라벨 안의 숫자는 라벨로 두고 마지막 숫자를 값으로 봄
+        function parseGaugeRecordBody(body) {
+            const out = [];
+            body.split(', ').forEach(part => {
+                const m = part.trim().match(/^(.*)\s+(-?\d[\d,]*(?:\.\d+)?)(?:\s+([^\d\s].*))?$/);
+                if (!m) return;
+                const value = parseFloat(m[2].replace(/,/g, ''));
+                if (isFinite(value)) out.push({ label: m[1].trim(), value, unit: (m[3] || '').trim() });
+            });
+            return out;
+        }
+
+        const normalizeGaugeKey = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
+
+        function buildGaugeHistory(equipment, beforeDate) {
+            const history = new Map();
+            if (!equipment) return history;
+            forEachGaugeRecordLine(equipment, (dateStr, body) => {
+                if (beforeDate && dateStr >= beforeDate) return;
+                parseGaugeRecordBody(body).forEach(p => {
+                    const key = normalizeGaugeKey(p.label);
+                    if (!history.has(key)) history.set(key, []);
+                    history.get(key).push({ date: dateStr, value: p.value, unit: p.unit });
+                });
+            });
+            return history;
+        }
+
+        function formatGaugeNumber(n) {
+            return Number(n.toFixed(3)).toString();
+        }
+
+        function assessGaugeReading(r, history) {
+            const v = parseFloat(String(r.value).replace(/,/g, ''));
+            if (!isFinite(v) || !r.label) return { level: 'none', text: '' };
+            const past = (history.get(normalizeGaugeKey(r.label)) || [])
+                .filter(p => !r.unit || !p.unit || normalizeGaugeKey(p.unit) === normalizeGaugeKey(r.unit))
+                .slice(-GAUGE_HISTORY_MAX);
+            if (past.length < GAUGE_MIN_HISTORY) {
+                return { level: 'none', text: past.length ? `과거 ${past.length}건뿐이라 비교 보류` : '과거 기록 없음' };
+            }
+
+            const vals = past.map(p => p.value);
+            const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+            const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length - 1));
+            const min = Math.min(...vals);
+            const max = Math.max(...vals);
+            const range = `평소 ${formatGaugeNumber(min)}~${formatGaugeNumber(max)} (평균 ${formatGaugeNumber(mean)}, ${vals.length}건)`;
+            // 흔들림이 거의 없는 값도 조금만 벗어나면 매번 경고하지 않도록 평균의 5%는 최소 허용폭으로 둠
+            const tolerance = Math.max(2 * std, Math.abs(mean) * 0.05);
+
+            if (v > max && v - mean > tolerance) return { level: 'high', text: `⬆️ 평소보다 높음 · ${range}`, label: r.label };
+            if (v < min && mean - v > tolerance) return { level: 'low', text: `⬇️ 평소보다 낮음 · ${range}`, label: r.label };
+            const last3 = vals.slice(-3);
+            if (last3[0] < last3[1] && last3[1] < last3[2] && last3[2] < v) return { level: 'trend', text: `📈 4회 연속 상승 · ${range}`, label: r.label };
+            if (last3[0] > last3[1] && last3[1] > last3[2] && last3[2] > v) return { level: 'trend', text: `📉 4회 연속 하락 · ${range}`, label: r.label };
+            return { level: 'ok', text: `✓ 평소 범위 · ${range}` };
+        }
+
+        function getGaugeHistory() {
+            if (!gaugeHistoryCache) {
+                const equipment = document.getElementById('gaugeEquipmentInput').value.trim();
+                const date = document.getElementById('gaugeDateInput').value || formatDate(new Date());
+                gaugeHistoryCache = buildGaugeHistory(equipment, date);
+            }
+            return gaugeHistoryCache;
+        }
+
+        function renderGaugeAnomalySummary(assessments) {
+            const el = document.getElementById('gaugeAnomalySummary');
+            const equipment = document.getElementById('gaugeEquipmentInput').value.trim();
+            if (!equipment) {
+                el.className = 'gauge-anomaly-summary info';
+                el.textContent = '💡 설비명을 적으면 이 설비의 과거 판독값과 비교해 평소와 다른 값을 알려드립니다.';
+                return;
+            }
+            const flagged = assessments.filter(a => a.level === 'high' || a.level === 'low' || a.level === 'trend');
+            const compared = assessments.filter(a => a.level !== 'none').length;
+            if (flagged.length) {
+                el.className = 'gauge-anomaly-summary warn';
+                el.textContent = `⚠️ 평소와 다른 값 ${flagged.length}개: ` + flagged.map(a => `${a.label} (${a.text.split(' · ')[0].replace(/^\S+\s/, '')})`).join(', ');
+            } else if (compared) {
+                el.className = 'gauge-anomaly-summary ok';
+                el.textContent = `✓ 과거 기록과 비교한 ${compared}개 값 모두 평소 범위입니다.`;
+            } else {
+                el.className = 'gauge-anomaly-summary info';
+                el.textContent = `💡 [${equipment}]의 과거 판독값이 ${GAUGE_MIN_HISTORY}건 이상 쌓이면 평소와 다른 값을 알려드립니다.`;
+            }
+        }
+
+        function refreshGaugeComparisons() {
+            const history = getGaugeHistory();
+            const assessments = gaugeReadings.map(r => assessGaugeReading(r, history));
+            assessments.forEach((a, i) => {
+                const cell = document.getElementById('gaugeCmp' + i);
+                if (!cell) return;
+                cell.className = `gauge-cmp cmp-${a.level}`;
+                cell.textContent = a.text;
+            });
+            renderGaugeAnomalySummary(assessments);
+        }
+
+        // 설비명·날짜를 바꾸면 비교 대상 과거 기록이 달라짐
+        function onGaugeContextChange() {
+            gaugeHistoryCache = null;
+            if (gaugeReadings.length) refreshGaugeComparisons();
+        }
+
         function renderGaugeReadings() {
             const body = document.getElementById('gaugeReadingsBody');
             body.innerHTML = gaugeReadings.map((r, i) => `
@@ -281,8 +415,10 @@
                     <td><input type="text" value="${escapeHtml(r.value)}" oninput="updateGaugeReading(${i}, 'value', this.value)" placeholder="값" inputmode="decimal"></td>
                     <td><input type="text" value="${escapeHtml(r.unit)}" oninput="updateGaugeReading(${i}, 'unit', this.value)" placeholder="단위"></td>
                     <td class="gauge-conf" title="${escapeHtml(r.note || '')}">${r.photo ? '사진' + r.photo + ' · ' : ''}${GAUGE_CONFIDENCE_LABELS[r.confidence] || ''}${r.note ? ' ⓘ' : ''}</td>
+                    <td class="gauge-cmp" id="gaugeCmp${i}"></td>
                     <td><button type="button" class="gauge-row-remove" onclick="removeGaugeReading(${i})" title="이 줄 빼기">×</button></td>
                 </tr>`).join('');
+            refreshGaugeComparisons();
         }
 
         function updateGaugeReading(idx, field, value) {
@@ -297,6 +433,8 @@
                 const input = document.querySelectorAll('#gaugeReadingsBody tr')[idx].querySelectorAll('input')[1];
                 input.focus();
                 input.setSelectionRange(input.value.length, input.value.length);
+            } else {
+                refreshGaugeComparisons();
             }
             gaugeSavedToRecord = false;
         }
@@ -363,21 +501,8 @@
         // 지금까지 활동기록에 남긴 같은 설비의 판독값을 날짜순으로 모아 경향 분석 입력칸에 채움
         function sendGaugeToTrend() {
             const equipment = document.getElementById('gaugeEquipmentInput').value.trim();
-            const equipmentTag = equipment ? `[${equipment}]` : '';
             const lines = [];
-            for (const dateStr of Object.keys(records).sort()) {
-                const rec = records[dateStr] || {};
-                for (const category of getAllRecordCategories()) {
-                    const content = rec[category];
-                    if (typeof content !== 'string' || !content.includes(GAUGE_RECORD_MARK)) continue;
-                    content.split('\n').forEach(line => {
-                        if (!line.includes(GAUGE_RECORD_MARK)) return;
-                        if (equipmentTag && !line.includes(equipmentTag)) return;
-                        const body = line.slice(line.indexOf(GAUGE_RECORD_MARK) + GAUGE_RECORD_MARK.length).replace(equipmentTag, '').trim();
-                        if (body) lines.push(`${dateStr}  ${body}`);
-                    });
-                }
-            }
+            forEachGaugeRecordLine(equipment, (dateStr, body) => lines.push(`${dateStr}  ${body}`));
             const readings = getFilledGaugeReadings();
             if (!gaugeSavedToRecord && readings.length) {
                 lines.push(`${document.getElementById('gaugeDateInput').value || formatDate(new Date())}  ${formatGaugeReadingsText(readings)}`);

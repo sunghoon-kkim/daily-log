@@ -3521,7 +3521,7 @@ html {
 
         .gauge-table {
             width: 100%;
-            min-width: 460px;
+            min-width: 640px;
             border-collapse: collapse;
             font-size: 13px;
         }
@@ -3566,6 +3566,33 @@ html {
 
         .gauge-row.conf-medium .gauge-conf { color: #b7791f; font-weight: 600; }
         .gauge-row.conf-low .gauge-conf { color: #c0392b; font-weight: 600; }
+
+        .gauge-cmp {
+            font-size: 12px;
+            line-height: 1.45;
+            min-width: 150px;
+            max-width: 230px;
+            word-break: keep-all;
+            color: #888;
+        }
+
+        .gauge-cmp.cmp-ok { color: #1e8e5a; }
+        .gauge-cmp.cmp-high,
+        .gauge-cmp.cmp-low { color: #c0392b; font-weight: 700; }
+        .gauge-cmp.cmp-trend { color: #b7791f; font-weight: 700; }
+
+        .gauge-anomaly-summary {
+            margin: 8px 0 4px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.5;
+            word-break: keep-all;
+        }
+
+        .gauge-anomaly-summary.info { background: #f2f4f8; color: #666; }
+        .gauge-anomaly-summary.ok { background: #e9f7ef; color: #1e8e5a; }
+        .gauge-anomaly-summary.warn { background: #fdeeee; color: #c0392b; font-weight: 700; }
 
         .gauge-row-remove {
             border: none;
@@ -5821,3 +5848,12 @@ body {
 .dark-mode .gauge-save-row {
     border-color: var(--d-border);
 }
+
+.dark-mode .gauge-cmp { color: var(--d-text3); }
+.dark-mode .gauge-cmp.cmp-ok { color: #4fce9e; }
+.dark-mode .gauge-cmp.cmp-high,
+.dark-mode .gauge-cmp.cmp-low { color: #ff9a8f; }
+.dark-mode .gauge-cmp.cmp-trend { color: #f0c05a; }
+.dark-mode .gauge-anomaly-summary.info { background: var(--d-bg2); color: var(--d-text2); }
+.dark-mode .gauge-anomaly-summary.ok { background: #173328; color: #4fce9e; }
+.dark-mode .gauge-anomaly-summary.warn { background: #3f1f22; color: #ff9a8f; }
