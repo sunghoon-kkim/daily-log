@@ -971,9 +971,11 @@
         }
 
         function adminResetPassword(targetEmployeeId) {
-            // 새 비밀번호를 따로 입력받지 않고, 그 사람의 사번 자체를 임시 비밀번호로 사용함
-            // (초기화 후 본인이 로그인해서 비밀번호를 바꾸도록 안내하면 됨)
-            confirmModal(`${targetEmployeeId} 계정의 비밀번호를 사번(${targetEmployeeId})으로 초기화할까요?`, async () => {
+            // 서버가 무작위 임시 비밀번호를 만들어 관리자에게만 돌려줌. 관리자가 본인에게 직접 전달하고,
+            // 본인은 다음 로그인 때 새 비밀번호로 바꿔야 함(바꾸기 전엔 서버가 다른 요청을 막음).
+            // 예전엔 사번 자체가 새 비밀번호라서, 남의 사번으로 재설정 요청을 넣은 사람이 먼저 로그인해
+            // 계정을 가로챌 수 있었음. newPasswordHash는 아직 앱스 스크립트를 재배포하기 전의 예전 서버용
+            confirmModal(`${targetEmployeeId} 계정의 비밀번호를 임시 비밀번호로 초기화할까요?\n임시 비밀번호는 본인에게 직접 전달해주세요.`, async () => {
                 const statusEl = document.getElementById('adminStatus');
                 statusEl.textContent = '☁️ 비밀번호를 초기화하는 중...';
                 statusEl.className = 'ai-status';
@@ -993,7 +995,9 @@
                     const data = await res.json();
 
                     if (data.status === 'success') {
-                        statusEl.textContent = `✅ ${targetEmployeeId} 계정의 비밀번호가 사번(${targetEmployeeId})으로 초기화되었습니다`;
+                        statusEl.textContent = data.tempPassword
+                            ? `✅ ${targetEmployeeId} 계정의 임시 비밀번호: ${data.tempPassword}  (본인에게 직접 전달하세요. 다음 로그인 때 새 비밀번호로 바꾸게 됩니다)`
+                            : `✅ ${targetEmployeeId} 계정의 비밀번호가 사번(${targetEmployeeId})으로 초기화되었습니다`;
                         statusEl.className = 'ai-status success';
                     } else {
                         statusEl.textContent = '⚠️ ' + (data.message || '비밀번호 초기화에 실패했습니다');

@@ -113,6 +113,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 사번은 현재 회사 기준 숫자 7자리. 회원가입/계정정보 수정 시 이 규칙으로 검증함
         const EMPLOYEE_ID_PATTERN = /^\d{7}$/;
         const EMPLOYEE_ID_INVALID_MSG = '사번은 숫자 7자리입니다. 7자리보다 짧거나 길면 올바른 사번이 아닙니다.';
+        // 새로 정하는 비밀번호의 최소 길이. 서버는 해시만 받아서 길이를 알 수 없으므로 화면에서만 검사함
+        const PASSWORD_MIN_LENGTH = 8;
+        const PASSWORD_TOO_SHORT_MSG = `비밀번호는 ${PASSWORD_MIN_LENGTH}자 이상으로 정해주세요`;
         let selectedColor = COLOR_PALETTE[0];
         
         // 탭 관리
@@ -2031,6 +2034,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             document.getElementById('loginErrorMsg').style.display = 'none';
             document.getElementById('loginInfoMsg').style.display = 'none';
             document.getElementById('loginCapsLockWarning').style.display = 'none';
+            setLoginMustChangeMode(false);
             document.getElementById('loginCancelBtn').style.display = forced ? 'none' : 'inline-block';
             document.getElementById('loginModal').dataset.forced = forced ? 'true' : 'false';
             document.getElementById('loginModal').classList.add('active');
@@ -2040,6 +2044,54 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function closeLoginModal() {
             document.getElementById('loginModal').classList.remove('active');
             document.getElementById('loginCapsLockWarning').style.display = 'none';
+            setLoginMustChangeMode(false);
+        }
+
+        // 임시 비밀번호로 로그인했을 때(서버 응답 mustChangePassword) 새 비밀번호 입력칸을 보여줌.
+        // 이 상태에서는 사번/임시 비밀번호 칸을 잠가서, 확인된 임시 비밀번호 그대로 변경 요청에 씀
+        function setLoginMustChangeMode(on) {
+            document.getElementById('loginMustChangeSection').style.display = on ? 'block' : 'none';
+            document.getElementById('loginEmployeeIdInput').readOnly = on;
+            document.getElementById('loginPasswordInput').readOnly = on;
+            document.getElementById('loginSubmitBtn').textContent = on ? '🔑 비밀번호 변경 후 로그인' : '🔓 로그인';
+            if (!on) {
+                document.getElementById('loginNewPasswordInput').value = '';
+                document.getElementById('loginNewPasswordConfirmInput').value = '';
+            }
+        }
+
+        function isLoginMustChangeMode() {
+            return document.getElementById('loginMustChangeSection').style.display !== 'none';
+        }
+
+        // 임시 비밀번호를 새 비밀번호로 바꾼 뒤, 새 비밀번호로 평소처럼 로그인함. 성공하면 true
+        async function submitForcedPasswordChange(employeeId, tempPassword) {
+            const errEl = document.getElementById('loginErrorMsg');
+            const newPwInput = document.getElementById('loginNewPasswordInput');
+            const newPassword = newPwInput.value;
+            const showError = (msg) => { errEl.textContent = msg; errEl.style.display = 'block'; };
+
+            if (newPassword.length < PASSWORD_MIN_LENGTH) { showError(PASSWORD_TOO_SHORT_MSG); return false; }
+            if (newPassword !== document.getElementById('loginNewPasswordConfirmInput').value) { showError('새 비밀번호가 서로 일치하지 않습니다'); return false; }
+            if (newPassword === tempPassword) { showError('임시 비밀번호와 다른 새 비밀번호를 입력해주세요'); return false; }
+
+            const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'changePassword',
+                    employeeId,
+                    oldPasswordHash: await sha256Hex(tempPassword + ':' + employeeId),
+                    newPasswordHash: await sha256Hex(newPassword + ':' + employeeId)
+                })
+            });
+            const result = await res.json();
+            if (result.status !== 'success') {
+                showError(result.message || '비밀번호 변경에 실패했습니다');
+                return false;
+            }
+            document.getElementById('loginPasswordInput').value = newPassword;
+            setLoginMustChangeMode(false);
+            return true;
         }
 
         // 비밀번호 입력칸에서 Caps Lock이 켜져 있으면 안내 문구를 보여줌
@@ -2074,9 +2126,15 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!password) { errEl.textContent = '비밀번호를 입력해주세요'; errEl.style.display = 'block'; return; }
 
             btn.disabled = true;
+            const mustChangeMode = isLoginMustChangeMode();
             btn.textContent = '확인 중...';
 
             try {
+                if (mustChangeMode) {
+                    btn.textContent = '변경 중...';
+                    if (await submitForcedPasswordChange(employeeId, password)) await attemptLogin();
+                    return;
+                }
                 const passwordHash = await sha256Hex(password + ':' + employeeId);
                 // 로그인 전용 경로(action=login)로 인증함: 등록된 사번+비밀번호가 정확히 일치할
                 // 때만 통과되고, 없는 사번을 입력하면 "등록되지 않은 사번입니다"로 거부됨(회원가입을
@@ -2110,6 +2168,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         await loadAllFromServer(result);
                         await restorePendingOutboxAfterLogin(result); // 지난번에 서버에 못 올린 변경분이 있으면 되살림
                     }
+                } else if (result.mustChangePassword) {
+                    const infoEl = document.getElementById('loginInfoMsg');
+                    infoEl.textContent = result.message || '임시 비밀번호로 로그인했습니다. 새 비밀번호를 설정해주세요.';
+                    infoEl.style.display = 'block';
+                    setLoginMustChangeMode(true);
+                    setTimeout(() => document.getElementById('loginNewPasswordInput').focus(), 50);
                 } else {
                     errEl.textContent = result.message || '로그인에 실패했습니다';
                     errEl.style.display = 'block';
@@ -2119,7 +2183,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 errEl.style.display = 'block';
             } finally {
                 btn.disabled = false;
-                btn.textContent = '🔓 로그인';
+                btn.textContent = isLoginMustChangeMode() ? '🔑 비밀번호 변경 후 로그인' : '🔓 로그인';
             }
         }
 
@@ -2255,6 +2319,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!name) { errEl.textContent = '이름을 입력해주세요'; errEl.style.display = 'block'; return; }
             if (!department) { errEl.textContent = '소속을 입력해주세요'; errEl.style.display = 'block'; return; }
             if (!password) { errEl.textContent = '비밀번호를 입력해주세요'; errEl.style.display = 'block'; return; }
+            if (password.length < PASSWORD_MIN_LENGTH) { errEl.textContent = PASSWORD_TOO_SHORT_MSG; errEl.style.display = 'block'; return; }
             if (password !== passwordConfirm) { errEl.textContent = '비밀번호가 서로 일치하지 않습니다'; errEl.style.display = 'block'; return; }
 
             btn.disabled = true;
@@ -2353,6 +2418,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!newDepartment) { errEl.textContent = '소속을 입력해주세요'; errEl.style.display = 'block'; return; }
             if ((newPassword || newPasswordConfirm) && newPassword !== newPasswordConfirm) {
                 errEl.textContent = '새 비밀번호가 서로 일치하지 않습니다'; errEl.style.display = 'block'; return;
+            }
+            if (newPassword && newPassword.length < PASSWORD_MIN_LENGTH) {
+                errEl.textContent = PASSWORD_TOO_SHORT_MSG; errEl.style.display = 'block'; return;
             }
 
             btn.disabled = true;

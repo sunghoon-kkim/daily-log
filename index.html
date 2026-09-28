@@ -1024,6 +1024,17 @@
                 </div>
                 <div class="caps-lock-warning" id="loginCapsLockWarning" style="display:none;">⚠️ Caps Lock이 켜져 있습니다</div>
             </div>
+            <!-- 관리자가 초기화한 임시 비밀번호로 로그인하면 새 비밀번호를 정해야 들어갈 수 있음 -->
+            <div id="loginMustChangeSection" style="display:none;">
+                <div class="modal-field">
+                    <label>새 비밀번호</label>
+                    <input type="password" id="loginNewPasswordInput" placeholder="8자 이상" autocomplete="new-password">
+                </div>
+                <div class="modal-field">
+                    <label>새 비밀번호 확인</label>
+                    <input type="password" id="loginNewPasswordConfirmInput" placeholder="한 번 더 입력" autocomplete="new-password" onkeydown="if(event.key==='Enter') attemptLogin()">
+                </div>
+            </div>
             <div class="goal-status success" id="loginInfoMsg" style="display:none; margin-bottom:10px;"></div>
             <div class="goal-status error" id="loginErrorMsg" style="display:none; margin-bottom:10px;"></div>
 

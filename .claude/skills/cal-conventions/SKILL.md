@@ -30,6 +30,9 @@ user-invocable: false
 ## 보안
 - 사용자 입력·서버 데이터를 `innerHTML`에 넣을 때는 `js/main.js`의 `escapeHtml()`을 거친다. (onclick 인자에 넣는 문자열은 `escapeForOnclickArg()`)
 - 관리자·승인·비밀번호 관련 액션은 `Code.gs`에서 서버 측 권한 확인을 한다. (프런트 숨김만으로는 부족)
+- 로그인이 필요한 새 action은 `verifyLoggedInUserRow`(관리자는 `verifyAdmin`)로 인증한다. 해시를 직접 비교하지 말고 `checkPasswordHash`를 거친다 (실패 횟수 제한).
+- 서버만 바꿀 수 있는 새 프로필 필드(권한·상태 등)를 만들면 `SERVER_MANAGED_PROFILE_KEYS`에 추가한다. 빠뜨리면 사용자가 저장 요청으로 그 값을 스스로 바꿀 수 있다.
+- 사용자 글을 시트 셀에 그대로 쓸 때는 `escapeSheetFormula`를 거친다.
 
 ## 테스트
 - 브라우저 확인은 로그인 없는 화면 점검(스크린샷)만 한다. 실제 로그인·백엔드 동기화는 하지 않는다.
