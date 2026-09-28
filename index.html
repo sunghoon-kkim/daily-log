@@ -1564,12 +1564,46 @@
                     <input type="number" id="eventRepeatCountInput" class="category-input" min="2" max="52" value="4" style="width:70px;">
                     <span style="font-size:13px; color:#666;">회</span>
                 </div>
+                <button type="button" class="rotation-open-btn" data-feature="rotationSchedule" onclick="openRotationModal()">🔁 교대 운전 일정(백워시 등) 한꺼번에 등록</button>
             </div>
 
             <div class="modal-buttons">
                 <button class="modal-btn modal-save-btn" onclick="saveEvent()">💾 저장</button>
                 <button class="modal-btn modal-delete-btn" id="deleteEventBtn" onclick="deleteEvent()" style="display:none;">🗑️ 삭제</button>
                 <button class="modal-btn modal-cancel-btn" onclick="closeEventModal()">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [달력] 교대 운전 일정(소프트너 백워시 등) 일괄 등록 -->
+    <div class="modal-overlay" id="rotationModal" role="dialog" aria-modal="true">
+        <div class="modal-box rotation-modal-box">
+            <h3>🔁 교대 운전 일정 등록</h3>
+
+            <div class="modal-field">
+                <label>작업 이름 (일정 제목 뒤에 붙음)</label>
+                <input type="text" id="rotationTaskInput" placeholder="예: 백워시">
+            </div>
+
+            <div class="modal-field">
+                <label>설비별 작업 요일 (2주 주기)</label>
+                <div id="rotationRows"></div>
+                <button type="button" class="rotation-add-btn" onclick="addRotationRow()">➕ 설비 추가</button>
+            </div>
+
+            <div class="modal-field">
+                <label>1주차 시작 주 · 등록 기간</label>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="date" id="rotationStartInput" style="flex:1; min-width:140px;">
+                    <input type="number" id="rotationWeeksInput" class="category-input" min="1" max="104" value="26" style="width:70px;">
+                    <span style="font-size:13px; color:#666;">주</span>
+                </div>
+                <div class="rotation-hint">고른 날짜가 속한 주의 월요일부터 1주차로 셉니다. 주말·공휴일에 걸린 날은 <b>직전 근무일</b>로 당겨 등록하고, 이미 같은 일정이 있는 날은 건너뜁니다.</div>
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-save-btn" onclick="saveRotationSchedule()">💾 등록</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeRotationModal()">취소</button>
             </div>
         </div>
     </div>

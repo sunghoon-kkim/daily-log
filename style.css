@@ -5857,3 +5857,81 @@ body {
 .dark-mode .gauge-anomaly-summary.info { background: var(--d-bg2); color: var(--d-text2); }
 .dark-mode .gauge-anomaly-summary.ok { background: #173328; color: #4fce9e; }
 .dark-mode .gauge-anomaly-summary.warn { background: #3f1f22; color: #ff9a8f; }
+
+/* ===== 교대 운전 일정 일괄 등록 ===== */
+.rotation-open-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px dashed #667eea;
+    border-radius: 8px;
+    background: transparent;
+    color: #667eea;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.rotation-open-btn:hover { background: rgba(102, 126, 234, 0.08); }
+.rotation-modal-box { max-height: 90vh; overflow-y: auto; }
+.rotation-row {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+}
+.rotation-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.rotation-color-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.rotation-row-head .rotation-name-input {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+.rotation-remove-btn {
+    border: none;
+    background: none;
+    color: #999;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 6px;
+}
+.rotation-remove-btn:hover { color: #ee5a6f; }
+.rotation-week { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.rotation-week-label { font-size: 12px; font-weight: 600; color: #777; width: 40px; flex-shrink: 0; }
+.rotation-day-chip { position: relative; cursor: pointer; }
+.rotation-day-chip input { position: absolute; opacity: 0; width: 0; height: 0; }
+.rotation-day-chip span {
+    display: inline-block;
+    min-width: 30px;
+    padding: 5px 0;
+    text-align: center;
+    border: 1px solid #ddd;
+    border-radius: 14px;
+    font-size: 12px;
+    color: #666;
+    background: #f9f9f9;
+}
+.rotation-day-chip input:checked + span {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: transparent;
+    color: #fff;
+    font-weight: 600;
+}
+.rotation-day-chip input:focus-visible + span { outline: 2px solid #667eea; outline-offset: 1px; }
+.rotation-add-btn {
+    padding: 7px 12px;
+    border: 1px dashed #bbb;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    font-size: 13px;
+    cursor: pointer;
+}
+.rotation-hint { margin-top: 8px; font-size: 12px; color: #888; line-height: 1.5; }
+
+.dark-mode .rotation-row { border-color: var(--d-border, #444); }
+.dark-mode .rotation-row-head .rotation-name-input { background: transparent; color: inherit; border-color: var(--d-border, #555); }
+.dark-mode .rotation-day-chip span { background: transparent; border-color: var(--d-border, #555); color: var(--d-text3, #aaa); }
+.dark-mode .rotation-week-label, .dark-mode .rotation-hint { color: var(--d-text3, #aaa); }

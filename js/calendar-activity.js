@@ -1331,6 +1331,145 @@
             });
         }
         
+        // ===== 교대 운전 일정 일괄 등록 =====
+        // 소프트너 A/B·카본처럼 2주 주기로 번갈아 백워시하는 운전표를, 설비별 요일만 한 번 정해두면
+        // 원하는 기간만큼 일정으로 한꺼번에 만들어줌. 가동/대기는 백워시가 아닌 날로 자명하므로
+        // 달력이 복잡해지지 않게 작업일(백워시 등)만 등록함
+        const ROTATION_PATTERN_STORAGE_KEY = 'rotationSchedulePattern';
+        const ROTATION_WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일'];
+        // 요일은 월요일=0 ~ 일요일=6 기준 오프셋
+        const DEFAULT_ROTATION_PATTERN = {
+            task: '백워시',
+            rows: [
+                { name: '소프트너 A', week1: [0, 4], week2: [2] },
+                { name: '소프트너 B', week1: [2], week2: [0, 4] },
+                { name: '카본', week1: [2], week2: [2] }
+            ]
+        };
+
+        function loadRotationPattern() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(ROTATION_PATTERN_STORAGE_KEY));
+                if (saved && Array.isArray(saved.rows)) return saved;
+            } catch (e) { /* 저장된 패턴이 없거나 깨졌으면 기본 운전표 사용 */ }
+            return JSON.parse(JSON.stringify(DEFAULT_ROTATION_PATTERN));
+        }
+
+        function renderRotationRows(rows) {
+            const dayChips = (rowIdx, week, selected) => ROTATION_WEEKDAY_LABELS.map((label, d) => `
+                <label class="rotation-day-chip"><input type="checkbox" data-row="${rowIdx}" data-week="${week}" value="${d}" ${selected.includes(d) ? 'checked' : ''}><span>${label}</span></label>
+            `).join('');
+            document.getElementById('rotationRows').innerHTML = rows.map((row, i) => `
+                <div class="rotation-row">
+                    <div class="rotation-row-head">
+                        <span class="rotation-color-dot" style="background:${COLOR_PALETTE[i % COLOR_PALETTE.length]}"></span>
+                        <input type="text" class="rotation-name-input" data-row="${i}" value="${escapeHtml(row.name)}" placeholder="설비명">
+                        <button type="button" class="rotation-remove-btn" onclick="removeRotationRow(${i})" aria-label="설비 삭제">✕</button>
+                    </div>
+                    <div class="rotation-week"><span class="rotation-week-label">1주차</span>${dayChips(i, 1, row.week1)}</div>
+                    <div class="rotation-week"><span class="rotation-week-label">2주차</span>${dayChips(i, 2, row.week2)}</div>
+                </div>
+            `).join('');
+        }
+
+        // 행 추가/삭제로 다시 그리기 전에, 지금까지 화면에서 고친 내용을 읽어옴
+        function readRotationRowsFromForm() {
+            return Array.from(document.querySelectorAll('#rotationRows .rotation-name-input')).map(input => {
+                const idx = input.dataset.row;
+                const days = week => Array.from(document.querySelectorAll(`#rotationRows input[type="checkbox"][data-row="${idx}"][data-week="${week}"]:checked`))
+                    .map(cb => parseInt(cb.value, 10));
+                return { name: input.value.trim(), week1: days(1), week2: days(2) };
+            });
+        }
+
+        function openRotationModal() {
+            if (!checkEditPermission()) return;
+            const startFromEventModal = document.getElementById('eventStartInput').value;
+            closeEventModal();
+            const pattern = loadRotationPattern();
+            document.getElementById('rotationTaskInput').value = pattern.task || '';
+            document.getElementById('rotationStartInput').value = startFromEventModal || formatDate(new Date());
+            renderRotationRows(pattern.rows);
+            document.getElementById('rotationModal').classList.add('active');
+        }
+
+        function closeRotationModal() {
+            document.getElementById('rotationModal').classList.remove('active');
+        }
+
+        function addRotationRow() {
+            const rows = readRotationRowsFromForm();
+            rows.push({ name: '', week1: [], week2: [] });
+            renderRotationRows(rows);
+        }
+
+        function removeRotationRow(idx) {
+            const rows = readRotationRowsFromForm();
+            rows.splice(idx, 1);
+            renderRotationRows(rows);
+        }
+
+        // 주말·공휴일이면 그 전 근무일로 당김 (쉬는 날 전에 미리 해두는 운영 방식)
+        function pullBackToWorkingDateStr(dateStr) {
+            let d = dateStr;
+            while (isWeekendDateStr(d) || KR_HOLIDAYS[d]) d = addDaysToDateStr(d, -1);
+            return d;
+        }
+
+        function saveRotationSchedule() {
+            if (!checkEditPermission()) return;
+            const task = document.getElementById('rotationTaskInput').value.trim();
+            const startInput = document.getElementById('rotationStartInput').value;
+            const weeks = parseInt(document.getElementById('rotationWeeksInput').value, 10);
+            const rows = readRotationRowsFromForm().filter(r => r.name && (r.week1.length || r.week2.length));
+
+            if (!task) { showAppToast('작업 이름을 입력해주세요'); return; }
+            if (!startInput) { showAppToast('시작 주를 선택해주세요'); return; }
+            if (!(weeks >= 1 && weeks <= 104)) { showAppToast('등록 기간은 1~104주 사이로 입력해주세요'); return; }
+            if (rows.length === 0) { showAppToast('설비명과 작업 요일을 하나 이상 정해주세요'); return; }
+
+            const weekStart = formatDate(getMondayOfWeek(new Date(startInput + 'T00:00:00')));
+            const lastHolidayYear = Math.max(...Object.keys(KR_HOLIDAYS).map(k => parseInt(k.slice(0, 4), 10)));
+            let addedCount = 0, skippedCount = 0, beyondHolidayData = false;
+
+            rows.forEach((row, rowIdx) => {
+                const title = `${row.name} ${task}`;
+                const color = COLOR_PALETTE[rowIdx % COLOR_PALETTE.length];
+                // 설비별로 묶어두면 일정 삭제 시 "전체 삭제"로 그 설비 운전표만 한 번에 지울 수 있음
+                const repeatGroupId = 'rep_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+                for (let w = 0; w < weeks; w++) {
+                    const offsets = w % 2 === 0 ? row.week1 : row.week2;
+                    offsets.forEach(offset => {
+                        const planned = addDaysToDateStr(weekStart, w * 7 + offset);
+                        if (parseInt(planned.slice(0, 4), 10) > lastHolidayYear) beyondHolidayData = true;
+                        const date = pullBackToWorkingDateStr(planned);
+                        if (events.some(e => e.title === title && e.start === date)) { skippedCount++; return; }
+                        events.push({
+                            id: 'evt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '_' + addedCount,
+                            title, start: date, end: date, color, repeatGroupId
+                        });
+                        addedCount++;
+                    });
+                }
+            });
+
+            try {
+                localStorage.setItem(ROTATION_PATTERN_STORAGE_KEY, JSON.stringify({ task, rows }));
+            } catch (e) { /* 패턴 기억은 편의 기능이라 저장 실패해도 등록은 진행 */ }
+
+            if (addedCount > 0) saveEventsToStorage();
+            closeRotationModal();
+            renderCalendar();
+            if (selectedDate) renderRecordForm();
+
+            let msg = `✅ 교대 운전 일정 ${addedCount}건 등록되었습니다`;
+            if (skippedCount) msg += ` (이미 있는 ${skippedCount}건 제외)`;
+            showStatus(msg, 'success');
+            if (beyondHolidayData) {
+                showAppToast(`${lastHolidayYear + 1}년 이후 공휴일 정보가 아직 없어 그 기간은 주말만 반영했습니다`, 'info');
+            }
+        }
+
         // ===== 달력 네비게이션 =====
         // 로그인/회원가입 모달 등이 떠 있는 동안에는 그 위에서 일어나는 드래그가 어떤
         // 경로로든 뒤에 깔린 달력의 월 이동으로 이어지면 안 되므로, 진입점(스와이프/버튼)에
