@@ -167,7 +167,7 @@
                 try {
                     const planRes = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                         method: 'POST',
-                        body: JSON.stringify({ action: 'askLogPlan', question, today, userApiKey: personalAiApiKey })
+                        body: JSON.stringify({ action: 'askLogPlan', question, today, userApiKey: personalAiApiKey, ...getAuthFields() })
                     });
                     const plan = await planRes.json();
                     if (plan.status === 'success') {
@@ -191,7 +191,7 @@
                 setAskLogBusy(true, `📚 관련 기록 ${items.length}건을 읽고 답을 정리하는 중입니다...`);
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ action: 'askLog', question, today, contextText: buildAskLogContextText(items), userApiKey: personalAiApiKey })
+                    body: JSON.stringify({ action: 'askLog', question, today, contextText: buildAskLogContextText(items), userApiKey: personalAiApiKey, ...getAuthFields() })
                 });
                 const data = await res.json();
                 if (data.status === 'success') {

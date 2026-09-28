@@ -877,18 +877,47 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         async function fetchLoadDataWithRetry() {
             for (let attempt = 0; attempt <= LOAD_RETRY_DELAYS_MS.length; attempt++) {
                 try {
-                    const url = GOOGLE_APPS_SCRIPT_URL + '?action=load'
-                        + '&employeeId=' + encodeURIComponent(currentEmployeeId)
-                        + '&passwordHash=' + encodeURIComponent(currentPasswordHash)
-                        + '&_=' + Date.now(); // 브라우저가 동일한 GET 요청 결과를 캐시해 예전 응답(예: "등록되지 않은 사번")을 계속 보여주는 걸 막기 위한 캐시버스터
-                    const res = await fetch(url, { cache: 'no-store' });
-                    if (!res.ok) throw new Error('응답 오류');
-                    return await res.json();
+                    return await fetchAuthAction('load', currentEmployeeId, currentPasswordHash);
                 } catch (err) {
                     if (attempt === LOAD_RETRY_DELAYS_MS.length) throw err;
                     await new Promise(r => setTimeout(r, LOAD_RETRY_DELAYS_MS[attempt]));
                 }
             }
+        }
+
+        // 로그인이 필요한 서버 요청(AI 등)에 함께 싣는 본인 확인 정보
+        function getAuthFields() {
+            return { employeeId: currentEmployeeId, passwordHash: currentPasswordHash };
+        }
+
+        // 로그인(action=login)/불러오기(action=load) 요청. 예전엔 GET이라 비밀번호 해시가 주소(URL)에 실렸음.
+        // 서버가 POST를 받는다고 알려준 뒤부터(응답의 supportsPostAuth) POST로 보냄. 앱스 스크립트를 재배포하기
+        // 전의 예전 서버는 POST 로그인을 저장 요청으로 처리하므로, 표시를 받기 전까지는 예전처럼 GET을 씀.
+        // 혹시 표시를 받은 뒤 서버가 예전 버전으로 되돌려져도 partial 저장(변경 없음)으로만 처리되게
+        // partial/recordsMonths를 함께 실어 보내고, 로그인 응답이 아니면 표시를 지우고 GET으로 다시 보냄
+        const POST_AUTH_FLAG_KEY = 'serverSupportsPostAuth';
+        async function fetchAuthAction(action, employeeId, passwordHash) {
+            let postSupported = false;
+            try { postSupported = localStorage.getItem(POST_AUTH_FLAG_KEY) === '1'; } catch (e) { /* 무시 */ }
+            if (postSupported) {
+                const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action, employeeId, passwordHash, partial: true, recordsMonths: [] })
+                });
+                if (!res.ok) throw new Error('응답 오류');
+                const result = await res.json();
+                if (result && (result.status === 'error' || result.supportsPostAuth)) return result;
+                try { localStorage.removeItem(POST_AUTH_FLAG_KEY); } catch (e) { /* 무시 */ }
+            }
+            const url = GOOGLE_APPS_SCRIPT_URL + '?action=' + action
+                + '&employeeId=' + encodeURIComponent(employeeId)
+                + '&passwordHash=' + encodeURIComponent(passwordHash)
+                + '&_=' + Date.now(); // 브라우저가 동일한 GET 요청 결과를 캐시해 예전 응답(예: "등록되지 않은 사번")을 계속 보여주는 걸 막기 위한 캐시버스터
+            const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) throw new Error('응답 오류');
+            const result = await res.json();
+            if (result && result.supportsPostAuth) safeSetItem(POST_AUTH_FLAG_KEY, '1');
+            return result;
         }
 
         // preloadedData가 있으면(예: 로그인 직후 이미 action=login 응답으로 프로필+records를
@@ -2141,12 +2170,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 // 먼저 해야만 로그인 가능). 로그인 실패 5회 시 계정이 잠기는 카운트도 이 경로에서만
                 // 셈 - 로그인 이후 자동저장 등에서 반복 전송되는 요청(action=load 등)에는 이 카운트가
                 // 붙지 않으므로, 관리자가 비밀번호를 초기화해도 옛 해시로 인한 자동 재잠김이 없음
-                const url = GOOGLE_APPS_SCRIPT_URL + '?action=login'
-                    + '&employeeId=' + encodeURIComponent(employeeId)
-                    + '&passwordHash=' + encodeURIComponent(passwordHash)
-                    + '&_=' + Date.now(); // 브라우저가 동일한 GET 요청 결과를 캐시해 예전 응답(예: "등록되지 않은 사번")을 계속 보여주는 걸 막기 위한 캐시버스터
-                const res = await fetch(url, { cache: 'no-store' });
-                const result = await res.json();
+                const result = await fetchAuthAction('login', employeeId, passwordHash);
 
                 if (!(result && result.status === 'error')) {
                     currentEmployeeId = employeeId;

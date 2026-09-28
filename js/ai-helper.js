@@ -175,7 +175,7 @@
                         dateLabel: dateLabel,
                         logText: logText,
                         itemCount: document.getElementById('dailySummaryItemCount').value,
-                        userApiKey: personalAiApiKey
+                        userApiKey: personalAiApiKey, ...getAuthFields()
                     })
                 });
 
@@ -302,7 +302,7 @@
                         action: 'weeklySummary',
                         periodLabel: periodLabel,
                         logText: logText,
-                        userApiKey: personalAiApiKey
+                        userApiKey: personalAiApiKey, ...getAuthFields()
                     })
                 });
 
@@ -409,7 +409,7 @@
                         periodLabel: periodLabel,
                         feedbackHistoryText: feedbackHistoryText,
                         prevImproveCheckText: prevImproveCheckText,
-                        userApiKey: personalAiApiKey
+                        userApiKey: personalAiApiKey, ...getAuthFields()
                     })
                 });
                 
@@ -484,7 +484,7 @@
                         action: 'revise',
                         history: aiConversationHistory,
                         instruction: instruction,
-                        userApiKey: personalAiApiKey
+                        userApiKey: personalAiApiKey, ...getAuthFields()
                     })
                 });
                 
@@ -855,7 +855,7 @@
                         note: note,
                         logText: logText,
                         includeTalentDev: includeTalentDev,
-                        userApiKey: personalAiApiKey
+                        userApiKey: personalAiApiKey, ...getAuthFields()
                     })
                 });
 
@@ -956,7 +956,7 @@
                         history: goalConversationHistories[areaId],
                         instruction: instruction,
                         includeTalentDev: goalAreaOptions[areaId]?.includeTalentDev || false,
-                        userApiKey: personalAiApiKey
+                        userApiKey: personalAiApiKey, ...getAuthFields()
                     })
                 });
                 

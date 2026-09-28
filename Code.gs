@@ -58,6 +58,11 @@ const AUTH_FAIL_LIMIT = 10;
 const AUTH_FAIL_WINDOW_SECONDS = 15 * 60;
 const AUTH_FAIL_CACHE_PREFIX = "authFail:";
 
+const AI_ACTIONS = [
+  "summarize", "revise", "dailySummary", "weeklySummary", "goalDraftAll", "goalRevise",
+  "trendAnalysis", "trendRevise", "askLogPlan", "askLog", "gaugeRead"
+];
+
 // 프로필 JSON 중 서버(관리자 기능·로그인 처리)만 바꿀 수 있는 필드. handleSaveState는 클라이언트가
 // 보낸 값을 무시하고 항상 기존 서버 값을 유지함 - 새 서버 관리 필드를 만들면 반드시 여기 추가할 것
 const SERVER_MANAGED_PROFILE_KEYS = [
@@ -66,11 +71,65 @@ const SERVER_MANAGED_PROFILE_KEYS = [
   "failedLoginCount", "lockedAt", "passwordResetRequestedAt", "mustChangePassword"
 ];
 // 로그인/불러오기 응답에만 실어 보내는 표시용 필드. 클라이언트가 되돌려 보내도 저장하지 않음
-const RESPONSE_ONLY_PROFILE_KEYS = ["isAdmin", "largeFieldKeys", "supportsPartialSave"];
+const RESPONSE_ONLY_PROFILE_KEYS = ["isAdmin", "largeFieldKeys", "supportsPartialSave", "supportsPostAuth"];
 
 // 이 기간(일) 넘게 로그인하지 않은 계정은 autoDisableInactiveAccounts()가 자동으로 비활성화함.
 // (관리자 계정, 이미 비활성화/휴지통/승인대기 상태인 계정은 대상에서 제외)
 const AUTO_DISABLE_INACTIVE_DAYS = 5;
+
+// ===== 비밀번호 저장 방식 =====
+// 프론트는 sha256(비밀번호:사번)을 보내고, 예전엔 그 값을 Users 시트 2열에 그대로 저장·비교했음.
+// 그러면 시트를 열람할 수 있는 사람은 그 값만으로 바로 로그인할 수 있고(해시가 곧 비밀번호),
+// 솔트가 사번뿐인 SHA-256 한 번이라 쉬운 비밀번호는 오프라인으로 금방 풀림.
+// 이제 시트에는 "v2$솔트$HMAC(서버비밀키, 솔트+프론트해시)"를 저장함. 서버 비밀키(PASSWORD_PEPPER)는
+// 스크립트 속성에만 있으므로 시트 값만으로는 로그인도, 비밀번호 추측 검증도 할 수 없음.
+// 예전 형식으로 저장된 계정은 다음 로그인 성공 때 자동으로 새 형식으로 바뀜(handleLogin).
+// ⚠️ 스크립트 속성 PASSWORD_PEPPER를 지우거나 바꾸면 새 형식 계정 전원이 로그인할 수 없게 됨
+const PASSWORD_HASH_V2_PREFIX = "v2$";
+
+function getPasswordPepper() {
+  const props = PropertiesService.getScriptProperties();
+  let pepper = props.getProperty("PASSWORD_PEPPER");
+  if (pepper) return pepper;
+  // 처음 한 번만 만듦. 동시에 두 요청이 서로 다른 키를 만들면 먼저 저장된 계정이 로그인 불가가 되므로 잠금 안에서 다시 확인함
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    pepper = props.getProperty("PASSWORD_PEPPER");
+    if (!pepper) {
+      pepper = Utilities.getUuid() + Utilities.getUuid();
+      props.setProperty("PASSWORD_PEPPER", pepper);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+  return pepper;
+}
+
+function computePasswordHmac(salt, clientHash) {
+  const raw = Utilities.computeHmacSha256Signature(salt + clientHash, getPasswordPepper(), Utilities.Charset.UTF_8);
+  return raw.map(function(b) { return ('0' + ((b < 0) ? b + 256 : b).toString(16)).slice(-2); }).join('');
+}
+
+// 프론트가 보낸 해시(clientHash)를 시트에 저장할 형식으로 바꿈. 새로 저장하는 모든 비밀번호는 이걸 거침
+function wrapPasswordHash(clientHash) {
+  const salt = Utilities.getUuid().replace(/-/g, "");
+  return PASSWORD_HASH_V2_PREFIX + salt + "$" + computePasswordHmac(salt, clientHash);
+}
+
+function passwordHashMatches(storedHash, clientHash) {
+  if (!clientHash) return false;
+  const stored = String(storedHash || "");
+  if (stored.indexOf(PASSWORD_HASH_V2_PREFIX) === 0) {
+    const parts = stored.split("$");
+    return parts.length === 3 && computePasswordHmac(parts[1], clientHash) === parts[2];
+  }
+  return stored === clientHash; // 아직 새 형식으로 바뀌기 전의 예전 계정
+}
+
+function isLegacyPasswordHash(storedHash) {
+  return String(storedHash || "").indexOf(PASSWORD_HASH_V2_PREFIX) !== 0;
+}
 
 // ===== SHA-256 해시 생성 함수 (웹 프론트엔드의 sha256Hex와 100% 호환) =====
 function computeSha256(text) {
@@ -597,6 +656,10 @@ function handleUploadImage(data) {
     return jsonResponse({ status: "error", message: "이미지 형식이 올바르지 않습니다." });
   }
   const mimeType = match[1];
+  // SVG는 안에 스크립트를 넣을 수 있어서, 링크로 공유되는 파일로 올리지 않음. 일반 사진 형식만 받음
+  if (["image/png", "image/jpeg", "image/gif", "image/webp"].indexOf(mimeType) === -1) {
+    return jsonResponse({ status: "error", message: "PNG, JPG, GIF, WEBP 이미지만 올릴 수 있습니다." });
+  }
 
   // 같은 사람이 이미지 여러 장을 거의 동시에 붙여넣는 경우, 사번별 폴더가 없을 때
   // "확인 후 생성" 사이에 두 요청이 겹쳐서 폴더가 중복 생성되는 것을 막기 위한 락
@@ -812,7 +875,7 @@ function checkPasswordHash(employeeId, storedHash, passwordHash) {
   if (failCount >= AUTH_FAIL_LIMIT) {
     return "비밀번호 확인 실패가 너무 많아 잠시 차단되었습니다. 다시 로그인해주세요.";
   }
-  if (passwordHash && String(storedHash) === passwordHash) return null;
+  if (passwordHashMatches(storedHash, passwordHash)) return null;
   cache.put(key, String(failCount + 1), AUTH_FAIL_WINDOW_SECONDS);
   return "비밀번호가 일치하지 않습니다.";
 }
@@ -1011,7 +1074,7 @@ function handleLogin(employeeId, passwordHash) {
     return jsonResponse({ status: "error", message: lockMessage });
   }
 
-  if (String(storedHash) !== passwordHash) {
+  if (!passwordHashMatches(storedHash, passwordHash)) {
     // 이전 잠금이 있었지만 이미 자동 해제 기간이 지난 상태(위에서 lockMessage가 null이었던 경우)
     // 라면 지난 잠금 흔적을 지우고 이번 실패부터 새로 셈 - 그렇지 않으면 실패 횟수가 5 이상으로
     // 계속 남아있어서 해제 직후 단 한 번만 틀려도 곧바로 다시 잠기게 됨(15분 자동 해제를 무력화함)
@@ -1040,6 +1103,9 @@ function handleLogin(employeeId, passwordHash) {
     sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
   }
   clearPasswordCheckFailures(employeeId);
+  if (isLegacyPasswordHash(storedHash)) {
+    sheet.getRange(row, 2).setValue(wrapPasswordHash(passwordHash));
+  }
 
   const denialMessage = getAccountAccessDenialMessage(parsedData, true);
   if (denialMessage) {
@@ -1068,6 +1134,9 @@ function handleLogin(employeeId, passwordHash) {
   // 관리자인지를 서버가 판단해서 내려줌 - 화면 표시(관리자 화면 진입 등)에만 쓰고, 실제 권한
   // 검증은 여전히 서버의 verifyAdmin(ADMIN_EMPLOYEE_ID 대조)이 함
   parsedData.isAdmin = isAdminAccount;
+  // 이 서버는 로그인/불러오기를 POST로도 받음. 프론트는 이 값을 본 뒤부터 비밀번호 해시가 주소(URL)에
+  // 실리지 않도록 POST를 씀(예전 서버에 POST 로그인을 보내면 저장 요청으로 처리되므로 이 표시가 있어야만 씀)
+  parsedData.supportsPostAuth = true;
 
   return ContentService
     .createTextOutput(JSON.stringify(parsedData))
@@ -1108,6 +1177,7 @@ function handleLoad(employeeId, passwordHash) {
   parsedData.supportsPartialSave = true;
   // handleLogin과 동일한 이유로, 프론트가 화면 표시에만 쓸 수 있도록 관리자 여부를 함께 내려줌
   parsedData.isAdmin = (employeeId === ADMIN_EMPLOYEE_ID);
+  parsedData.supportsPostAuth = true; // handleLogin 참고
 
   return ContentService
     .createTextOutput(JSON.stringify(parsedData))
@@ -1119,6 +1189,17 @@ function doPost(e) {
   try {
     const body = e.postData && e.postData.contents ? e.postData.contents : "{}";
     const data = JSON.parse(body);
+
+    // GET으로 받으면 비밀번호 해시가 주소에 실려 기록에 남을 수 있어서 POST로도 받음(doGet도 예전 화면용으로 유지)
+    if (data.action === "login") return handleLogin(normalizeEmployeeId(data.employeeId), data.passwordHash || "");
+    if (data.action === "load") return handleLoad(normalizeEmployeeId(data.employeeId), data.passwordHash || "");
+
+    // AI 요청은 호출자 본인의 API 키를 쓰지만, 로그인 확인이 없으면 누구나 이 웹앱을 Gemini 중계용으로
+    // 써서 스크립트의 외부 호출(UrlFetch) 하루 할당량을 바닥낼 수 있으므로 로그인한 계정만 허용함
+    if (AI_ACTIONS.indexOf(data.action) !== -1) {
+      const auth = verifyLoggedInUserRow(getUsersSheet(), data);
+      if (auth.error) return auth.error;
+    }
 
     if (data.action === "uploadImage") return handleUploadImage(data);
     if (data.action === "summarize") return handleSummarize(data);
@@ -1214,7 +1295,7 @@ function handleSignup(data) {
     };
     const newRow = sheet.getLastRow() + 1;
     lockEmployeeIdCellAsText(sheet, newRow, 1);
-    sheet.getRange(newRow, 1, 1, 5).setValues([[employeeId, passwordHash, JSON.stringify(initialData), "", new Date().toLocaleString('ko-KR')]]);
+    sheet.getRange(newRow, 1, 1, 5).setValues([[employeeId, wrapPasswordHash(passwordHash), JSON.stringify(initialData), "", new Date().toLocaleString('ko-KR')]]);
   } finally {
     lock.releaseLock();
   }
@@ -1266,7 +1347,7 @@ function handleChangePassword(data) {
     return jsonResponse({ status: "error", message: "임시 비밀번호와 다른 새 비밀번호를 입력해주세요." });
   }
 
-  sheet.getRange(row, 2).setValue(newPasswordHash);
+  sheet.getRange(row, 2).setValue(wrapPasswordHash(newPasswordHash));
   if (profile.mustChangePassword) {
     delete profile.mustChangePassword;
     sheet.getRange(row, 3).setValue(JSON.stringify(profile));
@@ -1289,9 +1370,23 @@ function handleRequestPasswordReset(data) {
     return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
   }
 
-  const existingData = parseUserJson(sheet.getRange(row, 3).getValue());
-  existingData.passwordResetRequestedAt = new Date().toISOString();
-  sheet.getRange(row, 3).setValue(JSON.stringify(existingData));
+  // 로그인 없이 부를 수 있는 요청이라 반복 호출에 대비함: 이미 요청이 걸려 있으면 다시 쓰지 않고,
+  // 쓸 때는 저장(handleSaveState)과 같은 잠금 안에서 읽고-쓰기 해서 그 사이 저장된 프로필을 옛 값으로 덮지 않게 함
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return jsonResponse({ status: "error", message: "다른 요청이 진행 중이라 처리하지 못했습니다. 잠시 후 다시 시도해주세요." });
+  }
+  try {
+    const existingData = parseUserJson(sheet.getRange(row, 3).getValue());
+    if (!existingData.passwordResetRequestedAt) {
+      existingData.passwordResetRequestedAt = new Date().toISOString();
+      sheet.getRange(row, 3).setValue(JSON.stringify(existingData));
+    }
+  } finally {
+    lock.releaseLock();
+  }
 
   return jsonResponse({ status: "success" });
 }
@@ -1458,6 +1553,8 @@ function handleAdminListUsers(data) {
   });
   users.forEach(function(u) {
     u.duplicateApiKey = !!(u.aiApiKey && apiKeyCounts[u.aiApiKey] > 1);
+    // 중복 확인이 끝났으니 화면으로는 앞 4자리·뒤 4자리만 보냄(관리자 로그인이 탈취돼도 전원 키가 새지 않게)
+    if (u.aiApiKey) u.aiApiKey = maskApiKey(u.aiApiKey);
   });
 
   // 보관기한이 지난 휴지통 계정을 이 참에 완전 삭제. 행 번호가 밀리지 않도록 뒤에서부터 지움.
@@ -1837,7 +1934,7 @@ function handleAdminResetPassword(data) {
   }
 
   const tempPassword = generateTempPassword();
-  sheet.getRange(row, 2).setValue(computeSha256(tempPassword + ':' + targetEmployeeId));
+  sheet.getRange(row, 2).setValue(wrapPasswordHash(computeSha256(tempPassword + ':' + targetEmployeeId)));
 
   // 이 초기화가 자가 재설정 요청에 대한 응답이었다면, 처리됐으니 요청 표시를 지움.
   // 비밀번호 초기화는 곧 잠금 해제이기도 해야 하므로(그렇지 않으면 관리자가 방금 알려준
@@ -2683,6 +2780,10 @@ function handleGetTeamReportPendingStatus(data) {
 function escapeSheetFormula(value) {
   if (typeof value !== "string") return value;
   return /^[=+\-@\t\r]/.test(value) ? "'" + value : value;
+}
+
+function maskApiKey(key) {
+  return key.length <= 8 ? "****" : key.slice(0, 4) + "…" + key.slice(-4);
 }
 
 function jsonResponse(obj) {
@@ -3590,7 +3691,7 @@ function migrateLegacyData() {
 
     const newRow = sheet.getLastRow() + 1;
     lockEmployeeIdCellAsText(sheet, newRow, 1);
-    sheet.getRange(newRow, 1, 1, 5).setValues([[employeeId, passwordHash, profileJson, new Date().toLocaleString('ko-KR'), new Date().toLocaleString('ko-KR')]]);
+    sheet.getRange(newRow, 1, 1, 5).setValues([[employeeId, wrapPasswordHash(passwordHash), profileJson, new Date().toLocaleString('ko-KR'), new Date().toLocaleString('ko-KR')]]);
     saveRecordsForUser(employeeId, legacyRecords);
     updateReadableSheet(employeeId, legacyData);
     ui.alert("'" + employeeId + "' 계정으로 데이터 이전 및 비밀번호 설정이 완료되었습니다.\n\n웹 화면에서 해당 사번과 비밀번호로 로그인하세요.");

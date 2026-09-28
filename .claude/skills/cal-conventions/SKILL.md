@@ -33,6 +33,9 @@ user-invocable: false
 - 로그인이 필요한 새 action은 `verifyLoggedInUserRow`(관리자는 `verifyAdmin`)로 인증한다. 해시를 직접 비교하지 말고 `checkPasswordHash`를 거친다 (실패 횟수 제한).
 - 서버만 바꿀 수 있는 새 프로필 필드(권한·상태 등)를 만들면 `SERVER_MANAGED_PROFILE_KEYS`에 추가한다. 빠뜨리면 사용자가 저장 요청으로 그 값을 스스로 바꿀 수 있다.
 - 사용자 글을 시트 셀에 그대로 쓸 때는 `escapeSheetFormula`를 거친다.
+- 새 AI action은 `Code.gs`의 `AI_ACTIONS`에 추가하고(로그인 확인), 프런트 요청 본문에 `...getAuthFields()`를 넣는다.
+- 비밀번호 해시를 Users 시트에 쓸 때는 반드시 `wrapPasswordHash()`를 거치고, 비교는 `passwordHashMatches()`로 한다. 스크립트 속성 `PASSWORD_PEPPER`는 절대 지우거나 바꾸지 않는다.
+- 프런트 변경은 푸시 즉시 반영되지만 Code.gs는 사용자가 재배포해야 반영된다. 새 서버 기능에 의존하는 프런트 코드는 예전 서버에서도 깨지지 않게 만든다.
 
 ## 테스트
 - 브라우저 확인은 로그인 없는 화면 점검(스크린샷)만 한다. 실제 로그인·백엔드 동기화는 하지 않는다.

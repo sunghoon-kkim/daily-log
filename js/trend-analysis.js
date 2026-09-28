@@ -65,7 +65,7 @@
             try {
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ action: 'trendAnalysis', prompt: userPrompt, userApiKey: personalAiApiKey })
+                    body: JSON.stringify({ action: 'trendAnalysis', prompt: userPrompt, userApiKey: personalAiApiKey, ...getAuthFields() })
                 });
                 
                 const result = await res.json();
@@ -125,7 +125,7 @@
                         action: 'trendRevise',
                         history: trendConversationHistory,
                         instruction: instruction,
-                        userApiKey: personalAiApiKey
+                        userApiKey: personalAiApiKey, ...getAuthFields()
                     })
                 });
                 
@@ -236,7 +236,7 @@
                         action: 'gaugeRead',
                         images: gaugePhotos.map(p => ({ mimeType: p.mimeType, data: p.data })),
                         hint: equipmentInput.value.trim(),
-                        userApiKey: personalAiApiKey
+                        userApiKey: personalAiApiKey, ...getAuthFields()
                     })
                 });
                 const data = await res.json();
