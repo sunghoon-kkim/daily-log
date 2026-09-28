@@ -12,6 +12,9 @@
             const lastDate = lastDay.getDate();
             
             let html = '';
+            // 분류 칩에서 꺼둔 분류의 일정은 달력 칸에서 빼고 그림 (선택한 날짜의 상세에는 그대로 보임)
+            const calendarVisibleEvents = events.filter(isEventGroupVisible);
+            renderEventGroupFilter();
             
             for (let i = 0; i < firstWeekday; i++) {
                 html += '<div class="day other-month"></div>';
@@ -61,7 +64,7 @@
                 }
                 
                 // 이 날짜에 해당하는 이벤트 찾기
-                const dayEvents = events.filter(ev => dateStr >= ev.start && dateStr <= ev.end)
+                const dayEvents = calendarVisibleEvents.filter(ev => dateStr >= ev.start && dateStr <= ev.end)
                     .sort((a, b) => a.start.localeCompare(b.start));
                 
                 let planHtml = '<div class="day-plan-list">';
@@ -115,6 +118,77 @@
             if (typeof renderOpenIssuesWidget === 'function') renderOpenIssuesWidget();
             if (typeof renderTodaySummary === 'function') renderTodaySummary();
             setupCalendarSwipe();
+        }
+
+        // ===== 일정 분류 (구글 캘린더처럼 분류별로 달력에서 보이기/숨기기) =====
+        // 분류는 일정마다 eventGroup 필드로 저장. 예전 일정처럼 분류가 없으면 제목으로 추정해서,
+        // 따로 옮기는 작업 없이 기존 당직/연차·백워시 일정도 바로 분류별로 끄고 켤 수 있게 함
+        const DEFAULT_EVENT_GROUP = '일반';
+        const ROTATION_EVENT_GROUP = '교대 운전';
+        const BUILTIN_EVENT_GROUPS = [DEFAULT_EVENT_GROUP, '근무', ROTATION_EVENT_GROUP];
+        const HIDDEN_EVENT_GROUPS_STORAGE_KEY = 'hiddenEventGroups';
+        const WORK_EVENT_TITLE_PATTERN = /당직|연차|반차|휴가|휴무|병가|경조|공가|대휴|출장|교육/;
+
+        function getEventGroup(ev) {
+            if (ev.eventGroup) return ev.eventGroup;
+            if (/백워시/.test(ev.title || '')) return ROTATION_EVENT_GROUP;
+            if (WORK_EVENT_TITLE_PATTERN.test(ev.title || '')) return '근무';
+            return DEFAULT_EVENT_GROUP;
+        }
+
+        // 기본 분류 + 일정에 실제로 쓰인 사용자 분류 (분류 목록을 따로 저장하지 않아도 되게 일정에서 모음)
+        function getAllEventGroups() {
+            const groups = BUILTIN_EVENT_GROUPS.slice();
+            events.forEach(ev => {
+                const g = getEventGroup(ev);
+                if (!groups.includes(g)) groups.push(g);
+            });
+            return groups;
+        }
+
+        // 켜고 끈 상태는 이 기기에서 보기 편하려는 설정이라 서버 동기화 없이 브라우저에만 기억함
+        let hiddenEventGroups = (() => {
+            try {
+                const saved = JSON.parse(localStorage.getItem(HIDDEN_EVENT_GROUPS_STORAGE_KEY));
+                return Array.isArray(saved) ? saved : [];
+            } catch (e) { return []; }
+        })();
+
+        function isEventGroupVisible(ev) {
+            if (isFeatureDisabled('eventGroupFilter')) return true;
+            return !hiddenEventGroups.includes(getEventGroup(ev));
+        }
+
+        function toggleEventGroupVisibility(group) {
+            hiddenEventGroups = hiddenEventGroups.includes(group)
+                ? hiddenEventGroups.filter(g => g !== group)
+                : hiddenEventGroups.concat(group);
+            try {
+                localStorage.setItem(HIDDEN_EVENT_GROUPS_STORAGE_KEY, JSON.stringify(hiddenEventGroups));
+            } catch (e) { /* 저장 실패해도 이번 화면에서는 적용 */ }
+            renderCalendar();
+        }
+
+        function renderEventGroupFilter() {
+            const el = document.getElementById('eventGroupFilter');
+            if (!el) return;
+            // 일정이 실제로 있는 분류만 칩으로 보여줌 (빈 분류까지 늘어놓으면 오히려 복잡해짐)
+            const counts = {};
+            events.forEach(ev => {
+                const g = getEventGroup(ev);
+                counts[g] = (counts[g] || 0) + 1;
+            });
+            const groups = getAllEventGroups().filter(g => counts[g]);
+            if (groups.length === 0) { el.innerHTML = ''; return; }
+            el.innerHTML = '<span class="event-group-filter-label">👁️ 일정 분류</span>' + groups.map(g => {
+                const hidden = hiddenEventGroups.includes(g);
+                return `<button type="button" class="event-group-chip${hidden ? ' off' : ''}" aria-pressed="${!hidden}" title="${hidden ? '달력에 보이기' : '달력에서 숨기기'} (${counts[g]}건)" onclick="toggleEventGroupVisibility('${escapeForOnclickArg(g)}')">${hidden ? '☐' : '✔'} ${escapeHtml(g)}</button>`;
+            }).join('');
+        }
+
+        function renderEventGroupOptions() {
+            const list = document.getElementById('eventGroupOptions');
+            if (list) list.innerHTML = getAllEventGroups().map(g => `<option value="${escapeHtml(g)}"></option>`).join('');
         }
 
         // 연차/휴가 등 개인 휴무 일정이 걸린 날은 근무일이 아니므로 작성 누락으로 보지 않음 (반차는 근무일)
@@ -320,7 +394,7 @@
             const todayStr = formatDate(new Date());
 
             const upcomingAll = events
-                .filter(ev => ev.end >= todayStr)
+                .filter(ev => ev.end >= todayStr && isEventGroupVisible(ev))
                 .sort((a, b) => a.start.localeCompare(b.start));
 
             // 반복 등록된 일정(같은 repeatGroupId)은 여러 회차가 한꺼번에 다가올 수 있는데,
@@ -1159,6 +1233,7 @@
         // 이후 기간만 정하고 저장하면 되도록 함
         function applyQuickPreset(name) {
             document.getElementById('eventTitleInput').value = name;
+            document.getElementById('eventGroupInput').value = '근무';
             pickColor(QUICK_EVENT_PRESETS[name]);
             syncQuickPresetSelection(name);
         }
@@ -1185,6 +1260,7 @@
                 document.getElementById('eventTitleInput').value = ev.title;
                 document.getElementById('eventStartInput').value = ev.start;
                 document.getElementById('eventEndInput').value = ev.end;
+                document.getElementById('eventGroupInput').value = getEventGroup(ev);
                 selectedColor = ev.color;
                 deleteBtn.style.display = 'block';
                 // 이미 등록된 일정 하나를 고치는 중에 반복을 걸면 그 자리에서 여러 건으로
@@ -1197,6 +1273,8 @@
                 document.getElementById('eventTitleInput').value = '';
                 document.getElementById('eventStartInput').value = dateStr;
                 document.getElementById('eventEndInput').value = dateStr;
+                // 비워두면 저장할 때 제목으로 분류를 추정함 (당직·연차 → 근무 등)
+                document.getElementById('eventGroupInput').value = '';
                 selectedColor = COLOR_PALETTE[0];
                 deleteBtn.style.display = 'none';
                 document.getElementById('eventRepeatIntervalInput').value = '0';
@@ -1204,6 +1282,7 @@
                 repeatSection.style.display = '';
             }
 
+            renderEventGroupOptions();
             syncColorSwatchSelection(selectedColor);
             syncQuickPresetSelection(eventId ? document.getElementById('eventTitleInput').value : '');
 
@@ -1220,6 +1299,7 @@
             const title = document.getElementById('eventTitleInput').value.trim();
             const start = document.getElementById('eventStartInput').value;
             const end = document.getElementById('eventEndInput').value;
+            const eventGroup = document.getElementById('eventGroupInput').value.trim().slice(0, 20) || getEventGroup({ title });
             
             if (!title) { showAppToast('내용을 입력해주세요'); return; }
             if (!start || !end) { showAppToast('기간을 설정해주세요'); return; }
@@ -1233,6 +1313,7 @@
                     ev.start = start;
                     ev.end = end;
                     ev.color = selectedColor;
+                    ev.eventGroup = eventGroup;
                 }
             } else {
                 // 당직/연차처럼 같은 간격으로 반복되는 일정은, 서로 독립된 일정 여러 건으로 한 번에
@@ -1272,7 +1353,7 @@
                     }
                     events.push({
                         id: 'evt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '_' + i,
-                        title, start: occStart, end: occEnd, color: selectedColor, repeatGroupId
+                        title, start: occStart, end: occEnd, color: selectedColor, repeatGroupId, eventGroup
                     });
                 }
             }
@@ -1446,7 +1527,7 @@
                         if (events.some(e => e.title === title && e.start === date)) { skippedCount++; return; }
                         events.push({
                             id: 'evt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '_' + addedCount,
-                            title, start: date, end: date, color, repeatGroupId
+                            title, start: date, end: date, color, repeatGroupId, eventGroup: ROTATION_EVENT_GROUP
                         });
                         addedCount++;
                     });

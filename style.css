@@ -5935,3 +5935,35 @@ body {
 .dark-mode .rotation-row-head .rotation-name-input { background: transparent; color: inherit; border-color: var(--d-border, #555); }
 .dark-mode .rotation-day-chip span { background: transparent; border-color: var(--d-border, #555); color: var(--d-text3, #aaa); }
 .dark-mode .rotation-week-label, .dark-mode .rotation-hint { color: var(--d-text3, #aaa); }
+
+/* ===== 일정 분류별 보이기/숨기기 ===== */
+.event-group-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #eee;
+}
+.event-group-filter:empty { display: none; }
+.event-group-filter-label { font-size: 12px; font-weight: 600; color: #888; margin-right: 2px; }
+.event-group-chip {
+    padding: 5px 12px;
+    border-radius: 14px;
+    border: 1px solid #667eea;
+    background: rgba(102, 126, 234, 0.1);
+    color: #4a5bd4;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.event-group-chip.off {
+    border-color: #ddd;
+    background: transparent;
+    color: #aaa;
+    text-decoration: line-through;
+}
+.dark-mode .event-group-filter { border-bottom-color: var(--d-border); }
+.dark-mode .event-group-filter-label { color: var(--d-text3); }
+.dark-mode .event-group-chip { color: #aab6ff; background: rgba(102, 126, 234, 0.18); }
+.dark-mode .event-group-chip.off { color: var(--d-text3); border-color: var(--d-border); background: transparent; }

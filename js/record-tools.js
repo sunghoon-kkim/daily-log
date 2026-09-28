@@ -132,7 +132,14 @@
             }
 
             // 오늘 일정
-            const todayEvents = events.filter(ev => todayStr >= ev.start && todayStr <= ev.end);
+            // 교대 운전(백워시 등)은 달력에서 꺼두는 경우가 많으므로 켜고 끈 것과 상관없이
+            // 오늘 할 작업을 따로 한 줄로 알려주고, 일반 오늘 일정 개수에서는 빼서 중복 표시하지 않음
+            const todayAllEvents = events.filter(ev => todayStr >= ev.start && todayStr <= ev.end);
+            const todayRotation = todayAllEvents.filter(ev => getEventGroup(ev) === ROTATION_EVENT_GROUP);
+            if (todayRotation.length > 0) {
+                chip('warn', '🔁', `오늘 ${todayRotation.map(ev => escapeHtml(ev.title)).join(', ')}`, `jumpToDateRecord('${todayStr}')`);
+            }
+            const todayEvents = todayAllEvents.filter(ev => getEventGroup(ev) !== ROTATION_EVENT_GROUP);
             if (todayEvents.length > 0) {
                 const names = todayEvents.slice(0, 2).map(ev => escapeHtml(ev.title)).join(', ');
                 chip('info', '📅', `오늘 일정 ${todayEvents.length}건: ${names}${todayEvents.length > 2 ? ' 외' : ''}`, `jumpToDateRecord('${todayStr}')`);

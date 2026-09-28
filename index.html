@@ -77,6 +77,7 @@
                             </div>
                         </div>
                     </div>
+                    <div class="event-group-filter" id="eventGroupFilter" data-feature="eventGroupFilter" role="group" aria-label="일정 분류별 보이기/숨기기"></div>
                     
                     <div class="calendar">
                         <div class="weekdays">
@@ -1533,6 +1534,12 @@
                     <button type="button" class="quick-preset-btn" data-preset="연차" onclick="applyQuickPreset('연차')">연차</button>
                     <button type="button" class="quick-preset-btn" data-preset="휴가" onclick="applyQuickPreset('휴가')">휴가</button>
                 </div>
+            </div>
+
+            <div class="modal-field">
+                <label>분류 (달력에서 분류별로 보이기/숨기기)</label>
+                <input type="text" id="eventGroupInput" list="eventGroupOptions" placeholder="예: 일반, 근무, 교대 운전 (새 이름을 쓰면 새 분류)" maxlength="20">
+                <datalist id="eventGroupOptions"></datalist>
             </div>
 
             <div class="modal-field">
