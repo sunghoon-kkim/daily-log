@@ -213,6 +213,107 @@
             });
         }
 
+        // ===== 흐름도 붙여넣기 (JSON으로 받은 흐름도를 새 흐름도로 추가) =====
+        // [{name, blocks, connections}] 목록이나 흐름도 하나({name, blocks, connections})를 받음.
+        // 붙여넣은 id는 블록 onclick 속성에 그대로 들어가므로 믿지 않고 전부 새로 발급하고,
+        // 연결선의 from/to/toConnectionId는 새 id로 바꿔서 연결 관계만 유지함
+        function openWaterFlowImportModal() {
+            if (!checkEditPermission()) return;
+            document.getElementById('waterFlowImportInput').value = '';
+            document.getElementById('waterFlowImportModal').classList.add('active');
+            applyFormLockState();
+        }
+
+        function closeWaterFlowImportModal() {
+            document.getElementById('waterFlowImportModal').classList.remove('active');
+        }
+
+        function newWaterFlowImportId(prefix) {
+            return prefix + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+        }
+
+        function normalizeImportedWaterFlowDiagram(raw) {
+            if (!raw || typeof raw !== 'object' || !Array.isArray(raw.blocks)) return null;
+            const isColor = v => typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v);
+            const isNum = v => typeof v === 'number' && isFinite(v);
+            const blockIdMap = {};
+            const blocks = raw.blocks.filter(b => b && typeof b === 'object').map(b => {
+                const id = newWaterFlowImportId('wfb_');
+                if (b.id != null) blockIdMap[String(b.id)] = id;
+                return {
+                    id,
+                    title: String(b.title == null ? '' : b.title),
+                    detail: String(b.detail == null ? '' : b.detail),
+                    color: isColor(b.color) ? b.color : COLOR_PALETTE[0],
+                    x: isNum(b.x) ? b.x : 0,
+                    y: isNum(b.y) ? b.y : 0,
+                    expanded: !!b.expanded
+                };
+            });
+            const rawConns = Array.isArray(raw.connections) ? raw.connections.filter(c => c && typeof c === 'object') : [];
+            const connIdMap = {};
+            rawConns.forEach(c => { if (c.id != null) connIdMap[String(c.id)] = newWaterFlowImportId('wfc_'); });
+            const connections = [];
+            rawConns.forEach(c => {
+                const from = blockIdMap[String(c.from)];
+                const to = c.to != null ? blockIdMap[String(c.to)] : null;
+                const toConnectionId = c.toConnectionId != null ? connIdMap[String(c.toConnectionId)] : null;
+                if (!from || (!to && !toConnectionId)) return; // 없는 블록을 가리키는 연결선은 버림
+                const conn = { id: connIdMap[String(c.id)] || newWaterFlowImportId('wfc_'), from, to: to || null };
+                if (!to) conn.toConnectionId = toConnectionId;
+                if (c.lineStyle === 'dashed') conn.lineStyle = 'dashed';
+                if (isColor(c.color)) conn.color = c.color;
+                ['trunkOverride', 'exitBend', 'entryBend'].forEach(k => { if (isNum(c[k])) conn[k] = c[k]; });
+                connections.push(conn);
+            });
+            const name = String(raw.name || '').trim() || ('흐름도 ' + (waterFlowDiagrams.length + 1));
+            return { id: newWaterFlowImportId('wfd_'), name, blocks, connections };
+        }
+
+        function importWaterFlowDiagramsFromInput() {
+            if (!checkEditPermission()) return;
+            const text = document.getElementById('waterFlowImportInput').value.trim();
+            if (!text) {
+                showAppToast('붙여넣을 흐름도 내용을 입력해주세요');
+                return;
+            }
+            let parsed;
+            try {
+                parsed = JSON.parse(text);
+            } catch (e) {
+                showAppToast('JSON 형식이 올바르지 않습니다. 복사한 내용을 처음부터 끝까지 그대로 붙여넣어주세요');
+                return;
+            }
+            const rawList = Array.isArray(parsed) ? parsed : [parsed];
+            const existingNames = new Set(waterFlowDiagrams.map(d => d.name));
+            const toAdd = [];
+            let skipped = 0;
+            rawList.forEach(raw => {
+                const diagram = normalizeImportedWaterFlowDiagram(raw);
+                if (!diagram) return;
+                if (existingNames.has(diagram.name)) { skipped++; return; }
+                existingNames.add(diagram.name);
+                toAdd.push(diagram);
+            });
+            if (toAdd.length === 0) {
+                showAppToast(skipped > 0 ? '같은 이름의 흐름도가 이미 있어서 추가할 것이 없습니다' : '흐름도 형식({name, blocks, connections})을 찾지 못했습니다');
+                return;
+            }
+            pushWaterFlowUndoSnapshot();
+            syncActiveWaterFlowDiagramData();
+            waterFlowDiagrams.push(...toAdd);
+            currentWaterFlowDiagramId = toAdd[0].id;
+            ensureActiveWaterFlowDiagram();
+            safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
+            safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId);
+            queueSync();
+            closeWaterFlowImportModal();
+            renderWaterFlowDiagramTabs();
+            renderWaterFlowCanvas();
+            fitWaterFlowViewToContent();
+            showStatus('📥 흐름도 ' + toAdd.length + '개를 추가했습니다' + (skipped > 0 ? ` (같은 이름 ${skipped}개는 건너뜀)` : ''), 'success');
+        }
+
         function saveWaterFlowBlocksToStorage() {
             syncActiveWaterFlowDiagramData();
             safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));

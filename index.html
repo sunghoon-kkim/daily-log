@@ -773,6 +773,7 @@
                         <button class="category-prev-btn" onclick="undoWaterFlowChange()" title="되돌리기 (Ctrl+Z)">↩️ 되돌리기</button>
                         <button class="category-prev-btn" onclick="redoWaterFlowChange()" title="다시 실행 (Ctrl+Shift+Z)">↪️ 다시 실행</button>
                         <button class="category-prev-btn" onclick="fitWaterFlowViewToContent()" title="블록이 상하좌우 여백을 두고 화면에 전부 들어오도록 맞춤">🔍 화면 초기화</button>
+                        <button class="category-prev-btn" onclick="openWaterFlowImportModal()" title="복사해 둔 흐름도 JSON을 붙여넣어 새 흐름도로 추가">📥 흐름도 붙여넣기</button>
                         <button class="add-category-btn" onclick="openAddWaterFlowBlockModalAtViewportCenter()">➕ 블록 추가</button>
                     </div>
                 </div>
@@ -1450,6 +1451,22 @@
                 <button class="modal-btn modal-save-btn" onclick="saveWaterFlowDiagramName()">저장</button>
                 <button class="modal-btn modal-delete-btn" id="deleteWaterFlowDiagramBtn" onclick="deleteWaterFlowDiagram()">삭제</button>
                 <button class="modal-btn modal-cancel-btn" onclick="closeWaterFlowDiagramModal()">취소</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="waterFlowImportModal" role="dialog" aria-modal="true">
+        <div class="modal-box">
+            <h3>📥 흐름도 붙여넣기</h3>
+
+            <div class="modal-field">
+                <label>흐름도 JSON (여러 개면 [ ... ] 목록 그대로)</label>
+                <textarea id="waterFlowImportInput" class="water-flow-import-textarea" placeholder='[{"name": "흐름도 이름", "blocks": [...], "connections": [...]}]'></textarea>
+                <div class="water-flow-import-hint">기존 흐름도는 그대로 두고 새 흐름도로 뒤에 추가됩니다. 이미 같은 이름의 흐름도가 있으면 건너뜁니다.</div>
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-save-btn" onclick="importWaterFlowDiagramsFromInput()">추가</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeWaterFlowImportModal()">취소</button>
             </div>
         </div>
     </div>
