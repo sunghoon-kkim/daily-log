@@ -1588,57 +1588,6 @@ html {
             color: #667eea;
         }
         
-        .category-hide-btn {
-            background: none;
-            border: none;
-            color: #bbb;
-            font-size: 15px;
-            cursor: pointer;
-            padding: 2px 6px;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-        
-        .category-hide-btn:hover {
-            background: #f0f0f0;
-            color: #ff6b6b;
-        }
-        
-        .hidden-categories-row {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
-            flex-shrink: 0;
-            margin-top: 10px;
-            padding: 10px;
-            background: #f5f5f5;
-            border-radius: 8px;
-        }
-        
-        .hidden-categories-label {
-            font-size: 12px;
-            color: #999;
-            margin-right: 4px;
-        }
-        
-        .hidden-category-chip {
-            padding: 5px 10px;
-            border: 1px dashed #ccc;
-            background: white;
-            border-radius: 20px;
-            font-size: 12px;
-            color: #667eea;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .hidden-category-chip:hover {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
-        }
-
         /* 접힌 카테고리 모음: 펼쳐진 카테고리들과 시각적으로 분리해서 저장하기 버튼 바로 위에 배치함 (renderRecordForm 참고).
            margin-top: auto로 항상 record-content 하단(=저장하기 버튼 바로 위)에 밀착되고,
            flex-shrink: 0이라 카테고리가 늘어나 줄 수가 많아져도 눌리지 않고 위쪽 스크롤 영역의 공간을 밀어 올림 */
@@ -4322,7 +4271,6 @@ html {
 .dark-mode .goal-compose-block,
 .dark-mode .modal-box,
 .dark-mode .category-tag,
-.dark-mode .hidden-category-chip,
 .dark-mode .collapsed-category-chip,
 .dark-mode .result-item,
 .dark-mode .team-report-history-item,
@@ -4539,7 +4487,6 @@ html {
 .dark-mode .reset-btn,
 .dark-mode .modal-cancel-btn,
 .dark-mode .category-collapse-btn:hover,
-.dark-mode .category-hide-btn:hover,
 .dark-mode .day-plan-more,
 .dark-mode .goal-area-check-item {
     background: var(--d-bg3);
@@ -4800,10 +4747,6 @@ html {
 .dark-mode .result-content {
     background: var(--d-bg2);
     color: var(--d-text2);
-}
-
-.dark-mode .hidden-categories-row {
-    background: var(--d-bg2);
 }
 
 .dark-mode .collapsed-categories-area {
@@ -5207,50 +5150,6 @@ body.edit-locked .custom-color-swatch {
     min-width: 0;
 }
 
-.weekday-template-banner {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    margin-bottom: 12px;
-    border-radius: 8px;
-    background: #eef0fb;
-    font-size: 13px;
-}
-
-.record-snippet-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-height: 240px;
-    overflow-y: auto;
-}
-
-.record-snippet-item {
-    display: flex;
-    gap: 6px;
-    align-items: stretch;
-}
-
-.record-snippet-insert {
-    flex: 1;
-    text-align: left;
-    padding: 8px 10px;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    background: #fafbff;
-    cursor: pointer;
-    font-size: 13px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: #333;
-}
-
-.record-snippet-insert:hover {
-    border-color: #667eea;
-}
-
 .record-revision-list {
     display: flex;
     flex-direction: column;
@@ -5403,12 +5302,6 @@ body.edit-locked .custom-color-swatch {
     color: var(--d-text3);
 }
 
-.dark-mode .weekday-template-banner {
-    background: var(--d-bg3);
-    color: var(--d-text2);
-}
-
-.dark-mode .record-snippet-insert,
 .dark-mode .record-revision-item {
     background: var(--d-bg3);
     border-color: var(--d-border);
@@ -5484,54 +5377,6 @@ body.edit-locked .custom-color-swatch {
 .today-chip.tone-warn { border-color: #ffd8a8; background: #fff7ec; }
 .today-chip.tone-alert { border-color: #ffc2c2; background: #fff1f1; }
 
-.category-menu-btn {
-    position: relative;
-    font-weight: 700;
-    font-size: 18px;
-    line-height: 1;
-    letter-spacing: -1px;
-}
-
-.category-menu-btn.has-badge::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #667eea;
-}
-
-.category-tool-menu {
-    position: fixed;
-    z-index: 3000;
-    min-width: 190px;
-    padding: 6px;
-    border-radius: 10px;
-    border: 1px solid #e0e0e0;
-    background: white;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-    display: flex;
-    flex-direction: column;
-}
-
-.category-tool-menu-item {
-    text-align: left;
-    padding: 9px 12px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: #333;
-    font-size: 14px;
-    cursor: pointer;
-}
-
-.category-tool-menu-item:hover,
-.category-tool-menu-item:focus-visible {
-    background: #f0f2ff;
-}
-
 .dark-mode .today-summary-title {
     color: var(--d-text1);
 }
@@ -5546,20 +5391,6 @@ body.edit-locked .custom-color-swatch {
 .dark-mode .today-chip.tone-info { border-color: #3f4a8a; background: #262b4d; }
 .dark-mode .today-chip.tone-warn { border-color: #7a5a2a; background: #3a2e1c; }
 .dark-mode .today-chip.tone-alert { border-color: #7a3434; background: #3a1f1f; }
-
-.dark-mode .category-tool-menu {
-    background: var(--d-bg1);
-    border-color: var(--d-border);
-}
-
-.dark-mode .category-tool-menu-item {
-    color: var(--d-text1);
-}
-
-.dark-mode .category-tool-menu-item:hover,
-.dark-mode .category-tool-menu-item:focus-visible {
-    background: var(--d-bg3);
-}
 
 /* ===== 알림 토스트 종류 (오류: 기본 빨강 / 완료: 초록 / 안내: 남색) ===== */
 .app-toast.success {

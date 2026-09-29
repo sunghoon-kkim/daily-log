@@ -496,40 +496,6 @@
             return `${d.getMonth() + 1}/${d.getDate()}`;
         }
         
-        // 이 날짜 이전에 해당 카테고리를 마지막으로 작성했던 날을 찾음 (없으면 null).
-        // 일상점검처럼 매일 비슷한 내용을 반복 입력하는 경우, 전날 내용을 가져와 수정하는 용도
-        function findPreviousRecord(dateStr, category) {
-            if (!dateStr) return null;
-            
-            const prevDates = Object.keys(records)
-                .filter(d => d < dateStr && records[d][category] && records[d][category].trim() !== '')
-                .sort();
-            
-            if (prevDates.length === 0) return null;
-            
-            const latest = prevDates[prevDates.length - 1];
-            return { date: latest, content: records[latest][category] };
-        }
-        
-        function loadPreviousRecord(category) {
-            if (!checkEditPermission()) return;
-            
-            const prev = findPreviousRecord(selectedDate, category);
-            if (!prev) return;
-            
-            // 화면 입력창에만 값을 넣으면, 자동저장(0.8초 지연)이 실행되기 전에 renderRecordForm()이
-            // 화면을 다시 그리면서 값이 사라짐. 그래서 records에 먼저 확정 저장한 뒤 화면을 갱신함
-            if (!records[selectedDate]) records[selectedDate] = {};
-            records[selectedDate][category] = prev.content;
-            saveRecordsToStorage();
-            
-            renderRecordForm();
-            renderCalendar();
-            
-            const d = new Date(prev.date);
-            showStatus(`${d.getMonth() + 1}/${d.getDate()} 기록을 불러왔습니다`, 'success');
-        }
-        
         // 그 날짜에 어떤 카테고리를 기록했는지 캘린더 칸에 작은 색상 점으로 표시.
         // 체크(✓) 하나만 있을 때는 "뭔가 썼다"만 알 수 있었는데, 이제 어느 카테고리가 비었는지도 한눈에 보임
         function buildRecordDots(dateStr) {
@@ -752,12 +718,11 @@
                 html += '</div>';
             }
             
-            // 카테고리별 활동 기록 (이 날짜에서 숨긴 카테고리는 건너뜀, 이 날짜만의 순서 적용).
-            // 접힌 카테고리는 세로 카드로 그리지 않고, 펼쳐진 카테고리들과 분리해서 하단에 배지 그리드로 모아 보여줌
-            const hiddenList = hiddenCategoriesByDate[selectedDate] || [];
-            const orderedCategories = getCategoryOrderForDate(selectedDate);
-            const visibleCategories = orderedCategories.filter(c => !hiddenList.includes(c));
-            const hiddenCategories = orderedCategories.filter(c => hiddenList.includes(c));
+            // 카테고리별 활동 기록 (이 날짜만의 순서 적용).
+            // 접힌 카테고리는 세로 카드로 그리지 않고, 펼쳐진 카테고리들과 분리해서 하단에 배지 그리드로 모아 보여줌.
+            // 예전 "이 날짜에서 숨기기" 기능은 접기/펼치기와 겹쳐서 없앴음. 그때 저장된 hiddenCategoriesByDate
+            // 데이터는 지우지 않고 남겨두지만, 화면에는 더 이상 적용하지 않음
+            const visibleCategories = getCategoryOrderForDate(selectedDate);
 
             let expandedHtml = '';
             let collapsedChipsHtml = '';
@@ -789,10 +754,8 @@
                             <span class="category-drag-handle" title="드래그해서 순서 변경">⠿</span>
                             <div class="category-name" style="color:${color}">${categoryHtml}</div>
                             <div class="category-header-actions">
-                                ${(!content && findPreviousRecord(selectedDate, category)) ? `<button class="category-prev-btn" draggable="false" onclick="loadPreviousRecord('${categoryArg}')" title="이전에 작성한 기록 불러오기">↓ 이전 기록</button>` : ''}
                                 <button class="category-collapse-btn" draggable="false" onclick="toggleCategoryCollapse('${categoryArg}')" title="접기/펼치기">▾</button>
                                 ${typeof buildRecordToolButtons === 'function' ? buildRecordToolButtons(selectedDate, category, categoryArg) : ''}
-                                ${typeof buildRecordToolButtons === 'function' ? '' : `<button class="category-hide-btn" draggable="false" onclick="hideCategoryForDate('${categoryArg}')" title="이 날짜에서 숨기기" aria-label="이 날짜에서 숨기기">✕</button>`}
                             </div>
                         </div>
                         <textarea id="category-${categoryHtml}" data-category="${categoryHtml}" placeholder="활동 내용을 입력하세요...">${escapeHtml(content)}</textarea>
@@ -801,17 +764,7 @@
                 `;
             }
 
-            if (typeof buildWeekdayTemplateBanner === 'function') html += buildWeekdayTemplateBanner(selectedDate);
             html += `<div class="expanded-categories-area">${expandedHtml}</div>`;
-
-            if (hiddenCategories.length > 0) {
-                html += '<div class="hidden-categories-row">';
-                html += '<span class="hidden-categories-label">이 날짜에서 숨김:</span>';
-                for (const category of hiddenCategories) {
-                    html += `<button class="hidden-category-chip" onclick="showCategoryForDate('${escapeForOnclickArg(category)}')">+ ${escapeHtml(category)}</button>`;
-                }
-                html += '</div>';
-            }
 
             // 접힌 카테고리가 하나도 없으면 영역 자체를 그리지 않아 불필요한 여백이 남지 않게 함
             if (collapsedChipsHtml) {
@@ -1122,42 +1075,6 @@
             categoryHeightSaveTimeout = setTimeout(() => {
                 saveDateCategoryBoxHeightsToStorage();
             }, 500);
-        }
-        
-        // 이 날짜에서만 특정 카테고리를 숨김 (전체 카테고리 목록/다른 날짜 기록에는 영향 없음)
-        function hideCategoryForDate(category) {
-            if (!checkEditPermission()) return;
-            if (!selectedDate) return;
-            
-            // 숨기기 전에 지금까지 입력한 내용은 먼저 저장
-            captureCurrentFormToRecords();
-            
-            if (!hiddenCategoriesByDate[selectedDate]) hiddenCategoriesByDate[selectedDate] = [];
-            if (!hiddenCategoriesByDate[selectedDate].includes(category)) {
-                hiddenCategoriesByDate[selectedDate].push(category);
-            }
-            saveHiddenCategoriesToStorage();
-            renderRecordForm();
-        }
-        
-        function showCategoryForDate(category) {
-            if (!checkEditPermission()) return;
-            if (!selectedDate) return;
-
-            captureCurrentFormToRecords(); // 다시 그리기 전에 입력 중이던 내용 먼저 확정
-
-            if (hiddenCategoriesByDate[selectedDate]) {
-                hiddenCategoriesByDate[selectedDate] = hiddenCategoriesByDate[selectedDate].filter(c => c !== category);
-                // 이 날짜에서 마지막으로 숨겨뒀던 카테고리까지 다시 보이게 하면 빈 배열([])만 계속
-                // 남게 되는데, 이러면 그 어떤 것도 숨기지 않은 날짜와 동작은 똑같으면서
-                // (hiddenCategoriesByDate[date] || []로 쓰이는 곳들과 결과가 같음) 프로필에 쓸모없는
-                // 항목만 영구적으로 쌓이므로, 빈 배열이 되면 키 자체를 지움
-                if (hiddenCategoriesByDate[selectedDate].length === 0) {
-                    delete hiddenCategoriesByDate[selectedDate];
-                }
-            }
-            saveHiddenCategoriesToStorage();
-            renderRecordForm();
         }
         
         // 예전에는 로컬에 반영하자마자 무조건 "저장되었습니다"를 띄웠는데, 실제 서버 저장은 그 뒤

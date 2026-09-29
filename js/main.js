@@ -152,7 +152,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     todaySummary: '🌅 오늘 요약 카드',
                     missingRecordIndicator: '🟥 작성 누락 표시 & 작성률',
                     openIssues: '📋 미결 사항 추적',
-                    recordSnippets: '📌 상용구 & 요일 템플릿',
                     recordRevisions: '🕘 수정 이력 & 되돌리기',
                     rotationSchedule: '🔁 교대 운전 일정 등록',
                     eventGroupFilter: '👁️ 일정 분류별 보이기/숨기기'
@@ -2595,7 +2594,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'projectModal') closeProjectModal();
             else if (id === 'maintenanceModal') closeMaintenanceModal();
             else if (id === 'maintCompleteModal') closeMaintenanceCompleteModal();
-            else if (id === 'recordSnippetModal') closeRecordSnippetModal();
             else if (id === 'recordRevisionModal') closeRecordRevisionModal();
             else if (id === 'recordImportModal') closeRecordImportModal();
             else if (id === 'waterFlowBlockModal') closeWaterFlowBlockModal();
@@ -2683,7 +2681,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (e.target.closest('#tabsContainer')) return;
 
                 const blocked = e.target.closest(
-                    'button, [onclick], select, input:not(#loginPasswordInput):not(#loginEmployeeIdInput), .day, .upcoming-card, .upcoming-card-mini, .hidden-category-chip, .result-item.clickable, .color-swatch'
+                    'button, [onclick], select, input:not(#loginPasswordInput):not(#loginEmployeeIdInput), .day, .upcoming-card, .upcoming-card-mini, .result-item.clickable, .color-swatch'
                 );
                 if (blocked) {
                     e.preventDefault();

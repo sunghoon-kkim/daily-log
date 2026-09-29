@@ -1350,34 +1350,6 @@
             </div>
         </div>
     </div>
-    <div class="modal-overlay" id="recordSnippetModal" role="dialog" aria-modal="true">
-        <div class="modal-box">
-            <h3 id="recordSnippetModalTitle">📌 상용구</h3>
-            <div class="record-snippet-list" id="recordSnippetList"></div>
-
-            <div class="modal-field" style="margin-top:12px;">
-                <label>새 상용구 추가</label>
-                <div class="search-row" style="margin-bottom:0;">
-                    <input type="text" id="recordSnippetInput" class="search-input" maxlength="300" placeholder="예: 순회점검 결과 이상 없음" onkeydown="if(event.key==='Enter') addRecordSnippet()">
-                    <button class="query-btn" onclick="addRecordSnippet()">추가</button>
-                </div>
-            </div>
-
-            <div class="modal-field">
-                <label id="weekdayTemplateLabel">🗓️ 요일 템플릿</label>
-                <div class="search-help-text" id="weekdayTemplateInfo" style="margin:0 0 8px 0;"></div>
-                <div class="query-export-buttons">
-                    <button type="button" class="result-action-btn" onclick="saveCurrentAsWeekdayTemplate()">현재 내용을 템플릿으로 저장</button>
-                    <button type="button" class="result-action-btn primary" id="applyWeekdayTemplateBtn" onclick="applyWeekdayTemplateToCategory()">템플릿 넣기</button>
-                    <button type="button" class="result-action-btn" id="deleteWeekdayTemplateBtn" onclick="deleteWeekdayTemplate()">템플릿 삭제</button>
-                </div>
-            </div>
-
-            <div class="modal-buttons">
-                <button class="modal-btn modal-cancel-btn" onclick="closeRecordSnippetModal()">닫기</button>
-            </div>
-        </div>
-    </div>
     <div class="modal-overlay" id="recordRevisionModal" role="dialog" aria-modal="true">
         <div class="modal-box modal-box-wide">
             <h3 id="recordRevisionModalTitle">🕘 수정 이력</h3>
