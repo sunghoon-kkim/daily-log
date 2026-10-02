@@ -1,4 +1,4 @@
-        // ===== 활동기록 입력 보조 도구: 미결 사항 추적 / 수정 이력 되돌리기 =====
+        // ===== 활동기록 입력 보조 도구: 수정 이력 되돌리기 =====
         // 활동기록 폼(renderRecordForm)의 카테고리 머리글 버튼(buildRecordToolButtons)을 여기서 만들어 끼워 넣음
 
         function parseLocalDate(dateStr) {
@@ -8,12 +8,9 @@
 
         const WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
-        // 카테고리 머리글 도구: ☐(미결 표시)와, 수정 이력이 있을 때만 🕘(수정 이력) 버튼
+        // 카테고리 머리글 도구: 수정 이력이 있을 때만 🕘(수정 이력) 버튼
         function buildRecordToolButtons(dateStr, category, categoryArg) {
             let html = '';
-            if (!isFeatureDisabled('openIssues')) {
-                html += `<button class="category-prev-btn record-tool-btn" draggable="false" onclick="toggleOpenIssueMarker('${categoryArg}')" title="커서가 있는 줄을 미결 사항(☐)으로 표시/해제 - 해결 전까지 달력 위 '미결 사항'에서 계속 추적됩니다">☐</button>`;
-            }
             const revisions = recordRevisions[dateStr + '|' + category];
             if (!isFeatureDisabled('recordRevisions') && Array.isArray(revisions) && revisions.length > 0) {
                 html += `<button class="category-collapse-btn" draggable="false" onclick="openRecordRevisionModal('${categoryArg}')" title="수정 이력 (${revisions.length})" aria-label="수정 이력 ${revisions.length}건">🕘</button>`;
@@ -22,7 +19,7 @@
         }
 
         // ===== 오늘 요약 카드 =====
-        // 아침에 앱을 열면 오늘 챙길 것(오늘 기록/직전 근무일 누락/오늘 일정/급한 정비/오래된 미결)을 한 줄로 보여줌.
+        // 아침에 앱을 열면 오늘 챙길 것(오늘 기록/직전 근무일 누락/오늘 일정/급한 정비)을 한 줄로 보여줌.
         // 이미 있는 데이터를 모아 보여주기만 하고 새로 저장하는 것은 없음
         function findPreviousWorkday(todayStr) {
             const d = parseLocalDate(todayStr);
@@ -46,12 +43,6 @@
             selectDate(dateStr);
             const recordBox = document.querySelector('#calendar .record-box');
             if (recordBox) recordBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        function focusOpenIssuesWidget() {
-            if (isOpenIssuesWidgetCollapsed()) toggleOpenIssuesWidget();
-            const el = document.getElementById('openIssuesWidget');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         function renderTodaySummary() {
@@ -103,162 +94,24 @@
 
             // 급한 정비 (정비계획 탭을 쓰는 경우만)
             if (!disabledTabIds.includes('maintenance') && !isFeatureDisabled('maintenanceSchedule') && typeof getMaintenanceUrgency === 'function') {
-                let overdue = 0, thisMonth = 0;
+                let overdue = 0, soon = 0;
                 maintenanceSchedule.forEach(m => {
                     if (m.status === '보류') return; // 보류 항목은 급한 일로 보지 않음
                     const u = getMaintenanceUrgency(m);
                     if (u.level === 'overdue') overdue++;
-                    else if (u.level === 'urgent' && u.monthsUntil === 0) thisMonth++;
+                    else if (u.level === 'urgent' && u.daysUntil <= 7) soon++;
                 });
-                if (overdue + thisMonth > 0) {
+                if (overdue + soon > 0) {
                     const parts = [];
                     if (overdue) parts.push(`지연 ${overdue}`);
-                    if (thisMonth) parts.push(`이번 달 ${thisMonth}`);
+                    if (soon) parts.push(`7일 이내 ${soon}`);
                     chip(overdue ? 'alert' : 'warn', '🔧', `정비 ${parts.join(' · ')}건`, `switchTab('maintenance')`);
-                }
-            }
-
-            // 미결 사항
-            if (!isFeatureDisabled('openIssues')) {
-                const issues = collectOpenIssues();
-                if (issues.length > 0) {
-                    const today = parseLocalDate(todayStr);
-                    const aged = issues.filter(i => (today - parseLocalDate(i.date)) / 86400000 >= 14).length;
-                    chip(aged ? 'warn' : 'neutral', '📋', `미결 ${issues.length}건${aged ? ` (2주 이상 ${aged})` : ''}`, 'focusOpenIssuesWidget()');
                 }
             }
 
             const d = parseLocalDate(todayStr);
             el.innerHTML = `<div class="today-summary-title">🌅 오늘 · ${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_NAMES[d.getDay()]})</div>
                 <div class="today-summary-chips">${chips.join('')}</div>`;
-        }
-
-        // ===== 미결 사항 추적 =====
-        // 기록 줄 앞에 "☐"(또는 "[ ]")를 붙이면 미결, "☑"(또는 "[x]")면 해결로 봄.
-        // 별도 저장소 없이 기록 본문 자체가 상태를 가지므로, 검색/내보내기/서버 시트에도 그대로 남음
-        const OPEN_ISSUE_LINE = /^(\s*(?:\d+\.\s*)?)(☐|\[ \])\s?(.*)$/;
-        const RESOLVED_ISSUE_LINE = /^(\s*(?:\d+\.\s*)?)(☑|\[[xXvV]\])\s?(.*)$/;
-        let lastOpenIssues = [];
-
-        function collectOpenIssues() {
-            const issues = [];
-            const allCategories = getAllRecordCategories();
-            for (const dateStr in records) {
-                const rec = records[dateStr] || {};
-                for (const category of allCategories) {
-                    const content = rec[category];
-                    if (typeof content !== 'string' || (content.indexOf('☐') === -1 && content.indexOf('[ ]') === -1)) continue;
-                    content.split('\n').forEach((line, lineIndex) => {
-                        const m = line.match(OPEN_ISSUE_LINE);
-                        if (m && m[3].trim()) issues.push({ date: dateStr, category, lineIndex, line, text: m[3].trim() });
-                    });
-                }
-            }
-            issues.sort((a, b) => a.date.localeCompare(b.date)); // 오래 묵은 것부터
-            return issues;
-        }
-
-        function isOpenIssuesWidgetCollapsed() {
-            try { return localStorage.getItem('openIssuesCollapsed') === 'true'; } catch (e) { return false; }
-        }
-
-        function toggleOpenIssuesWidget() {
-            safeSetItem('openIssuesCollapsed', isOpenIssuesWidgetCollapsed() ? 'false' : 'true');
-            renderOpenIssuesWidget();
-        }
-
-        function renderOpenIssuesWidget() {
-            const el = document.getElementById('openIssuesWidget');
-            if (!el) return;
-            if (isFeatureDisabled('openIssues')) { el.innerHTML = ''; return; }
-
-            const issues = collectOpenIssues();
-            lastOpenIssues = issues;
-            const collapsed = isOpenIssuesWidgetCollapsed();
-            const today = parseLocalDate(formatDate(new Date()));
-
-            let html = `<div class="open-issues-header">
-                <span class="open-issues-title">📋 미결 사항 <b>${issues.length}</b>건</span>
-                <button class="upcoming-toggle-btn" onclick="toggleOpenIssuesWidget()">${collapsed ? '펼치기' : '접기'}</button>
-            </div>`;
-
-            if (!collapsed) {
-                if (issues.length === 0) {
-                    html += '<div class="open-issues-empty">미결 사항이 없습니다. 활동기록에서 줄 앞에 ☐를 붙이면(카테고리 머리글의 ☐ 버튼) 해결할 때까지 여기에서 계속 추적됩니다.</div>';
-                } else {
-                    html += '<div class="open-issues-list">' + issues.map((issue, idx) => {
-                        const age = Math.round((today - parseLocalDate(issue.date)) / 86400000);
-                        const ageLabel = age > 0 ? `${age}일 경과` : (age === 0 ? '오늘' : `D-${-age}`);
-                        const ageClass = age >= 14 ? ' aged' : '';
-                        return `<div class="open-issue-item">
-                            <div class="open-issue-text">☐ ${escapeHtml(issue.text)}</div>
-                            <div class="open-issue-meta">
-                                <span class="search-result-tag">[${escapeHtml(issue.category)}]</span>
-                                <span>${issue.date}</span>
-                                <span class="open-issue-age${ageClass}">${ageLabel}</span>
-                                <button class="result-action-btn" onclick="jumpToSearchResult('${issue.date}')">📅 열기</button>
-                                <button class="result-action-btn primary" onclick="resolveOpenIssue(${idx})">✅ 해결</button>
-                            </div>
-                        </div>`;
-                    }).join('') + '</div>';
-                }
-            }
-            el.innerHTML = html;
-        }
-
-        function resolveOpenIssue(idx) {
-            if (!checkEditPermission()) return;
-            const issue = lastOpenIssues[idx];
-            if (!issue) return;
-            if (selectedDate) captureCurrentFormToRecords(); // 입력 중이던 내용 먼저 확정
-
-            const content = (records[issue.date] && records[issue.date][issue.category]) || '';
-            const lines = content.split('\n');
-            // 캡처 과정에서 줄 위치가 바뀌었을 수 있으므로, 원래 위치가 안 맞으면 같은 줄을 다시 찾음
-            let lineIndex = lines[issue.lineIndex] === issue.line ? issue.lineIndex : lines.indexOf(issue.line);
-            if (lineIndex === -1) { showAppToast('해당 줄이 변경되어 찾을 수 없습니다. 다시 확인해주세요'); renderOpenIssuesWidget(); return; }
-
-            const m = lines[lineIndex].match(OPEN_ISSUE_LINE);
-            if (!m) return;
-            lines[lineIndex] = `${m[1]}☑ ${m[3].trim()} (해결: ${formatDate(new Date())})`;
-            pushRecordRevision(issue.date, issue.category, content, true);
-            records[issue.date][issue.category] = lines.join('\n');
-            saveRecordsToStorage();
-
-            if (selectedDate === issue.date) renderRecordForm();
-            renderCalendar();
-            showAppToast('해결 처리했습니다', 'success');
-        }
-
-        // 카테고리 입력창에서 커서가 있는 줄의 앞에 ☐를 붙이거나(미결 표시) 떼어냄
-        function toggleOpenIssueMarker(category) {
-            if (!checkEditPermission()) return;
-            const textarea = document.getElementById(`category-${category}`);
-            if (!textarea) return;
-            const value = textarea.value;
-            const cursor = textarea.selectionStart || 0;
-            const lineStart = value.lastIndexOf('\n', cursor - 1) + 1;
-            let lineEnd = value.indexOf('\n', cursor);
-            if (lineEnd === -1) lineEnd = value.length;
-            const line = value.substring(lineStart, lineEnd);
-
-            let newLine;
-            const openMatch = line.match(OPEN_ISSUE_LINE);
-            const resolvedMatch = line.match(RESOLVED_ISSUE_LINE);
-            if (openMatch) newLine = openMatch[1] + openMatch[3];
-            else if (resolvedMatch) newLine = resolvedMatch[1] + resolvedMatch[3];
-            else {
-                const prefix = (line.match(/^\s*(?:\d+\.\s*)?/) || [''])[0];
-                newLine = prefix + '☐ ' + line.substring(prefix.length);
-            }
-
-            textarea.value = value.substring(0, lineStart) + newLine + value.substring(lineEnd);
-            const newCursor = lineStart + newLine.length;
-            textarea.focus();
-            textarea.selectionStart = textarea.selectionEnd = newCursor;
-            textarea.dispatchEvent(new Event('input', { bubbles: true })); // 자동 저장 + 박스 높이 조절
-            // 자동 저장(0.8초 지연) 뒤에 미결 목록도 새로 반영
-            setTimeout(renderOpenIssuesWidget, 1000);
         }
 
         // ===== 수정 이력 & 되돌리기 =====

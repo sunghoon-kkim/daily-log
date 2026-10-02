@@ -34,8 +34,9 @@
         // 등록된 차기 점검월(기준점)과 주기를 바탕으로, targetYear 안에서 이 항목이 해당하는 월(1~12) 목록을 구함.
         // 주기를 못 알아들으면 등록된 차기 점검월이 그 해에 속할 때만 그 한 달만 반환
         function getMaintenanceOccurrenceMonths(item, targetYear) {
-            if (!/^\d{4}-\d{2}$/.test(item.nextDue || '')) return [];
-            const [anchorYear, anchorMonth] = item.nextDue.split('-').map(Number);
+            const monthKey = getNextDueMonthKey(item.nextDue);
+            if (!monthKey) return [];
+            const [anchorYear, anchorMonth] = monthKey.split('-').map(Number);
             const anchorIndex = anchorYear * 12 + (anchorMonth - 1);
             const interval = parseCycleIntervalMonths(item.cycle);
 
@@ -67,32 +68,52 @@
             }).join(', ');
         }
 
-        // "차기 점검 예정"(YYYY-MM)이 지금부터 몇 개월 남았는지 계산. 미정이면 null (지난 달이면 음수)
-        function getMonthsUntilDue(nextDue) {
-            if (!/^\d{4}-\d{2}$/.test(nextDue || '')) return null;
-            const [y, mo] = nextDue.split('-').map(Number);
-            const now = new Date();
-            return (y * 12 + (mo - 1)) - (now.getFullYear() * 12 + now.getMonth());
+        // "차기 점검 예정"은 일 단위(YYYY-MM-DD)로 정함. 예전에 월 단위(YYYY-MM)로 저장한 값도 그대로 인정함
+        function isValidNextDue(nextDue) {
+            return /^\d{4}-\d{2}(-\d{2})?$/.test(nextDue || '');
+        }
+
+        function getNextDueMonthKey(nextDue) {
+            return isValidNextDue(nextDue) ? nextDue.slice(0, 7) : null;
+        }
+
+        // 남은 일수(D-day). 월 단위로만 정한 예전 값은 그 달 마지막 날을 기한으로 봄. 미정이면 null (지났으면 음수)
+        function getDaysUntilDue(nextDue) {
+            if (!isValidNextDue(nextDue)) return null;
+            let dueStr = nextDue;
+            if (nextDue.length === 7) {
+                const [y, mo] = nextDue.split('-').map(Number);
+                dueStr = formatDate(new Date(y, mo, 0));
+            }
+            return daysBetweenDateStrs(formatDate(new Date()), dueStr);
+        }
+
+        function formatDday(days) {
+            if (days === 0) return 'D-day';
+            return days > 0 ? `D-${days}` : `D+${-days}`;
         }
 
         // 상태와 차기 점검 예정일을 바탕으로 이 항목이 얼마나 급한지 등급을 매김.
-        // 지났는데 아직 완료가 아니면 지연, 이번 달이나 다음 달이면 임박.
-        // 기안 등 사전 보고가 필요한 경우가 많아, 2개월 전부터는 "사전 인지 필요" 대상으로 표시해서
+        // 지났는데 아직 완료가 아니면 지연, 30일 이내면 임박.
+        // 기안 등 사전 보고가 필요한 경우가 많아, 60일 전부터는 "사전 인지 필요" 대상으로 표시해서
         // 미리 인지하고 준비했는지 체크할 수 있게 함. rank가 작을수록 더 급한 항목
+        const MAINT_URGENT_DAYS = 30;
+        const MAINT_NOTICE_DAYS = 60;
+
         function getMaintenanceUrgency(item) {
-            if (item.status === '완료') return { level: 'done', rank: 5, monthsUntil: null };
-            const monthsUntil = getMonthsUntilDue(item.nextDue);
-            if (monthsUntil === null) return { level: 'undated', rank: 4, monthsUntil: null };
-            if (monthsUntil < 0) return { level: 'overdue', rank: 0, monthsUntil };
-            if (monthsUntil <= 1) return { level: 'urgent', rank: 1, monthsUntil };
-            if (monthsUntil === 2) return { level: 'notice', rank: 2, monthsUntil };
-            return { level: 'normal', rank: 3, monthsUntil };
+            if (item.status === '완료') return { level: 'done', rank: 5, daysUntil: null };
+            const daysUntil = getDaysUntilDue(item.nextDue);
+            if (daysUntil === null) return { level: 'undated', rank: 4, daysUntil: null };
+            if (daysUntil < 0) return { level: 'overdue', rank: 0, daysUntil };
+            if (daysUntil <= MAINT_URGENT_DAYS) return { level: 'urgent', rank: 1, daysUntil };
+            if (daysUntil <= MAINT_NOTICE_DAYS) return { level: 'notice', rank: 2, daysUntil };
+            return { level: 'normal', rank: 3, daysUntil };
         }
 
         function maintenanceUrgencyBadge(urgency) {
-            if (urgency.level === 'overdue') return '⚠️ 지연';
-            if (urgency.level === 'urgent') return urgency.monthsUntil === 0 ? '🔥 이번 달' : '🔥 임박(다음 달)';
-            if (urgency.level === 'notice') return '📝 인지 필요(2개월 전)';
+            if (urgency.level === 'overdue') return `⚠️ 지연 ${formatDday(urgency.daysUntil)}`;
+            if (urgency.level === 'urgent') return `🔥 ${formatDday(urgency.daysUntil)}`;
+            if (urgency.level === 'notice') return `📝 인지 필요 ${formatDday(urgency.daysUntil)}`;
             return '';
         }
 
@@ -158,6 +179,7 @@
                         </div>
                     </div>
                     <div class="project-card-row"><b>예정월:</b> ${renderOccurrenceMonthsHtml(m._occurrenceMonths)}</div>
+                    ${isValidNextDue(m.nextDue) ? `<div class="project-card-row"><b>차기 점검:</b> ${escapeHtml(m.nextDue)}${m.nextDue.length === 7 ? ' (날짜 미지정)' : ''}${urgency.daysUntil !== null && m.status !== '완료' ? ` · ${formatDday(urgency.daysUntil)}` : ''}</div>` : ''}
                     ${m.cycle ? `<div class="project-card-row"><b>주기:</b> ${escapeHtml(m.cycle)}</div>` : ''}
                     ${(m.cycle && !parseCycleIntervalMonths(m.cycle)) ? `<div class="project-card-row maint-cycle-warning">⚠️ 주기 표현을 자동으로 인식하지 못해, 등록된 차기 점검월만 표시돼요. ("3개월", "격월", "분기", "반기", "매년" 등으로 적으면 반복월이 자동 계산됩니다)</div>` : ''}
                     ${m.sop ? `<div class="project-card-row"><b>SOP:</b> ${escapeHtml(m.sop)}</div>` : ''}
@@ -177,7 +199,7 @@
             return `
                 <div class="maintenance-equipment-group" style="margin-bottom:24px;">
                     <div class="result-date maint-group-title">🔧 ${escapeHtml(equipmentName)}
-                        ${(equipmentName !== '(설비 미지정)' && !isFeatureDisabled('equipmentTimeline')) ? `<button class="result-action-btn" onclick="openEquipmentTimeline('${escapeForOnclickArg(equipmentName)}')" title="이 설비의 활동기록·정비 완료 이력을 시간순으로 보기">📜 설비 이력</button>` : ''}
+                        ${(equipmentName !== '(설비 미지정)' && !isFeatureDisabled('keywordSearch')) ? `<button class="result-action-btn" onclick="openEquipmentTimeline('${escapeForOnclickArg(equipmentName)}')" title="이 설비의 활동기록·정비 완료 이력을 시간순으로 보기">📜 설비 이력</button>` : ''}
                     </div>
                     ${cardsHtml}
                 </div>
@@ -208,7 +230,7 @@
             const visibleItems = [];
             for (const m of maintenanceSchedule) {
                 if (maintenanceStatusFilter !== '전체' && m.status !== maintenanceStatusFilter) continue;
-                const isUndated = !/^\d{4}-\d{2}$/.test(m.nextDue || '');
+                const isUndated = !isValidNextDue(m.nextDue);
                 if (isUndated) {
                     if (isCurrentYear) visibleItems.push(Object.assign({}, m, { _occurrenceMonths: [], _urgency: getMaintenanceUrgency(m) }));
                     continue;
@@ -257,6 +279,21 @@
             });
         }
 
+        // 날짜 입력칸은 YYYY-MM-DD만 받으므로, 예전 월 단위 값은 칸을 비워두고 안내로 보여준 뒤
+        // 날짜를 새로 고르지 않고 저장하면 그 월 값을 그대로 유지함
+        let maintLegacyMonthNextDue = '';
+
+        function setMaintNextDueInput(value) {
+            const isMonthOnly = /^\d{4}-\d{2}$/.test(value || '');
+            maintLegacyMonthNextDue = isMonthOnly ? value : '';
+            document.getElementById('maintNextDueInput').value = isMonthOnly ? '' : (value || '');
+            const hint = document.getElementById('maintNextDueLegacyHint');
+            if (hint) {
+                hint.style.display = isMonthOnly ? '' : 'none';
+                hint.textContent = isMonthOnly ? `지금은 월 단위(${value})로만 정해져 있습니다. 날짜를 고르면 일 단위로 바뀌고, 그대로 저장하면 ${value}로 유지됩니다.` : '';
+            }
+        }
+
         function openMaintenanceModal(itemId) {
             if (!checkEditPermission()) return;
             editingMaintenanceId = itemId;
@@ -274,7 +311,7 @@
                 document.getElementById('maintCycleInput').value = m.cycle || '';
                 pickMaintenanceStatus(m.status || '예정');
                 document.getElementById('maintLastDoneInput').value = m.lastDone || '';
-                document.getElementById('maintNextDueInput').value = m.nextDue || '';
+                setMaintNextDueInput(m.nextDue);
                 document.getElementById('maintNoteInput').value = m.note || '';
                 deleteBtn.style.display = 'inline-block';
                 renderMaintenanceCompletionHistory(m);
@@ -286,7 +323,7 @@
                 document.getElementById('maintCycleInput').value = '';
                 pickMaintenanceStatus('예정');
                 document.getElementById('maintLastDoneInput').value = '';
-                document.getElementById('maintNextDueInput').value = '';
+                setMaintNextDueInput('');
                 document.getElementById('maintNoteInput').value = '';
                 deleteBtn.style.display = 'none';
                 renderMaintenanceCompletionHistory(null);
@@ -315,7 +352,7 @@
             const cycle = document.getElementById('maintCycleInput').value.trim();
             const status = document.getElementById('maintStatusInput').value;
             const lastDone = document.getElementById('maintLastDoneInput').value.trim();
-            const nextDue = document.getElementById('maintNextDueInput').value.trim();
+            const nextDue = document.getElementById('maintNextDueInput').value.trim() || maintLegacyMonthNextDue;
             const note = document.getElementById('maintNoteInput').value.trim();
             const nowStr = formatDate(new Date());
 
@@ -373,12 +410,15 @@
         }
 
         // "YYYY-MM-DD" 완료일 + 주기(개월) → 다음 예정월 "YYYY-MM". 주기를 알아들을 수 없으면 null
+        // 완료일 + 주기(개월)의 같은 날짜. 그 달에 없는 날(예: 31일)이면 그 달 마지막 날로 맞춤
         function computeNextDueFromCompletion(dateStr, cycleText) {
             const interval = parseCycleIntervalMonths(cycleText);
             if (!interval || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr || '')) return null;
-            const [y, mo] = dateStr.split('-').map(Number);
+            const [y, mo, d] = dateStr.split('-').map(Number);
             const idx = y * 12 + (mo - 1) + interval;
-            return `${Math.floor(idx / 12)}-${String(idx % 12 + 1).padStart(2, '0')}`;
+            const year = Math.floor(idx / 12), monthIndex = idx % 12;
+            const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+            return formatDate(new Date(year, monthIndex, Math.min(d, lastDay)));
         }
 
         function renderMaintenanceCompletionHistory(m) {
@@ -498,7 +538,7 @@
             if (editingMaintenanceId === m.id) {
                 pickMaintenanceStatus(m.status);
                 document.getElementById('maintLastDoneInput').value = m.lastDone || '';
-                document.getElementById('maintNextDueInput').value = m.nextDue || '';
+                setMaintNextDueInput(m.nextDue);
                 renderMaintenanceCompletionHistory(m);
             }
 

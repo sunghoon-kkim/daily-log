@@ -117,7 +117,6 @@
             }
 
             renderUpcomingWidget();
-            if (typeof renderOpenIssuesWidget === 'function') renderOpenIssuesWidget();
             if (typeof renderTodaySummary === 'function') renderTodaySummary();
             setupCalendarSwipe();
         }

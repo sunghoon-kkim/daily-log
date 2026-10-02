@@ -26,7 +26,7 @@
             });
         }
 
-        // ===== 키워드 통합 검색 (활동기록 × 예정작업 × 할일/메모 × 정비계획 × 개선과제) =====
+        // ===== 키워드 통합 검색 (활동기록 × 예정작업 × 할일/메모 × 정비계획 × 개선과제, 항상 전체 대상) =====
         let lastSearchResults = []; // 인라인 수정/이동/내보내기에서 인덱스로 참조하기 위해 마지막 검색 결과를 보관
 
         // 검색어 문법: 띄어쓰기로 나눈 단어는 모두 포함(AND), "A|B"는 둘 중 하나(OR),
@@ -89,9 +89,57 @@
             return formatDate(d);
         }
 
-        function isSearchScopeOn(id) {
-            const el = document.getElementById(id);
-            return !el || el.checked; // 체크박스가 없는(예전 화면) 경우엔 켜진 것으로 취급
+        // ===== 통합 검색 기간 (전체 / 최근 N개월 / 직접 선택) =====
+        let searchPeriodMode = ''; // '' = 전체, '1'/'3'/'6'/'12' = 최근 N개월, 'custom' = 직접 선택
+
+        // { start, end } (yyyy-MM-dd, 없으면 null). 직접 선택에서 한쪽만 고르면 그쪽만 제한함
+        function getSearchRange() {
+            if (searchPeriodMode === 'custom') {
+                const start = (document.getElementById('searchStartDate') || {}).value || null;
+                const end = (document.getElementById('searchEndDate') || {}).value || null;
+                return (start && end && start > end) ? { start: end, end: start } : { start, end };
+            }
+            return { start: getSearchPeriodStart(searchPeriodMode), end: null };
+        }
+
+        function rerunSearchIfKeyword() {
+            if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch();
+        }
+
+        function setSearchPeriod(mode) {
+            searchPeriodMode = mode;
+            document.querySelectorAll('#searchPeriodPresetRow .quick-preset-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.period === mode);
+            });
+            const customRow = document.getElementById('searchCustomRange');
+            if (customRow) customRow.style.display = mode === 'custom' ? '' : 'none';
+            if (mode === 'custom') {
+                const startEl = document.getElementById('searchStartDate');
+                const endEl = document.getElementById('searchEndDate');
+                // 처음 열면 최근 1개월로 채워서 바로 고쳐 쓰기 쉽게 함
+                if (!startEl.value && !endEl.value) {
+                    startEl.value = getSearchPeriodStart('1');
+                    endEl.value = formatDate(new Date());
+                }
+            }
+            rerunSearchIfKeyword();
+        }
+
+        function onSearchCustomRangeChange() {
+            rerunSearchIfKeyword();
+        }
+
+        // ===== 결과 보기 방식: 목록 / 시간순(설비 이력) =====
+        let searchViewMode = 'list';
+
+        function setSearchView(mode) {
+            searchViewMode = mode === 'timeline' ? 'timeline' : 'list';
+            document.querySelectorAll('.search-view-btn').forEach(btn => {
+                const on = btn.dataset.view === searchViewMode;
+                btn.classList.toggle('selected', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+            rerunSearchIfKeyword();
         }
 
         // 카테고리 목록이 바뀔 때마다(추가/삭제/보관/이름변경) 통합 검색의 카테고리 선택지도 갱신
@@ -110,13 +158,14 @@
         }
 
         function collectKeywordSearchResults(query) {
-            const periodStart = getSearchPeriodStart((document.getElementById('searchPeriodSelect') || {}).value);
+            const { start: periodStart, end: periodEnd } = getSearchRange();
+            const hasPeriod = !!(periodStart || periodEnd);
             const categoryFilter = (document.getElementById('searchCategorySelect') || {}).value || '';
-            const inPeriod = (dateStr) => !periodStart || (dateStr && dateStr >= periodStart);
+            const inPeriod = (dateStr) => !hasPeriod || (!!dateStr && (!periodStart || dateStr >= periodStart) && (!periodEnd || dateStr <= periodEnd));
             const results = [];
 
             // 활동기록(카테고리별 내용) - 보관한 카테고리 포함
-            if (isSearchScopeOn('searchScopeRecords')) {
+            {
                 const searchCategories = categoryFilter ? [categoryFilter] : getAllRecordCategories();
                 for (const dateStr in records) {
                     if (!inPeriod(dateStr)) continue;
@@ -133,7 +182,7 @@
             // 카테고리를 특정해서 검색하는 경우엔 활동기록만 대상으로 함
             if (categoryFilter) return results;
 
-            if (isSearchScopeOn('searchScopeEvents')) {
+            {
                 for (const ev of events) {
                     if (ev.title && inPeriod(ev.start) && matchesSearchQuery(ev.title, query)) {
                         results.push({ kind: 'event', date: ev.start, tag: '예정작업', content: ev.title });
@@ -142,7 +191,7 @@
             }
 
             // 아래는 날짜가 없는 자료라, 기간을 지정했을 때는 대상에서 제외함 (정비 완료 이력만 예외)
-            if (isSearchScopeOn('searchScopeNotes') && !periodStart) {
+            if (!hasPeriod) {
                 for (const t of todoItems) {
                     const text = [t.text, t.memo].filter(Boolean).join('\n');
                     if (matchesSearchQuery(text, query)) {
@@ -158,7 +207,7 @@
                 }
             }
 
-            if (isSearchScopeOn('searchScopeMaintenance')) {
+            {
                 for (const m of maintenanceSchedule) {
                     const title = `${m.equipment || ''} - ${m.item || '점검'}`;
                     const completions = Array.isArray(m.completions) ? m.completions : [];
@@ -169,7 +218,7 @@
                             results.push({ kind: 'maintenance', date: c.date, tag: '정비완료', content: `${title}${c.note ? '\n' + c.note : ''}`, refId: m.id });
                         }
                     });
-                    if (periodStart) continue;
+                    if (hasPeriod) continue;
                     const planText = [title, m.sop, m.cycle, m.note, m.lastDone ? '이전 완료: ' + m.lastDone : ''].filter(Boolean).join('\n');
                     if (matchesSearchQuery(planText, query)) {
                         results.push({ kind: 'maintenance', date: '', tag: '정비계획', content: planText, refId: m.id });
@@ -177,7 +226,7 @@
                 }
             }
 
-            if (isSearchScopeOn('searchScopeProjects') && !periodStart) {
+            if (!hasPeriod) {
                 for (const p of savingsProjects) {
                     const logs = Array.isArray(p.monthlyLogs) ? p.monthlyLogs : [];
                     const text = [p.title, p.category, p.target, p.actual, ...logs.map(l => `${l.month || ''} ${l.note || ''}`)].filter(Boolean).join('\n');
@@ -200,6 +249,7 @@
             if (!keyword) {
                 resultsEl.innerHTML = '<div class="no-result">검색어를 입력해주세요</div>';
                 lastSearchResults = [];
+                lastSearchTimeline = [];
                 return;
             }
 
@@ -211,6 +261,12 @@
             }
 
             rememberRecent('recentSearchKeywords', keyword);
+            lastSearchTimeline = [];
+            if (searchViewMode === 'timeline') {
+                lastSearchResults = [];
+                renderSearchTimeline(query);
+                return;
+            }
             const results = collectKeywordSearchResults(query);
             // 최근 날짜부터, 날짜가 없는 자료(메모/할일/정비계획/과제)는 맨 뒤로
             results.sort((a, b) => {
@@ -352,10 +408,18 @@
         }
 
         function downloadSearchResultsCsv() {
+            const keyword = document.getElementById('searchKeywordInput').value.trim().replace(/[\\/:*?"<>|]/g, '_').slice(0, 30);
+            // 시간순(설비 이력) 보기에서는 화면에 보이는 이력 그대로 내보냄
+            if (searchViewMode === 'timeline') {
+                if (lastSearchTimeline.length === 0) { showAppToast('먼저 검색을 실행해주세요'); return; }
+                const rows = [['날짜', '구분', '세부', '내용']];
+                lastSearchTimeline.forEach(e => rows.push([e.date, e.source, e.tag, e.text]));
+                downloadCsvFile(rows, `설비이력_${keyword}_${formatDate(new Date())}.csv`);
+                return;
+            }
             if (lastSearchResults.length === 0) { showAppToast('먼저 검색을 실행해주세요'); return; }
             const rows = [['날짜', '구분', '내용']];
             for (const r of lastSearchResults) rows.push([r.date || '', r.tag, r.content]);
-            const keyword = document.getElementById('searchKeywordInput').value.trim().replace(/[\\/:*?"<>|]/g, '_').slice(0, 30);
             downloadCsvFile(rows, `검색결과_${keyword}_${formatDate(new Date())}.csv`);
         }
 
@@ -443,19 +507,6 @@
             return `${document.getElementById('startDate').value}_${document.getElementById('endDate').value}`;
         }
 
-        // "기간별 카테고리 조회" 결과를 CSV로 내려받음 - 화면에 지금 떠있는 조회 결과(lastQueryResults) 기준
-        function downloadQueryResultsCsv() {
-            if (lastQueryResults.length === 0) { showAppToast('먼저 카테고리를 선택해 조회해주세요'); return; }
-
-            const rows = [['날짜', '카테고리', '내용']];
-            for (const item of lastQueryResults) {
-                for (const cc of item.categoryContents) {
-                    rows.push([item.date, cc.category, cc.content]);
-                }
-            }
-            downloadCsvFile(rows, `활동기록_${getQueryPeriodLabel()}.csv`);
-        }
-
         // 조회 결과에 실제로 쓰인 카테고리만, 카테고리 관리 순서대로
         function getQueryResultCategories() {
             const used = new Set();
@@ -478,47 +529,8 @@
             downloadCsvFile(rows, `활동기록_표_${getQueryPeriodLabel()}.csv`);
         }
 
-        // 조회 결과를 인쇄용 표로 새 창에 띄움 (브라우저 인쇄 → PDF 저장도 가능)
-        function printQueryReport() {
-            if (lastQueryResults.length === 0) { showAppToast('먼저 카테고리를 선택해 조회해주세요'); return; }
-            const win = window.open('', '_blank');
-            if (!win) { showAppToast('팝업이 차단되어 인쇄 창을 열 수 없습니다. 팝업을 허용해주세요'); return; }
-
-            const cats = getQueryResultCategories();
-            const weekdayNames = ['일', '월', '화', '수', '목', '금', '토'];
-            const sorted = lastQueryResults.slice().sort((a, b) => a.date.localeCompare(b.date));
-            const bodyRows = sorted.map(item => {
-                const byCat = {};
-                item.categoryContents.forEach(cc => { byCat[cc.category] = cc.content; });
-                return `<tr><td class="d">${item.date}<br>(${weekdayNames[new Date(item.date).getDay()]})</td>${cats.map(c => `<td>${escapeHtml(byCat[c] || '')}</td>`).join('')}</tr>`;
-            }).join('');
-            const start = document.getElementById('startDate').value;
-            const end = document.getElementById('endDate').value;
-            const owner = [currentUserDepartment, currentUserName].filter(Boolean).join(' ');
-
-            win.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>활동기록 보고서 ${start} ~ ${end}</title>
-<style>
-body{font-family:'Malgun Gothic',sans-serif;margin:24px;color:#222}
-h1{font-size:18px;margin:0 0 4px}
-.meta{font-size:12px;color:#555;margin-bottom:12px}
-table{border-collapse:collapse;width:100%;font-size:12px;table-layout:fixed}
-th,td{border:1px solid #999;padding:6px;vertical-align:top;white-space:pre-wrap;word-break:break-word}
-th{background:#eef0f7}
-td.d{width:80px;white-space:nowrap;text-align:center}
-tr{page-break-inside:avoid}
-@media print{body{margin:10mm}}
-</style></head><body>
-<h1>활동기록 보고서</h1>
-<div class="meta">기간: ${escapeHtml(start)} ~ ${escapeHtml(end)} · ${sorted.length}일 · 카테고리: ${escapeHtml(cats.join(', '))}${owner ? ' · 작성자: ' + escapeHtml(owner) : ''}</div>
-<table><thead><tr><th style="width:80px">날짜</th>${cats.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${bodyRows}</tbody></table>
-</body></html>`);
-            win.document.close();
-            win.focus();
-            setTimeout(() => win.print(), 300);
-        }
-
         // ===== 검색 & 조회 탭 화면 전환 =====
-        // 통합 검색/기간 조회/설비 이력/키워드 통계를 한 화면에 모두 늘어놓으면 아래로 한참 내려야 해서,
+        // 통합 검색/기간별 카테고리 조회/키워드 통계를 한 화면에 모두 늘어놓으면 아래로 한참 내려야 해서,
         // 위쪽 전환 버튼으로 하나씩 보여줌. 마지막에 본 화면은 이 기기에 기억해둠
         function isQuerySectionAvailable(sectionEl) {
             return sectionEl && !isFeatureDisabled(sectionEl.dataset.feature);
@@ -542,7 +554,6 @@ tr{page-break-inside:avoid}
                 btn.setAttribute('aria-selected', selected ? 'true' : 'false');
             });
             if (name) safeSetItem('querySection', target);
-            if (target === 'timeline' && typeof refreshEquipmentNameList === 'function') refreshEquipmentNameList();
             renderAllRecentChips();
         }
 
@@ -551,7 +562,6 @@ tr{page-break-inside:avoid}
         const RECENT_LIST_MAX = 8;
         const RECENT_LISTS = {
             recentSearchKeywords: { containerId: 'recentSearchChips', inputId: 'searchKeywordInput', run: () => performKeywordSearch() },
-            recentEquipmentNames: { containerId: 'recentEquipmentChips', inputId: 'equipmentTimelineInput', run: () => renderEquipmentTimeline() },
             recentKeywordStats: { containerId: 'recentKeywordStatsChips', inputId: 'keywordStatsInput', run: () => renderKeywordStats() }
         };
 

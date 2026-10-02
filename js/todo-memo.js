@@ -527,7 +527,7 @@
             if (activeItems.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'todo-empty';
-                empty.textContent = '할 일이 없습니다. 위에서 추가해보세요.';
+                empty.textContent = '작성된 할 일이 없습니다.';
                 activeContainer.appendChild(empty);
             } else {
                 activeItems.forEach(item => activeContainer.appendChild(buildTodoItemRow(item)));

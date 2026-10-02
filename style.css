@@ -1545,6 +1545,9 @@ html {
             color: #667eea;
             font-size: 15px;
             flex: 1;
+            min-width: 0;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
         }
         
         .category-header-actions {
@@ -1640,10 +1643,11 @@ html {
             flex-shrink: 0;
         }
 
+        /* 카테고리명은 길어도 잘리지 않고 줄바꿈해서 전체를 보여줌 (한글은 단어 단위로, 띄어쓰기 없는 긴 영문/숫자는 어디서든 끊음) */
         .collapsed-category-chip-name {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            min-width: 0;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
         }
 
         .category-record textarea {
@@ -1983,32 +1987,34 @@ html {
             font-weight: 600;
             color: #333;
             gap: 10px;
+            flex-wrap: wrap;
         }
 
-        /* 좌측 영역: 드래그 핸들 + 카테고리명을 하나로 묶어서 우측 버튼 그룹과 한 줄에 나란히 배치 */
+        /* 좌측 영역: 드래그 핸들 + 카테고리명을 하나로 묶어서 우측 버튼 그룹과 한 줄에 나란히 배치.
+           이름이 길어 한 줄에 다 안 들어가면 버튼 그룹이 다음 줄(오른쪽 정렬)로 내려가서 이름이 세로로 쪼개지지 않게 함 */
         .category-tag-left {
             display: flex;
             align-items: center;
             gap: 8px;
-            flex: 1;
+            flex: 1 1 auto;
             min-width: 0;
         }
         
         .category-tag-name {
             flex: 1;
             min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
         }
 
         /* 우측 버튼 그룹은 줄바꿈 없이 항상 고정폭을 유지해서, 좁은 카드에서도 아이콘이
-           찌그러지지 않고 카테고리명 쪽에서만 말줄임표로 흡수되도록 함 */
+           찌그러지지 않고 카테고리명 쪽에서만 줄바꿈으로 흡수되도록 함 */
         .category-tag-actions {
             display: flex;
             flex-shrink: 0;
             align-items: center;
             gap: 8px;
+            margin-left: auto;
         }
 
         .category-color-input {
@@ -2195,6 +2201,8 @@ html {
             cursor: pointer;
             font-weight: 600;
             color: #666;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
         }
 
         /* 환경설정 > 사용할 탭 선택: 탭 이름이 길어져도 박스 안에서 줄바꿈되지 않게 함 */
@@ -3330,13 +3338,6 @@ html {
             font-size: 12px;
             color: #888;
             word-break: keep-all;
-        }
-
-        .ask-log-examples {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 10px;
         }
 
         .ask-log-answer {
@@ -4892,6 +4893,93 @@ body.edit-locked .custom-color-swatch {
     white-space: nowrap;
 }
 
+/* 통합 검색 기간: 전체/최근 N개월은 한 줄 버튼, 직접 선택일 때만 날짜 두 칸을 펼침 */
+.search-period-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.search-period-row .quick-preset-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+.search-custom-range {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    color: #888;
+}
+
+.search-custom-range input[type="date"] {
+    padding: 6px 8px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: white;
+    color: #333;
+}
+
+/* 결과 보기 방식(목록/시간순): 같은 결과를 다르게 보는 전환이라 붙어 있는 두 칸 버튼으로 */
+.search-view-toggle {
+    display: inline-flex;
+    margin-left: auto;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.search-view-btn {
+    padding: 6px 12px;
+    border: none;
+    background: white;
+    color: #666;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.search-view-btn + .search-view-btn {
+    border-left: 2px solid #e0e0e0;
+}
+
+.search-view-btn.selected {
+    background: #667eea;
+    color: white;
+}
+
+.search-view-btn:focus-visible {
+    outline: 2px solid #667eea;
+    outline-offset: -4px;
+}
+
+.dark-mode .search-custom-range input[type="date"],
+.dark-mode .search-view-btn {
+    background: var(--d-bg3);
+    color: var(--d-text1);
+    border-color: var(--d-border);
+}
+
+.dark-mode .search-view-toggle,
+.dark-mode .search-view-btn + .search-view-btn {
+    border-color: var(--d-border);
+}
+
+.dark-mode .search-view-btn.selected {
+    background: #667eea;
+    color: white;
+}
+
+@media (max-width: 480px) {
+    .search-view-toggle { margin-left: 0; }
+}
+
 .query-export-buttons {
     display: flex;
     flex-wrap: wrap;
@@ -5119,80 +5207,7 @@ body.edit-locked .custom-color-swatch {
     border-left-color: var(--d-border);
 }
 
-/* ===== 미결 사항 / 상용구·요일 템플릿 / 수정 이력 / 키워드 발생 통계 ===== */
-.open-issues-widget {
-    margin-bottom: 16px;
-}
-
-.open-issues-widget:empty {
-    display: none;
-}
-
-.open-issues-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-}
-
-.open-issues-title {
-    font-weight: 700;
-    color: #333;
-}
-
-.open-issues-empty {
-    font-size: 13px;
-    color: #888;
-    padding: 6px 0;
-}
-
-.open-issues-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-height: 260px;
-    overflow-y: auto;
-}
-
-.open-issue-item {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px 12px;
-    padding: 8px 10px;
-    border: 1px solid #f0d9a8;
-    border-left: 4px solid #ff9f43;
-    border-radius: 8px;
-    background: #fffaf0;
-}
-
-.open-issue-text {
-    font-size: 14px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    flex: 1 1 240px;
-}
-
-.open-issue-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: #666;
-}
-
-.open-issue-age.aged {
-    color: #d84343;
-    font-weight: 700;
-}
-
-.record-tool-btn {
-    padding: 2px 7px;
-    min-width: 0;
-}
-
+/* ===== 수정 이력 / 키워드 발생 통계 ===== */
 .record-revision-list {
     display: flex;
     flex-direction: column;
@@ -5326,20 +5341,11 @@ body.edit-locked .custom-color-swatch {
     text-align: center;
 }
 
-.dark-mode .open-issue-item {
-    background: #3a3222;
-    border-color: #5a4a2c;
-    border-left-color: #ff9f43;
-}
-
-.dark-mode .open-issues-title,
 .dark-mode .keyword-stat-name,
 .dark-mode .keyword-stat-value {
     color: var(--d-text1);
 }
 
-.dark-mode .open-issues-empty,
-.dark-mode .open-issue-meta,
 .dark-mode .keyword-stat-meta,
 .dark-mode .keyword-stat-month {
     color: var(--d-text3);
@@ -5888,3 +5894,7 @@ body {
     .rot-chip-sep { width: 2px; }
     .rot-warn { border-radius: 50%; }
 }
+
+/* 정비계획: 예전 월 단위 차기 점검 값 안내 */
+.maint-legacy-hint { margin-top: 6px; font-size: 12px; line-height: 1.5; color: #b26a00; }
+.dark-mode .maint-legacy-hint { color: #f0b860; }

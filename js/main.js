@@ -151,11 +151,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     activityRecord: '📅 달력 & 활동기록',
                     todaySummary: '🌅 오늘 요약 카드',
                     missingRecordIndicator: '🟥 작성 누락 표시 & 작성률',
-                    openIssues: '📋 미결 사항 추적',
                     recordRevisions: '🕘 수정 이력 & 되돌리기',
                     rotationSchedule: '🔁 교대 운전 일정 등록',
                     eventGroupFilter: '👁️ 일정 분류별 보이기/숨기기',
-                    rotationStatusChips: '🟢 교대 설비 가동/대기 표시'
+                    rotationStatusChips: '🟢 교대 설비 가동/대기 표시',
+                    recordImport: '⬆️ 과거 일지 가져오기(CSV, 환경설정 탭)'
                 }
             },
             {
@@ -169,11 +169,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 key: 'query',
                 label: '🔍 검색 & 조회',
                 features: {
-                    keywordSearch: '🔎 통합 검색',
+                    keywordSearch: '🔎 통합 검색 (시간순 설비 이력 포함)',
                     periodQuery: '📆 기간별 카테고리 조회',
-                    equipmentTimeline: '🔧 설비별 이력 타임라인',
-                    keywordStats: '📊 키워드 발생 통계',
-                    recordImport: '⬆️ 과거 일지 가져오기(CSV)'
+                    keywordStats: '📊 키워드 발생 통계'
                 }
             },
             {
@@ -698,7 +696,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (btn) btn.disabled = !hasKey;
             });
 
-            ['dailySummaryDate', 'aiStartDate', 'aiEndDate', 'aiTemplateTextarea', 'goalRefStartDate', 'goalRefEndDate'].forEach(id => {
+            ['askLogInput', 'dailySummaryDate', 'aiStartDate', 'aiEndDate', 'aiTemplateTextarea', 'goalRefStartDate', 'goalRefEndDate'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.disabled = !hasKey;
             });
@@ -707,8 +705,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 el.disabled = !hasKey;
             });
 
-            // 일일 업무 요약 / 이번주 업무 요약 / AI 월별 피드백 요약 / 목표수립 박스는 키가 없으면 화면 전체를 흐리게 표시
-            document.querySelectorAll('[data-feature="dailySummary"], [data-feature="weeklySummary"], [data-feature="monthlyFeedback"], [data-feature="goalSetting"]').forEach(el => {
+            // 내 기록에게 물어보기 / 일일 업무 요약 / 이번주 업무 요약 / AI 월별 피드백 요약 / 목표수립 박스는 키가 없으면 화면 전체를 흐리게 표시
+            // 내 기록에게 물어보기도 AI 호출이라 같이 흐리게 함. 월별 피드백 및 평가 이력은 직접 입력·조회하는 기능이라 잠그지 않음
+            document.querySelectorAll('[data-feature="askMyLog"], [data-feature="dailySummary"], [data-feature="weeklySummary"], [data-feature="monthlyFeedback"], [data-feature="goalSetting"]').forEach(el => {
                 el.classList.toggle('ai-feature-locked', !hasKey);
             });
         }

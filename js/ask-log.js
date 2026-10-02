@@ -135,12 +135,6 @@
             if (message) loading.textContent = message;
         }
 
-        function fillAskLogExample(text) {
-            const input = document.getElementById('askLogInput');
-            input.value = text;
-            input.focus();
-        }
-
         async function askMyLog() {
             const input = document.getElementById('askLogInput');
             const question = input.value.trim();

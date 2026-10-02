@@ -60,7 +60,6 @@
                 <button class="upcoming-toggle-btn" id="upcomingToggleBtn" onclick="toggleUpcomingWidget()">숨기기</button>
             </div>
             <div class="upcoming-widget" id="upcomingWidget"></div>
-            <div class="open-issues-widget" id="openIssuesWidget" data-feature="openIssues"></div>
             <div class="main-content">
                 <div class="calendar-box">
                     <div class="calendar-header">
@@ -143,39 +142,43 @@
 
             <div class="quick-preset-row query-section-switcher" id="querySectionSwitcher" role="tablist" aria-label="검색 & 조회 화면 선택">
                 <button type="button" class="quick-preset-btn" role="tab" data-section="search" data-feature="keywordSearch" onclick="showQuerySection('search')">🔎 통합 검색</button>
-                <button type="button" class="quick-preset-btn" role="tab" data-section="period" data-feature="periodQuery" onclick="showQuerySection('period')">📆 기간 조회</button>
-                <button type="button" class="quick-preset-btn" role="tab" data-section="timeline" data-feature="equipmentTimeline" onclick="showQuerySection('timeline')">🔧 설비 이력</button>
+                <button type="button" class="quick-preset-btn" role="tab" data-section="period" data-feature="periodQuery" onclick="showQuerySection('period')">📆 기간별 카테고리 조회</button>
                 <button type="button" class="quick-preset-btn" role="tab" data-section="stats" data-feature="keywordStats" onclick="showQuerySection('stats')">📊 키워드 통계</button>
             </div>
 
-            <div class="query-container" data-feature="keywordSearch" data-query-section="search">
+            <div class="query-container" id="keywordSearchSection" data-feature="keywordSearch" data-query-section="search">
                 <h3 style="margin-bottom: 10px;">🔎 통합 검색</h3>
-                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">활동기록(보관 카테고리 포함)·예정작업·할일/메모·정비계획·개선과제에서 키워드로 검색합니다.</p>
-                
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">전체 작성 내용에서 키워드로 검색합니다.</p>
+
                 <div class="search-row">
-                    <input type="text" id="searchKeywordInput" class="search-input" placeholder="예: 펌프 누설|누수 -완료" onkeydown="if(event.key==='Enter') performKeywordSearch()">
+                    <input type="text" id="searchKeywordInput" class="search-input" list="equipmentNameList" placeholder="교체, 블로우 다운 등" onfocus="refreshEquipmentNameList()" onkeydown="if(event.key==='Enter') performKeywordSearch()">
+                    <datalist id="equipmentNameList"></datalist>
                     <button class="query-btn" onclick="performKeywordSearch()">검색</button>
                 </div>
                 <div class="recent-chips" id="recentSearchChips"></div>
                 <div class="search-help-text">띄어쓰기 = 모두 포함(AND) · <b>A|B</b> = 둘 중 하나(OR) · <b>-단어</b> = 제외 · <b>"따옴표"</b> = 구절 그대로</div>
 
+                <div class="search-period-row" id="searchPeriodPresetRow" role="group" aria-label="검색 기간">
+                    <button type="button" class="quick-preset-btn selected" data-period="" onclick="setSearchPeriod('')">전체</button>
+                    <button type="button" class="quick-preset-btn" data-period="1" onclick="setSearchPeriod('1')">1개월</button>
+                    <button type="button" class="quick-preset-btn" data-period="3" onclick="setSearchPeriod('3')">3개월</button>
+                    <button type="button" class="quick-preset-btn" data-period="6" onclick="setSearchPeriod('6')">6개월</button>
+                    <button type="button" class="quick-preset-btn" data-period="12" onclick="setSearchPeriod('12')">1년</button>
+                    <button type="button" class="quick-preset-btn" data-period="custom" onclick="setSearchPeriod('custom')">직접 선택</button>
+                </div>
+                <div class="search-custom-range" id="searchCustomRange" style="display:none;">
+                    <input type="date" id="searchStartDate" aria-label="검색 시작일" onchange="onSearchCustomRangeChange()">
+                    <span>~</span>
+                    <input type="date" id="searchEndDate" aria-label="검색 종료일" onchange="onSearchCustomRangeChange()">
+                </div>
                 <div class="search-options-row">
-                    <select id="searchPeriodSelect" class="search-option-select" onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()" aria-label="검색 기간">
-                        <option value="">전체 기간</option>
-                        <option value="1">최근 1개월</option>
-                        <option value="3">최근 3개월</option>
-                        <option value="6">최근 6개월</option>
-                        <option value="12">최근 1년</option>
-                        <option value="36">최근 3년</option>
-                    </select>
                     <select id="searchCategorySelect" class="search-option-select" onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()" aria-label="검색 카테고리">
                         <option value="">전체 카테고리</option>
                     </select>
-                    <label class="search-scope-label"><input type="checkbox" id="searchScopeRecords" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 활동기록</label>
-                    <label class="search-scope-label"><input type="checkbox" id="searchScopeEvents" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 예정작업</label>
-                    <label class="search-scope-label"><input type="checkbox" id="searchScopeNotes" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 할일/메모</label>
-                    <label class="search-scope-label"><input type="checkbox" id="searchScopeMaintenance" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 정비계획</label>
-                    <label class="search-scope-label"><input type="checkbox" id="searchScopeProjects" checked onchange="if (document.getElementById('searchKeywordInput').value.trim()) performKeywordSearch()"> 개선과제</label>
+                    <div class="search-view-toggle" role="group" aria-label="결과 보기 방식">
+                        <button type="button" class="search-view-btn selected" data-view="list" aria-pressed="true" onclick="setSearchView('list')">목록</button>
+                        <button type="button" class="search-view-btn" data-view="timeline" aria-pressed="false" onclick="setSearchView('timeline')">시간순(설비 이력)</button>
+                    </div>
                 </div>
                 <div class="search-help-text">※ 기간을 지정하면 날짜가 없는 자료(메모·할일·정비계획·개선과제)는 제외되고, 카테고리를 지정하면 활동기록만 검색합니다.</div>
 
@@ -183,12 +186,12 @@
                     <span id="searchResultCount" style="color:#666; font-size:13px;"></span>
                     <button class="ai-copy-btn" onclick="downloadSearchResultsCsv()">⬇️ 검색 결과 내보내기</button>
                 </div>
-                
+
                 <div class="search-results" id="searchResults">
                     <div class="no-result">키워드를 입력하고 검색 버튼을 클릭하세요</div>
                 </div>
             </div>
-            
+
             <div class="query-container" data-feature="periodQuery" data-query-section="period">
                 <h3 style="margin-bottom: 20px;">🔍 기간별 카테고리 조회</h3>
 
@@ -218,40 +221,11 @@
                 <div class="ai-block-label-row" style="margin: 20px 0 15px 0;">
                     <h4 style="color: #333;">조회 결과</h4>
                     <div class="query-export-buttons">
-                        <button class="ai-copy-btn" onclick="downloadQueryResultsCsv()" title="날짜·카테고리·내용 3열 목록">⬇️ 엑셀(목록)</button>
-                        <button class="ai-copy-btn" onclick="downloadQueryResultsPivotCsv()" title="날짜(행) × 카테고리(열) 표">⬇️ 엑셀(날짜×카테고리 표)</button>
-                        <button class="ai-copy-btn" onclick="printQueryReport()" title="인쇄 또는 PDF로 저장">🖨️ 보고서 인쇄</button>
-                        <button class="ai-copy-btn" data-feature="recordImport" onclick="openRecordImportPicker()" title="엑셀로 쓰던 예전 일지(CSV)를 활동기록으로 가져오기 - 날짜×카테고리 표 또는 날짜/카테고리/내용 목록 형식">⬆️ 과거 일지 가져오기</button>
-                        <input type="file" id="recordImportFileInput" accept=".csv,text/csv" style="display:none;" onchange="handleRecordImportFile(this)">
+                        <button class="ai-copy-btn" onclick="downloadQueryResultsPivotCsv()" title="날짜(행) × 카테고리(열) 표">⬇️ 엑셀로 내보내기(날짜×카테고리 표)</button>
                     </div>
                 </div>
                 <div class="query-results" id="queryResults">
                     <div class="no-result">카테고리를 선택하고 검색 버튼을 클릭하세요</div>
-                </div>
-            </div>
-
-            <div class="query-container" id="equipmentTimelineSection" data-feature="equipmentTimeline" data-query-section="timeline">
-                <h3 style="margin-bottom: 10px;">🔧 설비별 이력 타임라인</h3>
-                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">설비명을 입력하면 활동기록·정비 완료 이력·일정·개선과제에서 그 설비가 언급된 내용을 시간순으로 모아 보여줍니다. 약칭이 여러 개면 <b>|</b>로 구분하세요 (예: 냉동기 2호|R-2).</p>
-                <div class="search-row">
-                    <input type="text" id="equipmentTimelineInput" class="search-input" list="equipmentNameList" placeholder="설비명 (정비계획에 등록된 설비는 자동완성)" onfocus="refreshEquipmentNameList()" onkeydown="if(event.key==='Enter') renderEquipmentTimeline()">
-                    <datalist id="equipmentNameList"></datalist>
-                    <button class="query-btn" onclick="renderEquipmentTimeline()">조회</button>
-                </div>
-                <div class="recent-chips" id="recentEquipmentChips"></div>
-                <div class="search-options-row">
-                    <select id="equipmentTimelinePeriod" class="search-option-select" onchange="if (document.getElementById('equipmentTimelineInput').value.trim()) renderEquipmentTimeline()" aria-label="설비 이력 기간">
-                        <option value="">전체 기간</option>
-                        <option value="12">최근 1년</option>
-                        <option value="36">최근 3년</option>
-                    </select>
-                </div>
-                <div class="ai-block-label-row" style="margin: 0 0 10px 0;">
-                    <span id="equipmentTimelineSummary" style="color:#666; font-size:13px;"></span>
-                    <button class="ai-copy-btn" onclick="downloadEquipmentTimelineCsv()">⬇️ 이력 내보내기</button>
-                </div>
-                <div id="equipmentTimelineResults">
-                    <div class="no-result">설비명을 입력하고 조회 버튼을 클릭하세요</div>
                 </div>
             </div>
 
@@ -346,13 +320,8 @@
                 <h3 style="margin-bottom: 10px;">💬 내 기록에게 물어보기</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 16px;">활동기록·정비이력·일정·개선과제·메모에서 관련 내용을 찾아, <b>기록에 적힌 것만</b> 근거로 답합니다. 답의 [#번호]를 누르면 원본 기록을 확인할 수 있고, 기록에 없으면 "찾을 수 없습니다"라고 답합니다.</p>
                 <div class="ai-revise-row">
-                    <input type="text" id="askLogInput" class="ai-revise-input" placeholder="예: 3번 냉동기 작년에 뭐 교체했지?" onkeydown="if (event.key === 'Enter' && !event.isComposing) askMyLog()">
+                    <input type="text" id="askLogInput" class="ai-revise-input" placeholder="수처리 필터 차기 교체일 등" onkeydown="if (event.key === 'Enter' && !event.isComposing) askMyLog()">
                     <button class="ai-revise-btn" id="askLogBtn" onclick="askMyLog()">💬 질문하기</button>
-                </div>
-                <div class="ask-log-examples">
-                    <button type="button" class="quick-preset-btn" onclick="fillAskLogExample('보일러 트립 났을 때 원인이랑 조치 정리해줘')">보일러 트립 원인·조치</button>
-                    <button type="button" class="quick-preset-btn" onclick="fillAskLogExample('최근 3개월 동안 누설 관련 기록 알려줘')">최근 3개월 누설 기록</button>
-                    <button type="button" class="quick-preset-btn" onclick="fillAskLogExample('냉각탑 마지막으로 정비한 게 언제야?')">냉각탑 마지막 정비</button>
                 </div>
                 <div class="ai-loading" id="askLogLoading">🔎 질문을 이해하는 중입니다...</div>
 
@@ -887,6 +856,13 @@
                 <div class="category-selector" id="settingsTabToggleList"></div>
             </div>
 
+            <div class="category-manager" style="margin-top:25px;" data-feature="recordImport">
+                <h3>⬆️ 과거 일지 가져오기</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">엑셀로 쓰던 예전 일지(CSV)를 활동기록으로 옮깁니다. 날짜×카테고리 표 형식과 날짜·카테고리·내용 목록 형식을 모두 읽습니다.</p>
+                <button class="query-btn" onclick="openRecordImportPicker()">⬆️ CSV 파일 선택</button>
+                <input type="file" id="recordImportFileInput" accept=".csv,text/csv" style="display:none;" onchange="handleRecordImportFile(this)">
+            </div>
+
             <div class="category-manager" style="margin-top:25px;">
                 <h3>🗃️ 자동 백업</h3>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">저장할 때마다 그 직전 상태가 자동으로 백업됩니다. 여러 사람이 함께 쓰는 시트라 전체 최근 30건만 보관되어 목록이 얼마 없거나 비어있을 수 있습니다. 실수로 기록을 지우고 저장했다면 여기서 되돌릴 수 있습니다.</p>
@@ -1301,8 +1277,9 @@
                     <input type="hidden" id="maintStatusInput" value="예정">
                 </div>
                 <div class="modal-field">
-                    <label>차기 점검 예정 (월)</label>
-                    <input type="month" id="maintNextDueInput">
+                    <label>차기 점검 예정일</label>
+                    <input type="date" id="maintNextDueInput">
+                    <div class="maint-legacy-hint" id="maintNextDueLegacyHint" style="display:none;"></div>
                 </div>
             </div>
             <div class="modal-field">

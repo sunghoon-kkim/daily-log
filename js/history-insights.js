@@ -1,9 +1,9 @@
-        // ===== 설비별 이력 타임라인 =====
-        // 설비 이름(약칭은 "|"로 여러 개)으로 활동기록·정비 완료 이력·일정·개선과제에 흩어진 내용을
-        // 한 화면에 시간순으로 모아 보여줌. 데이터를 새로 저장하지 않는 조회 전용 기능
-        let lastEquipmentTimeline = [];
+        // ===== 통합 검색 - 시간순(설비 이력) 보기 =====
+        // 예전 "설비 이력" 화면을 통합 검색에 합침. 같은 검색어 문법(AND/|/-/따옴표)으로 활동기록·정비 완료 이력·
+        // 일정·개선과제에서 찾은 내용을 월별로 묶어 시간순으로 보여줌. 데이터를 새로 저장하지 않는 조회 전용 기능
+        let lastSearchTimeline = [];
 
-        // 정비계획에 등록된 설비명을 입력창 자동완성 후보로 채움
+        // 정비계획에 등록된 설비명을 검색창 자동완성 후보로 채움
         function refreshEquipmentNameList() {
             const list = document.getElementById('equipmentNameList');
             if (!list) return;
@@ -11,54 +11,57 @@
             list.innerHTML = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
         }
 
-        function parseEquipmentAliases(raw) {
-            return String(raw || '').split('|').map(s => s.trim().toLowerCase()).filter(Boolean);
-        }
-
-        function textMentionsAny(text, aliases) {
-            const lower = String(text || '').toLowerCase();
-            return aliases.some(a => lower.includes(a));
-        }
-
-        function collectEquipmentTimeline(aliases, periodStart) {
+        function collectSearchTimeline(query, range, categoryFilter) {
             const entries = [];
-            const inPeriod = (dateStr) => !periodStart || (dateStr && dateStr >= periodStart);
+            const { start, end } = range;
+            const inPeriod = (dateStr) => !!dateStr && (!start || dateStr >= start) && (!end || dateStr <= end);
+            const lineMatches = (line) => {
+                const lower = line.toLowerCase();
+                return query.terms.some(t => lower.includes(t));
+            };
 
-            // 활동기록: 설비명이 들어간 줄만 뽑아서 보여줌 (한 칸에 여러 설비 내용이 섞여 있는 경우가 많음)
-            const allCategories = getAllRecordCategories();
+            // 활동기록: 검색어가 들어간 줄만 뽑아서 보여줌 (한 칸에 여러 설비 내용이 섞여 있는 경우가 많음)
+            const searchCategories = categoryFilter ? [categoryFilter] : getAllRecordCategories();
             for (const dateStr in records) {
                 if (!inPeriod(dateStr)) continue;
                 const rec = records[dateStr] || {};
-                for (const category of allCategories) {
+                for (const category of searchCategories) {
                     const content = rec[category];
-                    if (typeof content !== 'string' || !textMentionsAny(content, aliases)) continue;
-                    const lines = content.split('\n').filter(line => textMentionsAny(line, aliases));
-                    entries.push({ kind: 'record', date: dateStr, source: '활동기록', tag: category, text: lines.slice(0, 8).join('\n') });
+                    if (typeof content !== 'string' || !matchesSearchQuery(content, query)) continue;
+                    const lines = content.split('\n').filter(lineMatches);
+                    entries.push({ kind: 'record', date: dateStr, source: '활동기록', tag: category, text: (lines.length ? lines : [content]).slice(0, 8).join('\n') });
                 }
             }
+            if (categoryFilter) {
+                entries.sort((a, b) => b.date.localeCompare(a.date));
+                return { entries, matchedPlans: [] };
+            }
 
-            // 정비계획: 설비명(또는 점검 항목)이 일치하는 항목의 완료 이력
-            const matchedPlans = maintenanceSchedule.filter(m => textMentionsAny(m.equipment, aliases) || textMentionsAny(m.item, aliases));
-            for (const m of matchedPlans) {
+            // 정비계획: 설비명·점검 항목이 검색어와 맞는 항목은 완료 이력 전체, 아니면 메모에 검색어가 있는 완료 건만
+            const matchedPlans = maintenanceSchedule.filter(m => matchesSearchQuery(`${m.equipment || ''} ${m.item || ''}`, query));
+            for (const m of maintenanceSchedule) {
+                const planMatched = matchedPlans.includes(m);
                 for (const c of getMaintenanceCompletions(m)) {
                     if (!inPeriod(c.date)) continue;
-                    entries.push({ kind: 'maintenance', date: c.date, source: '정비완료', tag: m.item || '점검', text: c.note || '', refId: m.id });
+                    if (!planMatched && !matchesSearchQuery(`${m.equipment || ''} ${m.item || ''}\n${c.note || ''}`, query)) continue;
+                    entries.push({ kind: 'maintenance', date: c.date, source: '정비완료', tag: `${m.equipment ? m.equipment + ' - ' : ''}${m.item || '점검'}`, text: c.note || '', refId: m.id });
                 }
             }
 
             for (const ev of events) {
-                if (ev.title && inPeriod(ev.start) && textMentionsAny(ev.title, aliases)) {
+                if (ev.title && inPeriod(ev.start) && matchesSearchQuery(ev.title, query)) {
                     entries.push({ kind: 'event', date: ev.start, source: '일정', tag: ev.start === ev.end ? '' : `~${ev.end}`, text: ev.title });
                 }
             }
 
-            // 개선과제: 과제명에 설비가 들어가면 월별 기록 전체, 아니면 설비가 언급된 월별 기록만
+            // 개선과제: 과제명이 맞으면 월별 기록 전체, 아니면 검색어가 들어간 월별 기록만 ("YYYY-MM"은 그 달 전체로 봄)
             for (const p of savingsProjects) {
-                const titleMatch = textMentionsAny(p.title, aliases);
+                const titleMatch = matchesSearchQuery(p.title, query);
                 const logs = Array.isArray(p.monthlyLogs) ? p.monthlyLogs : [];
                 for (const log of logs) {
-                    if (!log.month || !(titleMatch || textMentionsAny(log.note, aliases))) continue;
-                    if (periodStart && log.month < periodStart.slice(0, 7)) continue;
+                    if (!log.month || !(titleMatch || matchesSearchQuery(`${p.title || ''}\n${log.note || ''}`, query))) continue;
+                    if (start && log.month < start.slice(0, 7)) continue;
+                    if (end && log.month > end.slice(0, 7)) continue;
                     entries.push({ kind: 'project', date: log.month, source: '개선과제', tag: p.title || '', text: log.note || '', refId: p.id });
                 }
             }
@@ -68,25 +71,12 @@
             return { entries, matchedPlans };
         }
 
-        function renderEquipmentTimeline() {
-            const input = document.getElementById('equipmentTimelineInput');
-            const resultsEl = document.getElementById('equipmentTimelineResults');
-            const summaryEl = document.getElementById('equipmentTimelineSummary');
-            if (!input || !resultsEl) return;
-            const aliases = parseEquipmentAliases(input.value);
-            if (summaryEl) summaryEl.textContent = '';
-            lastEquipmentTimeline = [];
-
-            if (aliases.length === 0) {
-                resultsEl.innerHTML = '<div class="no-result">설비명을 입력해주세요</div>';
-                return;
-            }
-
-            rememberRecent('recentEquipmentNames', input.value);
-            const periodValue = (document.getElementById('equipmentTimelinePeriod') || {}).value;
-            const periodStart = getSearchPeriodStart(periodValue);
-            const { entries, matchedPlans } = collectEquipmentTimeline(aliases, periodStart);
-            lastEquipmentTimeline = entries;
+        function renderSearchTimeline(query) {
+            const resultsEl = document.getElementById('searchResults');
+            const countEl = document.getElementById('searchResultCount');
+            const categoryFilter = (document.getElementById('searchCategorySelect') || {}).value || '';
+            const { entries, matchedPlans } = collectSearchTimeline(query, getSearchRange(), categoryFilter);
+            lastSearchTimeline = entries;
 
             let html = '';
             if (matchedPlans.length > 0) {
@@ -102,19 +92,18 @@
             }
 
             if (entries.length === 0) {
-                resultsEl.innerHTML = html + '<div class="no-result">해당 설비가 언급된 기록이 없습니다</div>';
+                resultsEl.innerHTML = html + '<div class="no-result">검색어가 언급된 날짜 있는 기록이 없습니다</div>';
                 return;
             }
 
             const counts = {};
             entries.forEach(e => { counts[e.source] = (counts[e.source] || 0) + 1; });
-            if (summaryEl) {
+            if (countEl) {
                 const oldest = entries[entries.length - 1].date;
                 const newest = entries[0].date;
-                summaryEl.textContent = `총 ${entries.length}건 (${Object.keys(counts).map(k => `${k} ${counts[k]}`).join(' · ')}) · ${oldest} ~ ${newest}`;
+                countEl.textContent = `총 ${entries.length}건 (${Object.keys(counts).map(k => `${k} ${counts[k]}`).join(' · ')}) · ${oldest} ~ ${newest}`;
             }
 
-            const highlightTerms = input.value.split('|').map(s => s.trim()).filter(Boolean);
             let currentMonth = '';
             html += '<div class="equipment-timeline">';
             entries.forEach((e, idx) => {
@@ -129,17 +118,17 @@
                             <span class="timeline-date">${escapeHtml(e.date.length === 7 ? e.date + ' (월)' : e.date)}</span>
                             <span class="timeline-source">${escapeHtml(e.source)}</span>
                             ${e.tag ? `<span class="search-result-tag">[${escapeHtml(e.tag)}]</span>` : ''}
-                            <button class="result-action-btn" onclick="openEquipmentTimelineEntry(${idx})">↗ 열기</button>
+                            <button class="result-action-btn" onclick="openSearchTimelineEntry(${idx})">↗ 열기</button>
                         </div>
-                        ${e.text ? `<div class="result-content">${highlightSearchTerms(escapeHtml(e.text), highlightTerms)}</div>` : ''}
+                        ${e.text ? `<div class="result-content">${highlightSearchTerms(escapeHtml(e.text), query.terms)}</div>` : ''}
                     </div>`;
             });
             html += '</div>';
             resultsEl.innerHTML = html;
         }
 
-        function openEquipmentTimelineEntry(idx) {
-            const e = lastEquipmentTimeline[idx];
+        function openSearchTimelineEntry(idx) {
+            const e = lastSearchTimeline[idx];
             if (!e) return;
             if (e.kind === 'record' || e.kind === 'event') { jumpToSearchResult(e.date); return; }
             if (e.kind === 'maintenance') {
@@ -153,25 +142,24 @@
             }
         }
 
-        // 정비계획 탭의 설비 그룹 "📜 설비 이력" 버튼에서 호출
+        // 정비계획 탭의 설비 그룹 "📜 설비 이력" 버튼에서 호출: 통합 검색을 전체 기간·시간순 보기로 열어 설비명을 검색
         function openEquipmentTimeline(equipmentName) {
             switchTab('query');
-            showQuerySection('timeline');
-            const input = document.getElementById('equipmentTimelineInput');
+            showQuerySection('search');
+            const input = document.getElementById('searchKeywordInput');
             if (!input) return;
-            input.value = equipmentName;
-            refreshEquipmentNameList();
-            renderEquipmentTimeline();
-            const section = document.getElementById('equipmentTimelineSection');
+            // 설비명에 띄어쓰기가 있어도(예: 냉동기 2호) 한 덩어리로 찾도록 따옴표로 묶음
+            const name = String(equipmentName || '').trim().replace(/"/g, '');
+            input.value = /\s/.test(name) ? `"${name}"` : name;
+            const categorySelect = document.getElementById('searchCategorySelect');
+            if (categorySelect) categorySelect.value = '';
+            searchPeriodMode = '';
+            document.querySelectorAll('#searchPeriodPresetRow .quick-preset-btn').forEach(btn => btn.classList.toggle('selected', btn.dataset.period === ''));
+            const customRow = document.getElementById('searchCustomRange');
+            if (customRow) customRow.style.display = 'none';
+            setSearchView('timeline'); // 버튼 표시를 맞추고 바로 검색까지 실행
+            const section = document.getElementById('keywordSearchSection');
             if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        function downloadEquipmentTimelineCsv() {
-            if (lastEquipmentTimeline.length === 0) { showAppToast('먼저 설비 이력을 조회해주세요'); return; }
-            const rows = [['날짜', '구분', '세부', '내용']];
-            lastEquipmentTimeline.forEach(e => rows.push([e.date, e.source, e.tag, e.text]));
-            const name = document.getElementById('equipmentTimelineInput').value.trim().replace(/[\\/:*?"<>|]/g, '_').slice(0, 30);
-            downloadCsvFile(rows, `설비이력_${name}_${formatDate(new Date())}.csv`);
         }
 
         // ===== 키워드 발생 통계 =====
