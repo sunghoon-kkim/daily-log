@@ -266,7 +266,7 @@
                 ['trunkOverride', 'exitBend', 'entryBend'].forEach(k => { if (isNum(c[k])) conn[k] = c[k]; });
                 connections.push(conn);
             });
-            const name = String(raw.name || '').trim() || ('흐름도 ' + (waterFlowDiagrams.length + 1));
+            const name = String(raw.name || '').trim(); // 비어 있으면 붙여넣기 쪽에서 겹치지 않는 이름을 붙임
             return { id: newWaterFlowImportId('wfd_'), name, blocks, connections };
         }
 
@@ -291,6 +291,12 @@
             rawList.forEach(raw => {
                 const diagram = normalizeImportedWaterFlowDiagram(raw);
                 if (!diagram) return;
+                if (!diagram.name) {
+                    // 이름 없는 흐름도를 여러 개 붙여넣어도 서로 겹치지 않도록 비어 있는 번호를 찾아 붙임
+                    let n = waterFlowDiagrams.length + toAdd.length + 1;
+                    while (existingNames.has('흐름도 ' + n)) n++;
+                    diagram.name = '흐름도 ' + n;
+                }
                 if (existingNames.has(diagram.name)) { skipped++; return; }
                 existingNames.add(diagram.name);
                 toAdd.push(diagram);
@@ -299,6 +305,7 @@
                 showAppToast(skipped > 0 ? '같은 이름의 흐름도가 이미 있어서 추가할 것이 없습니다' : '흐름도 형식({name, blocks, connections})을 찾지 못했습니다');
                 return;
             }
+            cancelWaterFlowConnectMode(); // 연결 중이던 블록이 다른 흐름도의 블록과 이어지지 않도록 (흐름도 전환과 동일)
             pushWaterFlowUndoSnapshot();
             syncActiveWaterFlowDiagramData();
             waterFlowDiagrams.push(...toAdd);

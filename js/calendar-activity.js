@@ -1177,7 +1177,8 @@
                 document.getElementById('eventTitleInput').value = ev.title;
                 document.getElementById('eventStartInput').value = ev.start;
                 document.getElementById('eventEndInput').value = ev.end;
-                document.getElementById('eventGroupInput').value = getEventGroup(ev);
+                // 분류를 저장한 적 없는 예전 일정은 비워둬서, 저장할 때 (바뀐) 제목으로 다시 추정되게 함
+                document.getElementById('eventGroupInput').value = ev.eventGroup || '';
                 selectedColor = ev.color;
                 deleteBtn.style.display = 'block';
                 // 이미 등록된 일정 하나를 고치는 중에 반복을 걸면 그 자리에서 여러 건으로
