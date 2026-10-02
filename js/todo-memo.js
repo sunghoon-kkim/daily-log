@@ -353,7 +353,9 @@
             canDrop: (fromId, toId) => {
                 const fromItem = todoItems.find(t => t.id === fromId);
                 const toItem = todoItems.find(t => t.id === toId);
-                return !!fromItem && !!toItem && !!fromItem.done === !!toItem.done;
+                if (!fromItem || !toItem || !!fromItem.done !== !!toItem.done) return false;
+                // 완료 목록은 완료 날짜별로 묶여 있으므로 같은 날짜 묶음 안에서만 순서 변경
+                return !fromItem.done || (fromItem.doneAt || '') === (toItem.doneAt || '');
             },
             onReorder: (fromId, toId) => {
                 const fromIndex = todoItems.findIndex(t => t.id === fromId);
@@ -437,6 +439,81 @@
             return wrap;
         }
 
+        // 완료 목록은 완료한 날짜별로 묶어서 최근 날짜부터 보여줌. 최근 7일 묶음은 펼치고 그 이전은 접어두며,
+        // 사용자가 묶음 제목을 눌러 이 기본값을 뒤집으면(flip) 새로고침 전까지 그 상태를 유지함
+        const TODO_DONE_AUTO_EXPAND_DAYS = 7;
+        const TODO_DONE_NO_DATE_KEY = 'none'; // 완료 날짜를 기록하기 전에 완료된 항목 묶음
+        const flippedTodoDoneGroups = new Set();
+
+        function isTodoDoneGroupCollapsed(dateKey, todayStr) {
+            const defaultCollapsed = dateKey === TODO_DONE_NO_DATE_KEY
+                || daysBetweenDateStrs(dateKey, todayStr) >= TODO_DONE_AUTO_EXPAND_DAYS;
+            return flippedTodoDoneGroups.has(dateKey) ? !defaultCollapsed : defaultCollapsed;
+        }
+
+        function formatTodoDoneGroupLabel(dateKey, todayStr) {
+            if (dateKey === TODO_DONE_NO_DATE_KEY) return '날짜 미기록';
+            const d = new Date(dateKey + 'T00:00:00');
+            const weekday = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+            const yearPrefix = dateKey.slice(0, 4) !== todayStr.slice(0, 4) ? `${d.getFullYear()}년 ` : '';
+            const diff = daysBetweenDateStrs(dateKey, todayStr);
+            const relative = diff === 0 ? ' · 오늘' : diff === 1 ? ' · 어제' : '';
+            return `${yearPrefix}${d.getMonth() + 1}월 ${d.getDate()}일 (${weekday})${relative}`;
+        }
+
+        function renderTodoDoneGroups(container, doneItems) {
+            const todayStr = formatDate(new Date());
+            const groups = new Map();
+            doneItems.forEach(item => {
+                const key = item.doneAt || TODO_DONE_NO_DATE_KEY;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(item);
+            });
+            const keys = Array.from(groups.keys()).sort((a, b) => {
+                if (a === TODO_DONE_NO_DATE_KEY) return 1;
+                if (b === TODO_DONE_NO_DATE_KEY) return -1;
+                return b.localeCompare(a);
+            });
+
+            keys.forEach(key => {
+                const items = groups.get(key);
+                const collapsed = isTodoDoneGroupCollapsed(key, todayStr);
+
+                const group = document.createElement('div');
+                group.className = 'todo-done-group' + (collapsed ? ' collapsed' : '');
+
+                const header = document.createElement('button');
+                header.type = 'button';
+                header.className = 'todo-done-group-header';
+                header.setAttribute('aria-expanded', String(!collapsed));
+                const arrow = document.createElement('span');
+                arrow.className = 'todo-done-group-arrow';
+                arrow.textContent = collapsed ? '▸' : '▾';
+                const label = document.createElement('span');
+                label.className = 'todo-done-group-label';
+                label.textContent = formatTodoDoneGroupLabel(key, todayStr);
+                const count = document.createElement('span');
+                count.className = 'todo-done-group-count';
+                count.textContent = `${items.length}건`;
+                header.append(arrow, label, count);
+                header.addEventListener('click', () => {
+                    if (flippedTodoDoneGroups.has(key)) flippedTodoDoneGroups.delete(key);
+                    else flippedTodoDoneGroups.add(key);
+                    renderTodoList();
+                });
+                group.appendChild(header);
+
+                if (!collapsed) {
+                    // 화살표 키 순서 변경은 같은 부모 안의 항목끼리만 오가므로 묶음마다 별도 목록으로 둠
+                    const list = document.createElement('div');
+                    list.className = 'todo-done-group-items';
+                    items.forEach(item => list.appendChild(buildTodoItemRow(item)));
+                    group.appendChild(list);
+                }
+                container.appendChild(group);
+            });
+        }
+
         function renderTodoList() {
             const activeContainer = document.getElementById('todoList');
             const doneContainer = document.getElementById('todoDoneList');
@@ -462,7 +539,7 @@
                 empty.textContent = '완료된 항목이 없습니다.';
                 doneContainer.appendChild(empty);
             } else {
-                doneItems.forEach(item => doneContainer.appendChild(buildTodoItemRow(item)));
+                renderTodoDoneGroups(doneContainer, doneItems);
             }
 
             applyFormLockState();
@@ -492,6 +569,8 @@
             const item = todoItems.find(t => t.id === id);
             if (!item) return;
             item.done = !item.done;
+            if (item.done) item.doneAt = formatDate(new Date());
+            else delete item.doneAt;
             saveTodoItems();
             renderTodoList();
         }

@@ -2659,6 +2659,45 @@ html {
             gap: 6px;
         }
 
+        .todo-done-group-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+            padding: 4px 2px;
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            font-size: 12px;
+            color: #666;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .todo-done-group-header:hover {
+            color: #667eea;
+        }
+
+        .todo-done-group-arrow {
+            width: 10px;
+            color: #999;
+        }
+
+        .todo-done-group-label {
+            font-weight: 600;
+        }
+
+        .todo-done-group-count {
+            color: #999;
+        }
+
+        .todo-done-group-items {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
         .todo-item-wrap {
             border-bottom: 1px solid #eee;
             padding: 4px 0 6px;
@@ -4727,6 +4766,10 @@ html {
 
 .dark-mode .todo-memo-input::placeholder {
     color: var(--d-text3);
+}
+
+.dark-mode .todo-done-group-header {
+    color: #bbb;
 }
 
 .dark-mode .todo-empty {
