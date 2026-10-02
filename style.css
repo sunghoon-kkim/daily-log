@@ -5863,3 +5863,28 @@ body {
 .dark-mode .event-group-filter-label { color: var(--d-text3); }
 .dark-mode .event-group-chip { color: #aab6ff; background: rgba(102, 126, 234, 0.18); }
 .dark-mode .event-group-chip.off { color: var(--d-text3); border-color: var(--d-border); background: transparent; }
+
+/* 교대 설비 가동/대기 미니 칩: 날짜 칸 맨 아래 오른쪽에 글자 한 칸 크기로만 표시 (가동=채운 초록, 대기=빈 테두리, 백워시=물색) */
+.rot-chips { margin-top: auto; align-self: flex-end; display: flex; align-items: center; gap: 2px; padding-top: 3px; }
+.rot-chip { display: inline-block; width: 15px; height: 15px; border-radius: 4px; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center; box-sizing: border-box; flex: 0 0 auto; }
+.rot-run { background: #1f9d6b; color: #fff; }
+.rot-idle { background: transparent; color: #9aa3b2; border: 1.5px solid #c9cfd9; line-height: 12px; }
+.rot-bw { background: #2f7fd1; color: #fff; }
+.rot-chip-sep { width: 4px; }
+.rot-conflict .rot-bw { background: #e08a00; }
+.rot-warn { width: 15px; height: 15px; border-radius: 50%; background: #e08a00; color: #fff; font-size: 10px; font-weight: 800; line-height: 15px; text-align: center; }
+.rot-legend { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: #888; }
+.rot-legend .rot-chip { margin-left: 6px; width: 13px; height: 13px; font-size: 9px; line-height: 13px; }
+.rot-legend .rot-idle { line-height: 10px; }
+.rot-day-status { margin-bottom: 12px; padding: 8px 12px; border-left: 3px solid #1f9d6b; border-radius: 8px; background: #eef8f3; color: #2d4a3e; font-size: 13px; line-height: 1.6; }
+.rot-day-status.rot-conflict { border-left-color: #e08a00; background: #fff6e8; color: #6b4a12; }
+.dark-mode .rot-idle { border-color: var(--d-border); color: var(--d-text3); }
+.dark-mode .rot-legend { color: var(--d-text3); }
+.dark-mode .rot-day-status { background: rgba(31, 157, 107, 0.14); color: var(--d-text2); }
+.dark-mode .rot-day-status.rot-conflict { background: rgba(224, 138, 0, 0.16); color: var(--d-text2); }
+@media (max-width: 768px) {
+    .rot-chip, .rot-warn { width: 12px; height: 12px; font-size: 8px; line-height: 12px; border-radius: 3px; }
+    .rot-idle { line-height: 9px; }
+    .rot-chip-sep { width: 2px; }
+    .rot-warn { border-radius: 50%; }
+}

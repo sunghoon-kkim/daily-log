@@ -86,6 +86,15 @@
             if (todayRotation.length > 0) {
                 chip('warn', '🔁', `오늘 ${todayRotation.map(ev => escapeHtml(ev.title)).join(', ')}`, `jumpToDateRecord('${todayStr}')`);
             }
+            if (isRotationStatusEnabled()) {
+                // 가동/대기 표시를 켠 경우에만: 오늘 가동 중인 설비 (백워시 줄과 겹치지 않게 가동만 짧게)
+                const statuses = getRotationStatusesForDate(collectRotationPairs(), todayStr);
+                const running = statuses.filter(st => !st.conflict).map(st => `${st.name} ${Object.keys(st.states).find(u => st.states[u] === 'run')}`);
+                if (running.length > 0) chip('neutral', '▶️', `오늘 가동: ${running.map(escapeHtml).join(', ')}`, `jumpToDateRecord('${todayStr}')`);
+                statuses.filter(st => st.conflict).forEach(st => {
+                    chip('alert', '⚠️', `${escapeHtml(st.name)} ${Object.keys(st.states).sort().map(escapeHtml).join('·')} 같은 날 백워시`, `jumpToDateRecord('${todayStr}')`);
+                });
+            }
             const todayEvents = todayAllEvents.filter(ev => getEventGroup(ev) !== ROTATION_EVENT_GROUP);
             if (todayEvents.length > 0) {
                 const names = todayEvents.slice(0, 2).map(ev => escapeHtml(ev.title)).join(', ');

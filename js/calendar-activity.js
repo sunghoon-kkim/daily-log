@@ -15,6 +15,7 @@
             // 분류 칩에서 꺼둔 분류의 일정은 달력 칸에서 빼고 그림 (선택한 날짜의 상세에는 그대로 보임)
             const calendarVisibleEvents = events.filter(isEventGroupVisible);
             renderEventGroupFilter();
+            const rotationPairs = isRotationStatusEnabled() ? collectRotationPairs() : [];
             
             for (let i = 0; i < firstWeekday; i++) {
                 html += '<div class="day other-month"></div>';
@@ -92,6 +93,7 @@
                             <div class="day-record-dots">${buildRecordDots(dateStr)}</div>
                         </div>
                         ${planHtml}
+                        ${buildRotationStatusChips(getRotationStatusesForDate(rotationPairs, dateStr))}
                     </div>
                 `;
             }
@@ -180,10 +182,108 @@
             });
             const groups = getAllEventGroups().filter(g => counts[g]);
             if (groups.length === 0) { el.innerHTML = ''; return; }
-            el.innerHTML = '<span class="event-group-filter-label">👁️ 일정 분류</span>' + groups.map(g => {
+            let html = '<span class="event-group-filter-label">👁️ 일정 분류</span>' + groups.map(g => {
                 const hidden = hiddenEventGroups.includes(g);
                 return `<button type="button" class="event-group-chip${hidden ? ' off' : ''}" aria-pressed="${!hidden}" title="${hidden ? '달력에 보이기' : '달력에서 숨기기'} (${counts[g]}건)" onclick="toggleEventGroupVisibility('${escapeForOnclickArg(g)}')">${hidden ? '☐' : '✔'} ${escapeHtml(g)}</button>`;
             }).join('');
+            // 짝 설비(소프트너 A/B 등) 백워시 일정이 있을 때만 가동/대기 표시 스위치를 보여줌
+            if (!isFeatureDisabled('rotationStatusChips') && collectRotationPairs().length > 0) {
+                const on = isRotationStatusEnabled();
+                html += `<button type="button" class="event-group-chip rot-toggle${on ? '' : ' off'}" aria-pressed="${on}" title="교대 설비의 가동/대기 상태를 날짜 칸에 작게 표시 (이 기기·이 계정에만 적용)" onclick="toggleRotationStatusChips()">${on ? '✔' : '☐'} 가동/대기</button>`;
+                if (on) html += '<span class="rot-legend" aria-hidden="true"><span class="rot-chip rot-run">A</span>가동<span class="rot-chip rot-idle">A</span>대기<span class="rot-chip rot-bw">A</span>백워시</span>';
+            }
+            el.innerHTML = html;
+        }
+
+        // ===== 교대 설비 가동/대기 미니 칩 =====
+        // "소프트너 A/B 백워시"처럼 끝 글자만 다른 두 설비를 한 쌍으로 보고, 등록된 백워시 일정만으로 매일 상태를 계산함.
+        // 규칙: 한 설비가 백워시하는 날 상대 설비가 가동으로 넘어가고, 백워시를 마친 설비는 상대가 백워시할 때까지 대기.
+        // 그래서 공휴일로 당겨진 날이나 손으로 옮긴 일정도 그대로 따라감. 카본처럼 짝이 없는 설비는 칩을 만들지 않음
+        const ROTATION_STATUS_TRAIL_DAYS = 6; // 마지막 백워시 이후 며칠까지 상태를 보여줄지 (그 뒤는 등록 안 된 기간)
+
+        // 켜고 끄는 건 개인 화면 설정이라 서버로 보내지 않고, 같은 브라우저의 다른 사번과도 섞이지 않게 사번별로 기억함.
+        // 기본은 꺼짐이라 직접 켠 사람에게만 보임
+        function rotationStatusStorageKey() {
+            return 'rotationStatusChips:' + (currentEmployeeId || 'guest');
+        }
+
+        function isRotationStatusEnabled() {
+            if (isFeatureDisabled('rotationStatusChips') || isFeatureDisabled('eventGroupFilter')) return false;
+            try { return localStorage.getItem(rotationStatusStorageKey()) === '1'; } catch (e) { return false; }
+        }
+
+        function toggleRotationStatusChips() {
+            const next = !isRotationStatusEnabled();
+            try {
+                if (next) localStorage.setItem(rotationStatusStorageKey(), '1');
+                else localStorage.removeItem(rotationStatusStorageKey());
+            } catch (e) { /* 저장 실패 시 다음 그리기에서 원래대로 보임 */ }
+            renderCalendar();
+            if (selectedDate) renderRecordForm();
+        }
+
+        // [{ name: '소프트너', units: ['A', 'B'], bwByDate: { '2026-10-05': ['A'] }, dates: [...정렬] }]
+        function collectRotationPairs() {
+            const groups = {};
+            events.forEach(ev => {
+                if (getEventGroup(ev) !== ROTATION_EVENT_GROUP) return;
+                const tokens = (ev.title || '').trim().split(/\s+/);
+                if (tokens.length < 3) return; // "카본 백워시"처럼 짝 표시가 없는 설비
+                const unit = tokens[tokens.length - 2];
+                if (unit.length !== 1) return;
+                const name = tokens.slice(0, -2).join(' ');
+                const key = name + '|' + tokens[tokens.length - 1];
+                const g = groups[key] || (groups[key] = { name, units: [], bwByDate: {} });
+                if (!g.units.includes(unit)) g.units.push(unit);
+                const list = g.bwByDate[ev.start] || (g.bwByDate[ev.start] = []);
+                if (!list.includes(unit)) list.push(unit);
+            });
+            return Object.values(groups)
+                .filter(g => g.units.length === 2)
+                .map(g => {
+                    g.units.sort();
+                    g.dates = Object.keys(g.bwByDate).sort();
+                    return g;
+                });
+        }
+
+        // 그 날짜의 상태: { name, states: { A: 'bw'|'run'|'idle' }, conflict } 또는 등록 기간 밖이면 null
+        function getRotationPairStatus(pair, dateStr) {
+            const { dates, bwByDate, units } = pair;
+            if (dates.length === 0 || dateStr < dates[0]) return null;
+            if (daysBetweenDateStrs(dates[dates.length - 1], dateStr) > ROTATION_STATUS_TRAIL_DAYS) return null;
+            const [u1, u2] = units;
+            const other = u => (u === u1 ? u2 : u1);
+            const today = bwByDate[dateStr] || [];
+            if (today.length === 2) return { name: pair.name, states: { [u1]: 'bw', [u2]: 'bw' }, conflict: true };
+            if (today.length === 1) return { name: pair.name, states: { [today[0]]: 'bw', [other(today[0])]: 'run' }, conflict: false };
+            // 백워시가 없는 날: 가장 최근에 혼자 백워시한 설비가 대기, 상대가 가동
+            for (let i = dates.length - 1; i >= 0; i--) {
+                if (dates[i] >= dateStr) continue;
+                const list = bwByDate[dates[i]];
+                if (list.length === 1) return { name: pair.name, states: { [list[0]]: 'idle', [other(list[0])]: 'run' }, conflict: false };
+            }
+            return null;
+        }
+
+        function getRotationStatusesForDate(pairs, dateStr) {
+            return pairs.map(p => getRotationPairStatus(p, dateStr)).filter(Boolean);
+        }
+
+        const ROTATION_STATE_LABELS = { run: '가동', idle: '대기', bw: '백워시' };
+
+        function describeRotationStatus(st) {
+            const text = Object.keys(st.states).sort().map(u => `${st.name} ${u} ${ROTATION_STATE_LABELS[st.states[u]]}`).join(' · ');
+            return st.conflict ? `⚠️ ${text} (같은 날 겹침)` : text;
+        }
+
+        function buildRotationStatusChips(statuses) {
+            if (statuses.length === 0) return '';
+            const title = statuses.map(describeRotationStatus).join('\n');
+            const conflict = statuses.some(st => st.conflict);
+            const chips = statuses.map(st => Object.keys(st.states).sort().map(u =>
+                `<span class="rot-chip rot-${st.states[u]}">${escapeHtml(u)}</span>`).join('')).join('<span class="rot-chip-sep"></span>');
+            return `<div class="rot-chips${conflict ? ' rot-conflict' : ''}" title="${escapeHtml(title)}">${conflict ? '<span class="rot-warn" aria-hidden="true">!</span>' : ''}${chips}</div>`;
         }
 
         function renderEventGroupOptions() {
@@ -705,6 +805,10 @@
             
             // 해당 날짜의 예정 작업 미리보기
             const dayEvents = events.filter(ev => selectedDate >= ev.start && selectedDate <= ev.end);
+            const dayRotation = isRotationStatusEnabled() ? getRotationStatusesForDate(collectRotationPairs(), selectedDate) : [];
+            if (dayRotation.length > 0) {
+                html += `<div class="rot-day-status${dayRotation.some(st => st.conflict) ? ' rot-conflict' : ''}">🔁 ${dayRotation.map(st => escapeHtml(describeRotationStatus(st))).join('<br>')}</div>`;
+            }
             if (dayEvents.length > 0) {
                 html += '<div class="day-events-preview"><h4>📌 이 날의 일정</h4>';
                 for (const ev of dayEvents) {

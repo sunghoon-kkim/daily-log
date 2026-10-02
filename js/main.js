@@ -154,7 +154,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     openIssues: '📋 미결 사항 추적',
                     recordRevisions: '🕘 수정 이력 & 되돌리기',
                     rotationSchedule: '🔁 교대 운전 일정 등록',
-                    eventGroupFilter: '👁️ 일정 분류별 보이기/숨기기'
+                    eventGroupFilter: '👁️ 일정 분류별 보이기/숨기기',
+                    rotationStatusChips: '🟢 교대 설비 가동/대기 표시'
                 }
             },
             {
