@@ -465,13 +465,6 @@
                 doneItems.forEach(item => doneContainer.appendChild(buildTodoItemRow(item)));
             }
 
-            [activeContainer, doneContainer].forEach(c => {
-                c.querySelectorAll('.todo-memo-input').forEach(ta => {
-                    ta.style.height = 'auto';
-                    ta.style.height = ta.scrollHeight + 'px';
-                });
-            });
-
             applyFormLockState();
             autoGrowNotesContainer();
         }
@@ -541,6 +534,12 @@
             const memoPane = document.getElementById('memoPane');
             if (!container || !todoSections || !notesTextarea || !todoPane || !memoPane) return;
             if (container.offsetParent === null) return; // 탭이 안 보이는 상태면 측정이 부정확하므로 건너뜀
+
+            // 메모 칸 높이도 탭이 보일 때 재야 정확함 (숨겨진 상태에서 재면 scrollHeight가 0이라 메모가 접혀 보임)
+            todoSections.querySelectorAll('.todo-memo-input').forEach(ta => {
+                ta.style.height = 'auto';
+                ta.style.height = ta.scrollHeight + 'px';
+            });
 
             container.style.height = '';
 
@@ -628,5 +627,6 @@
                 const todoRect = todoPane.getBoundingClientRect();
                 const percent = (todoRect.width / rect.width) * 100;
                 safeSetItem('notesSplitPercent', percent.toFixed(1));
+                autoGrowNotesContainer(); // 너비가 바뀌면 메모 줄바꿈도 바뀌므로 높이 다시 계산
             });
         }
