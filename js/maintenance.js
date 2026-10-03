@@ -555,7 +555,9 @@
             if (selectedDate === date) renderRecordForm();
             if (typeof renderInventory === 'function') renderInventory(); // 재고 카드의 차기 일정
             const baseMsg = logToRecord && category ? `완료 처리했습니다 (${date} 활동기록 [${category}]에도 기록됨)` : '완료 처리했습니다';
-            showAppToast(inventoryMsg ? `${baseMsg} · ${inventoryMsg}` : baseMsg, 'success');
+            // 재고가 모자라 출고를 건너뛴 품목이 있으면 놓치지 않게 경고 색으로 보여줌
+            const inventorySkipped = inventoryMsg.includes('출고 안 함');
+            showAppToast(inventoryMsg ? `${baseMsg} · ${inventoryMsg}` : baseMsg, inventorySkipped ? 'error' : 'success');
         }
 
         function deleteMaintenanceCompletion(itemId, completionId) {

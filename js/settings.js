@@ -129,7 +129,8 @@
                             action: 'restoreFromBackup',
                             employeeId: currentEmployeeId,
                             passwordHash: currentPasswordHash,
-                            rowIndex: backup.rowIndex
+                            rowIndex: backup.rowIndex,
+                            savedAt: backup.savedAt // 목록을 받은 뒤 행이 밀렸으면 서버가 거부함
                         })
                     });
                     const data = await res.json();

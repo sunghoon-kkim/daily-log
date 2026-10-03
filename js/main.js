@@ -334,6 +334,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 서버(Code.gs)가 "바뀐 항목/달만 보내는 저장(partial)"을 처리할 수 있는 버전인지. 로그인/불러오기 응답의
         // supportsPartialSave로 알게 되며, 구버전 서버면 예전처럼 매번 전체 상태를 보냄
         let serverSupportsPartialSave = false;
+        // 서버가 "저장 버전만 확인"(action=getVersion)을 처리할 수 있는지. 로그인/불러오기 응답의 supportsVersionCheck로 채움.
+        // 이 표시가 없는 예전 서버에는 이 요청을 보내지 않음(예전 서버는 모르는 action을 저장 요청으로 처리하기 때문)
+        let serverSupportsVersionCheck = false;
 
         // 로그인 성공(자동 로그인 또는 직접 로그인) 후에만 호출됨. 로그인되기 전까지는
         // 이 함수가 아예 실행되지 않으므로, 화면에는 로그인 모달 외에 아무 데이터도 그려지지 않음
@@ -450,6 +453,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             // 홈페이지에 접속하면 항상 로그아웃 상태로 시작: 로그인 모달만 띄워두고 홈페이지
             // 내용은 그리지 않음 (로그인/회원가입 성공 시 그 안에서 initAppUI/loadAllFromServer로 이어짐)
             resetToLoggedOutState();
+            tryRememberedLogin();
         }
         
         // ===== 저장/로드 (로컬 캐시) =====
@@ -1029,6 +1033,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     }
                     serverBaseUpdatedAt = data.serverUpdatedAt || null;
                     serverSupportsPartialSave = data.supportsPartialSave === true;
+                    serverSupportsVersionCheck = data.supportsVersionCheck === true;
 
                     cacheAllToLocalStorage();
 
@@ -1382,6 +1387,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (conflictResolveInProgress || Date.now() - lastServerCheckAt < 30000) return;
             lastServerCheckAt = Date.now();
             try {
+                // 저장 버전만 먼저 가볍게 확인하고, 다를 때만 전체 데이터를 받음(예전엔 탭 복귀마다 전체를 받았음)
+                if (serverSupportsVersionCheck) {
+                    const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        // partial/recordsMonths: 혹시 예전 서버로 되돌려진 경우에도 아무것도 바꾸지 않는 저장으로만 처리되게 함
+                        body: JSON.stringify({ action: 'getVersion', employeeId: currentEmployeeId, passwordHash: currentPasswordHash, partial: true, recordsMonths: [] })
+                    });
+                    if (!res.ok) return;
+                    const ver = await res.json();
+                    if (!ver || ver.status !== 'success' || !ver.serverUpdatedAt) return;
+                    if (Number(ver.serverUpdatedAt) === Number(serverBaseUpdatedAt)) return;
+                }
                 const data = await fetchLoadDataWithRetry();
                 if (!data || data.status === 'error' || !data.serverUpdatedAt) return;
                 if (Number(data.serverUpdatedAt) === Number(serverBaseUpdatedAt)) return;
@@ -1459,6 +1476,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 저장 요청이 겹쳐 나가면(자동저장 + 저장 버튼 등) 두 번째 요청이 첫 번째가 올린 버전과 "충돌"로
         // 잘못 판정될 수 있으므로, 저장은 항상 한 번에 하나씩 순서대로 보냄
         let syncQueueTail = Promise.resolve();
+        // 다른 사람들의 저장이 몰려 잠금 대기(30초)를 몇 번 넘겨 끝내 저장하지 못했을 때, 위쪽 상태 표시만으로는
+        // 놓치기 쉬워서 창으로 알리고 다시 저장할지 물어봄. 바뀐 내용은 이 기기 보관함에 남아 있어 사라지지 않음
+        // (확인 창이 이미 떠 있으면 그 창의 동작을 덮어쓰지 않도록 이번엔 묻지 않음 - 위쪽 상태 표시에는 남아 있음)
+        function promptRetryAfterLockTimeout() {
+            if (document.getElementById('confirmActionModal').classList.contains('active')) return;
+            confirmModal('다른 저장 요청이 몰려 저장 잠금 시간이 초과되어 저장하지 못했습니다.\n다시 저장하시겠습니까?', () => {
+                syncToServer();
+            }, { confirmLabel: '다시 저장' });
+        }
+
         function syncToServer() {
             const run = syncQueueTail.then(() => syncToServerOnce());
             syncQueueTail = run.catch(() => {});
@@ -1497,6 +1524,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         }
                         console.error('서버가 저장을 거부함:', resultData.message);
                         showSyncStatus('⚠️ ' + (resultData.message || '저장 거부됨'), 'error');
+                        if (isLockTimeout) promptRetryAfterLockTimeout();
                         if (resultData.tooLarge) showAppToast('⚠️ ' + resultData.message, 'error');
                         return false;
                     }
@@ -2074,6 +2102,87 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
+        // 로그인 성공 후 공통 처리(직접 로그인/로그인 유지 자동 로그인 둘 다 씀)
+        async function finishLoginSuccess(employeeId, passwordHash, result) {
+            currentEmployeeId = employeeId;
+            currentPasswordHash = passwordHash;
+            editUnlocked = true;
+            isAdmin = !!result.isAdmin; // 서버(action=login)가 판별해서 내려준 값. 프론트는 더 이상 사번으로 직접 판단하지 않음
+
+            closeLoginModal();
+            applyEditLockUI();
+
+            if (isAdmin) {
+                enterAdminMode();
+            } else {
+                // 로그인에 성공한 지금에서야 처음으로 홈페이지 내용을 그림(아직 안 그려졌다면).
+                // 로그인 전에 화면/캐시에 있던 데이터는 이 계정 것이 아닐 수 있으므로,
+                // 방금 로그인 확인(action=login)에서 이미 받아온 이 계정의 데이터로 덮어씀
+                // (여기서 서버를 또 호출하면 느린 GAS 왕복을 로그인마다 불필요하게 두 번 하게 됨)
+                await initAppUI();
+                await loadAllFromServer(result);
+                await restorePendingOutboxAfterLogin(result); // 지난번에 서버에 못 올린 변경분이 있으면 되살림
+            }
+        }
+
+        // ===== 이 기기에서 로그인 유지 (선택, 기본 꺼짐) =====
+        // 매번 사번·비밀번호를 입력하는 대신, 체크한 기기에서만 REMEMBER_LOGIN_DAYS일 동안 자동으로 로그인함.
+        // 저장하는 건 평문 비밀번호가 아니라 서버에 보내는 해시이고, 로그아웃하거나 기간이 지나거나
+        // 비밀번호가 바뀌어 자동 로그인이 한 번이라도 실패하면 바로 지움. 공용 PC에서는 체크하지 말 것
+        const REMEMBER_LOGIN_KEY = 'rememberedLogin';
+        const REMEMBER_LOGIN_DAYS = 7;
+
+        function saveRememberedLogin(employeeId, passwordHash) {
+            safeSetItem(REMEMBER_LOGIN_KEY, JSON.stringify({ employeeId, passwordHash, expiresAt: Date.now() + REMEMBER_LOGIN_DAYS * 24 * 60 * 60 * 1000 }));
+        }
+
+        function clearRememberedLogin() {
+            try { localStorage.removeItem(REMEMBER_LOGIN_KEY); } catch (e) { /* 무시 */ }
+        }
+
+        function readRememberedLogin() {
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem(REMEMBER_LOGIN_KEY) || 'null'); } catch (e) { saved = null; }
+            if (!saved || !/^\d{7}$/.test(saved.employeeId || '') || !saved.passwordHash || !(saved.expiresAt > Date.now())) {
+                if (saved) clearRememberedLogin();
+                return null;
+            }
+            return saved;
+        }
+
+        // 페이지를 열 때 로그인 유지가 저장돼 있으면 로그인 창을 띄운 채로 자동 로그인을 시도함
+        async function tryRememberedLogin() {
+            const saved = readRememberedLogin();
+            if (!saved) return;
+            const btn = document.getElementById('loginSubmitBtn');
+            const infoEl = document.getElementById('loginInfoMsg');
+            const errEl = document.getElementById('loginErrorMsg');
+            document.getElementById('loginEmployeeIdInput').value = saved.employeeId;
+            document.getElementById('loginRememberCheckbox').checked = true;
+            infoEl.textContent = '🔄 로그인 유지 중인 계정으로 자동 로그인하는 중...';
+            infoEl.style.display = 'block';
+            btn.disabled = true;
+            try {
+                const result = await fetchAuthAction('login', saved.employeeId, saved.passwordHash);
+                if (result && result.status !== 'error' && !result.isAdmin) {
+                    saveRememberedLogin(saved.employeeId, saved.passwordHash); // 쓸 때마다 기간을 다시 7일로
+                    await finishLoginSuccess(saved.employeeId, saved.passwordHash, result);
+                    return;
+                }
+                clearRememberedLogin();
+                infoEl.style.display = 'none';
+                errEl.textContent = (result && result.message ? result.message + '\n' : '') + '자동 로그인을 해제했습니다. 다시 로그인해주세요.';
+                errEl.style.display = 'block';
+            } catch (e) {
+                // 네트워크 문제일 수 있으니 저장된 로그인은 남겨두고, 직접 로그인할 수 있게만 함
+                infoEl.style.display = 'none';
+                errEl.textContent = '서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
+                errEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
         function resetToLoggedOutState() {
             editUnlocked = false;
             currentEmployeeId = '';
@@ -2200,25 +2309,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const result = await fetchAuthAction('login', employeeId, passwordHash);
 
                 if (!(result && result.status === 'error')) {
-                    currentEmployeeId = employeeId;
-                    currentPasswordHash = passwordHash;
-                    editUnlocked = true;
-                    isAdmin = !!result.isAdmin; // 서버(action=login)가 판별해서 내려준 값. 프론트는 더 이상 사번으로 직접 판단하지 않음
-
-                    closeLoginModal();
-                    applyEditLockUI();
-
-                    if (isAdmin) {
-                        enterAdminMode();
-                    } else {
-                        // 로그인에 성공한 지금에서야 처음으로 홈페이지 내용을 그림(아직 안 그려졌다면).
-                        // 로그인 전에 화면/캐시에 있던 데이터는 이 계정 것이 아닐 수 있으므로,
-                        // 방금 로그인 확인(action=login)에서 이미 받아온 이 계정의 데이터로 덮어씀
-                        // (여기서 서버를 또 호출하면 느린 GAS 왕복을 로그인마다 불필요하게 두 번 하게 됨)
-                        await initAppUI();
-                        await loadAllFromServer(result);
-                        await restorePendingOutboxAfterLogin(result); // 지난번에 서버에 못 올린 변경분이 있으면 되살림
-                    }
+                    // 관리자 계정은 공용 PC에서 쓰일 수 있어 로그인 유지를 저장하지 않음
+                    if (document.getElementById('loginRememberCheckbox').checked && !result.isAdmin) saveRememberedLogin(employeeId, passwordHash);
+                    else clearRememberedLogin();
+                    await finishLoginSuccess(employeeId, passwordHash, result);
                 } else if (result.mustChangePassword) {
                     const infoEl = document.getElementById('loginInfoMsg');
                     infoEl.textContent = result.message || '임시 비밀번호로 로그인했습니다. 새 비밀번호를 설정해주세요.';
@@ -2496,6 +2590,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         return;
                     }
                     currentPasswordHash = newPasswordHash;
+                    if (readRememberedLogin()) saveRememberedLogin(currentEmployeeId, newPasswordHash); // 로그인 유지 중이면 새 비밀번호로 갱신
                 }
 
                 currentUserName = newName;
@@ -2540,6 +2635,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             confirmModal('로그아웃할까요? 다시 사번과 비밀번호를 입력해야 합니다.' + pendingNotice, () => {
                 localStorage.removeItem('employeeId');
                 localStorage.removeItem('passwordHash');
+                clearRememberedLogin();
                 ACCOUNT_SCOPED_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
                 // 다음 사람(또는 다음 로그인)에게 이전 계정 데이터가 남아있지 않도록 전체를 새로고침함
                 location.reload();

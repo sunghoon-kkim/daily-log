@@ -31,6 +31,7 @@ const BACKUP_SHEET_NAME = "AppData_백업";   // 저장 직전 상태를 자동 
 const BACKUP_WINDOW_SECONDS = 3600;
 const BACKUP_MAX_PER_USER = 30;
 const BACKUP_MAX_TOTAL_ROWS = 3000;
+const LAST_LOGIN_REFRESH_MS = 12 * 60 * 60 * 1000; // 마지막 로그인 시각은 이 간격이 지났을 때만 다시 씀
 const GEMINI_MODEL = "gemini-3.6-flash";    // 안정적인 기본 Flash 모델 (gemini-2.5-flash는 신규 사용자에게 더 이상 제공되지 않아 변경함)
 
 // 사번은 현재 회사 기준 숫자 7자리. 프론트엔드(index.html)의 EMPLOYEE_ID_PATTERN과 동일하게 유지할 것
@@ -72,7 +73,7 @@ const SERVER_MANAGED_PROFILE_KEYS = [
   "failedLoginCount", "lockedAt", "passwordResetRequestedAt", "mustChangePassword"
 ];
 // 로그인/불러오기 응답에만 실어 보내는 표시용 필드. 클라이언트가 되돌려 보내도 저장하지 않음
-const RESPONSE_ONLY_PROFILE_KEYS = ["isAdmin", "largeFieldKeys", "supportsPartialSave", "supportsPostAuth"];
+const RESPONSE_ONLY_PROFILE_KEYS = ["isAdmin", "largeFieldKeys", "supportsPartialSave", "supportsPostAuth", "supportsVersionCheck"];
 
 // 이 기간(일) 넘게 로그인하지 않은 계정은 autoDisableInactiveAccounts()가 자동으로 비활성화함.
 // (관리자 계정, 이미 비활성화/휴지통/승인대기 상태인 계정은 대상에서 제외)
@@ -207,6 +208,55 @@ function readRecordsRows(sheet) {
   return sheet.getRange(2, 1, lastRow - 1, 3).getValues();
 }
 
+// 사번별 데이터 시트(Records/ProfileLargeFields)에서 이 사번 것만 읽음. 예전에는 시트 전체(모든 사람의
+// 모든 달 JSON)를 읽은 뒤 골라내서, 사람과 기록이 늘수록 로그인·저장이 모두 함께 느려졌음.
+// 1) A:B(사번, 키)만 전체를 읽어 이 사번 행들의 위치를 찾고 2) 그 첫 행~마지막 행 구간만 C까지 읽음.
+// 돌려주는 배열은 시트 전체 행 수와 같은 길이라(다른 사람 행은 C가 null) 기존 "i + 2 = 행 번호" 계산을
+// 쓰는 코드(색인/저장 계획)가 그대로 동작함. 두 번 읽는 사이 행이 밀렸으면(정렬·삭제) 구간의 A:B가
+// 처음 읽은 것과 달라지므로, 그때는 예전처럼 전체를 다시 읽어 남의 행을 내 것으로 잘못 읽지 않게 함.
+// ownerScattered: 이 사번 행이 다른 사람 행 사이에 흩어져 있음(저장 때 시트를 정렬해 모아두는 기준)
+function readOwnerRowsSparse(sheet, employeeId) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    const empty = [];
+    empty.ownerScattered = false;
+    return empty;
+  }
+  const keys = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  let first = -1, last = -1, count = 0;
+  for (let i = 0; i < keys.length; i++) {
+    if (String(keys[i][0]).trim() !== employeeId) continue;
+    if (first === -1) first = i;
+    last = i;
+    count++;
+  }
+  const rows = keys.map(function(k) { return [k[0], k[1], null]; });
+  rows.ownerScattered = count > 0 && (last - first + 1) > count;
+  if (count === 0) return rows;
+
+  const block = sheet.getRange(first + 2, 1, last - first + 1, 3).getValues();
+  for (let j = 0; j < block.length; j++) {
+    const k = keys[first + j];
+    if (String(block[j][0]) !== String(k[0]) || String(block[j][1]) !== String(k[1])) {
+      const fullLastRow = sheet.getLastRow();
+      const full = fullLastRow < 2 ? [] : sheet.getRange(2, 1, fullLastRow - 1, 3).getValues();
+      full.ownerScattered = true;
+      return full;
+    }
+    if (String(k[0]).trim() === employeeId) rows[first + j][2] = block[j][2];
+  }
+  return rows;
+}
+
+// 같은 사번의 행이 한데 모이도록 시트를 (사번, 키) 순으로 정렬함. 그래야 readOwnerRowsSparse가 읽는
+// 구간이 그 사람 행만큼으로 줄어듦. 행 번호를 기억해 두었다가 쓰는 요청(저장/되돌리기/관리자 기능)은
+// 모두 스크립트 잠금 안에서 읽고 쓰므로, 이 함수도 반드시 잠금 안에서만 부를 것
+function sortOwnerDataSheet(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 3) return;
+  sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort([{ column: 1, ascending: true }, { column: 2, ascending: true }]);
+}
+
 // 이미 읽어둔 rows에서 "사번|연월" -> 행번호 색인을 만듦 (매번 시트를 다시 훑지 않기 위함)
 function buildRecordsIndexFromRows(rows) {
   const index = {};
@@ -240,7 +290,7 @@ function mergeRecordsFromRows(rows, employeeId) {
 // 이 사번의 모든 월별 기록을 합쳐서 하나의 records 객체로 돌려줌
 function loadAllRecordsForUser(employeeId) {
   const sheet = getRecordsSheet();
-  return mergeRecordsFromRows(readRecordsRows(sheet), employeeId);
+  return mergeRecordsFromRows(readOwnerRowsSparse(sheet, employeeId), employeeId);
 }
 
 // 아직 마이그레이션 전이라 Users 시트 프로필 JSON 안에 records가 남아있는 계정을 위한 보정.
@@ -347,6 +397,7 @@ function prepareRecordsSave(employeeId, recordsObj, precomputedRows, onlyMonths)
   }
 
   return {
+    appendCount: appends.length,
     apply: function() {
       const now = new Date().toLocaleString('ko-KR');
       updates.forEach(function(u) { sheet.getRange(u.row, 3, 1, 2).setValues([[u.json, now]]); });
@@ -433,7 +484,7 @@ function buildLargeFieldsIndexFromRows(rows) {
 // 구분하기 위함). 호출부(handleLogin/handleLoad)는 여기 없는 키에 한해서만 프로필 JSON에
 // 남아있던 예전 값을 그대로 씀
 function loadLargeFieldsForUser(employeeId, precomputedRows) {
-  const rows = precomputedRows || readLargeFieldsRows(getLargeFieldsSheet());
+  const rows = precomputedRows || readOwnerRowsSparse(getLargeFieldsSheet(), employeeId);
   const result = {};
   const chunkParts = {}; // { fieldName: { 1: "...", 2: "..." } } - 셀 한도 때문에 나눠 저장된 조각
   const mainValues = {};
@@ -536,6 +587,7 @@ function prepareLargeFieldsSave(employeeId, data, precomputedRows) {
   });
 
   return {
+    appendCount: appends.length,
     apply: function() {
       const now = new Date().toLocaleString('ko-KR');
       updates.forEach(function(u) { sheet.getRange(u.row, 3, 1, 2).setValues([[u.value, now]]); });
@@ -1045,6 +1097,7 @@ function filterTeamReportTargetsByRole(candidates, myRole) {
 // 성공 시에는 handleLoad와 동일하게 프로필+records를 함께 반환해서, 로그인 확인과 데이터
 // 조회를 위해 GAS를 두 번 왕복하지 않고 한 번만 왕복하도록 함(느린 GAS 응답 특성상 중요함)
 function handleLogin(employeeId, passwordHash) {
+  const timing = startTiming();
   if (!employeeId) {
     return jsonResponse({ status: "error", message: "사번을 입력해주세요." });
   }
@@ -1122,11 +1175,20 @@ function handleLogin(employeeId, passwordHash) {
   // 자동 로그인 없이 매번 직접 로그인해야 하므로(resetToLoggedOutState 참고), 이 시각이 곧
   // "이 계정을 마지막으로 실제 사용한 시각"과 거의 같음 - autoDisableInactiveAccounts()가 이 값으로
   // 장기 미접속 계정을 판단함
-  parsedData.lastLoginAt = new Date().toISOString();
-  sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
+  // 매번 쓰면 로그인마다 프로필 셀 전체를 다시 저장하게 되므로, 12시간 넘게 지났을 때만 갱신함
+  // (자동 비활성화 기준이 며칠 단위라 이 정도 오차는 영향 없음)
+  const lastLoginMs = parsedData.lastLoginAt ? new Date(parsedData.lastLoginAt).getTime() : 0;
+  if (!lastLoginMs || isNaN(lastLoginMs) || Date.now() - lastLoginMs > LAST_LOGIN_REFRESH_MS) {
+    parsedData.lastLoginAt = new Date().toISOString();
+    sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
+  }
+  markTiming(timing, "auth");
 
   parsedData.records = loadMergedRecords(employeeId, parsedData);
+  markTiming(timing, "records");
   applyLargeFieldsToProfile(employeeId, parsedData);
+  markTiming(timing, "largeFields");
+  logTiming("login", timing);
   // 프론트는 이 목록에 recordRevisions가 있을 때만 수정 이력을 서버로 보냄(구버전 서버의 프로필 셀 5만자 한도 보호)
   parsedData.largeFieldKeys = LARGE_FIELD_KEYS;
   // 이 서버가 변경분만 받는 저장(partial)을 처리할 수 있다는 표시. 프론트는 이 값이 있을 때만 변경분 저장을 씀
@@ -1138,10 +1200,35 @@ function handleLogin(employeeId, passwordHash) {
   // 이 서버는 로그인/불러오기를 POST로도 받음. 프론트는 이 값을 본 뒤부터 비밀번호 해시가 주소(URL)에
   // 실리지 않도록 POST를 씀(예전 서버에 POST 로그인을 보내면 저장 요청으로 처리되므로 이 표시가 있어야만 씀)
   parsedData.supportsPostAuth = true;
+  parsedData.supportsVersionCheck = true; // 프론트는 이 값을 본 뒤부터 탭 복귀 때 저장 버전만 먼저 확인함(handleGetVersion)
 
   return ContentService
     .createTextOutput(JSON.stringify(parsedData))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// 다른 탭/앱에서 돌아왔을 때 "그 사이 다른 기기가 저장했는지"만 확인하는 가벼운 요청. 예전에는 이걸 위해
+// 전체 데이터(load)를 매번 받았음. 저장 버전이 다를 때만 프론트가 load로 전체를 받아감
+function handleGetVersion(employeeId, passwordHash) {
+  if (!employeeId || !passwordHash) {
+    return jsonResponse({ status: "error", message: "로그인 정보가 없습니다." });
+  }
+  const sheet = getUsersSheet();
+  const row = findUserRow(sheet, employeeId);
+  if (row === -1) {
+    return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다." });
+  }
+  const rowValues = sheet.getRange(row, 2, 1, 2).getValues()[0];
+  const passwordError = checkPasswordHash(employeeId, rowValues[0], passwordHash);
+  if (passwordError) {
+    return jsonResponse({ status: "error", message: passwordError });
+  }
+  const profile = parseUserJson(rowValues[1]);
+  const denialMessage = getAccountAccessDenialMessage(profile);
+  if (denialMessage) {
+    return jsonResponse({ status: "error", message: denialMessage });
+  }
+  return jsonResponse({ status: "success", serverUpdatedAt: profile.serverUpdatedAt || null });
 }
 
 function handleLoad(employeeId, passwordHash) {
@@ -1179,6 +1266,7 @@ function handleLoad(employeeId, passwordHash) {
   // handleLogin과 동일한 이유로, 프론트가 화면 표시에만 쓸 수 있도록 관리자 여부를 함께 내려줌
   parsedData.isAdmin = (employeeId === ADMIN_EMPLOYEE_ID);
   parsedData.supportsPostAuth = true; // handleLogin 참고
+  parsedData.supportsVersionCheck = true; // handleLogin 참고
 
   return ContentService
     .createTextOutput(JSON.stringify(parsedData))
@@ -1194,6 +1282,7 @@ function doPost(e) {
     // GET으로 받으면 비밀번호 해시가 주소에 실려 기록에 남을 수 있어서 POST로도 받음(doGet도 예전 화면용으로 유지)
     if (data.action === "login") return handleLogin(normalizeEmployeeId(data.employeeId), data.passwordHash || "");
     if (data.action === "load") return handleLoad(normalizeEmployeeId(data.employeeId), data.passwordHash || "");
+    if (data.action === "getVersion") return handleGetVersion(normalizeEmployeeId(data.employeeId), data.passwordHash || "");
 
     // AI 요청은 호출자 본인의 API 키를 쓰지만, 로그인 확인이 없으면 누구나 이 웹앱을 Gemini 중계용으로
     // 써서 스크립트의 외부 호출(UrlFetch) 하루 할당량을 바닥낼 수 있으므로 로그인한 계정만 허용함
@@ -1412,25 +1501,37 @@ function handleAdminChangeEmployeeId(data) {
     return jsonResponse({ status: "error", message: "관리자 계정 자신의 사번은 변경할 수 없습니다." });
   }
 
-  const sheet = getUsersSheet();
-  const row = findUserRow(sheet, oldEmployeeId);
-  if (row === -1) {
-    return jsonResponse({ status: "error", message: "존재하지 않는 사번입니다." });
+  // 기록/대용량 필드 시트는 저장할 때 사번 순으로 정렬될 수 있어서(sortOwnerDataSheet), 행 위치를 읽고
+  // 쓰는 이 작업도 저장과 같은 잠금 안에서 해야 정렬과 겹쳐 엉뚱한 행의 사번을 바꾸지 않음
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return jsonResponse({ status: "error", message: "다른 저장 요청이 진행 중이라 처리하지 못했습니다. 잠시 후 다시 시도해주세요." });
   }
-
-  if (newEmployeeId !== oldEmployeeId) {
-    const dupRow = findUserRow(sheet, newEmployeeId);
-    if (dupRow !== -1) {
-      return jsonResponse({ status: "error", message: "이미 존재하는 사번이라 변경할 수 없습니다." });
+  try {
+    const sheet = getUsersSheet();
+    const row = findUserRow(sheet, oldEmployeeId);
+    if (row === -1) {
+      return jsonResponse({ status: "error", message: "존재하지 않는 사번입니다." });
     }
-  }
 
-  lockEmployeeIdCellAsText(sheet, row, 1);
-  sheet.getRange(row, 1).setValue(newEmployeeId);
-  renameRecordsOwner(oldEmployeeId, newEmployeeId);
-  renameLargeFieldsOwner(oldEmployeeId, newEmployeeId);
-  renameTeamReportsOwner(oldEmployeeId, newEmployeeId);
-  renameTeamWeeklyReportsOwner(oldEmployeeId, newEmployeeId);
+    if (newEmployeeId !== oldEmployeeId) {
+      const dupRow = findUserRow(sheet, newEmployeeId);
+      if (dupRow !== -1) {
+        return jsonResponse({ status: "error", message: "이미 존재하는 사번이라 변경할 수 없습니다." });
+      }
+    }
+
+    lockEmployeeIdCellAsText(sheet, row, 1);
+    sheet.getRange(row, 1).setValue(newEmployeeId);
+    renameRecordsOwner(oldEmployeeId, newEmployeeId);
+    renameLargeFieldsOwner(oldEmployeeId, newEmployeeId);
+    renameTeamReportsOwner(oldEmployeeId, newEmployeeId);
+    renameTeamWeeklyReportsOwner(oldEmployeeId, newEmployeeId);
+  } finally {
+    lock.releaseLock();
+  }
 
   // 사람이 보기 편한 읽기용 시트도 새 사번 이름으로 맞춰줌 (있을 때만)
   try {
@@ -1989,6 +2090,7 @@ function handleAdminUpdateUserInfo(data) {
 }
 
 function handleSaveState(data, rawBody) {
+  const timing = startTiming();
   const employeeId = normalizeEmployeeId(data.employeeId);
   const passwordHash = data.passwordHash || "";
 
@@ -2005,6 +2107,7 @@ function handleSaveState(data, rawBody) {
   } catch (lockErr) {
     return jsonResponse({ status: "error", message: "다른 저장 요청이 진행 중이라 처리하지 못했습니다. 잠시 후 다시 시도해주세요." });
   }
+  markTiming(timing, "lockWait");
 
   // 저장이 성공하면(락 안에서) 이 값을 채워서, 락을 놓은 뒤에 사람이 보기 편한 시트를 갱신함.
   // updateReadableSheet는 이 계정 전용 시트만 건드리는 파생 데이터라 다른 사람의 저장과
@@ -2058,12 +2161,13 @@ function handleSaveState(data, rawBody) {
     // Records 시트를 이 요청 안에서 딱 한 번만 읽어서, 기존 기록 조회와 아래 저장 시
     // 인덱스 구성 양쪽에 재사용함 (락 구간 안이라 그 사이 다른 요청이 끼어들 수 없어 안전함)
     const recordsSheet = getRecordsSheet();
-    const recordsRows = readRecordsRows(recordsSheet);
+    const recordsRows = readOwnerRowsSparse(recordsSheet, employeeId);
 
     // ProfileLargeFields 시트도 마찬가지로 딱 한 번만 읽어서 백업 스냅샷 조회와 아래 저장 시
     // 인덱스 구성 양쪽에 재사용함
     const largeFieldsSheet = getLargeFieldsSheet();
-    const largeFieldsRows = readLargeFieldsRows(largeFieldsSheet);
+    const largeFieldsRows = readOwnerRowsSparse(largeFieldsSheet, employeeId);
+    markTiming(timing, "read");
 
     // partial=true: 클라이언트가 마지막으로 서버와 맞춘 뒤 바뀐 항목만 보낸 저장(매번 몇 년치 전체를
     // 올리지 않기 위함). 이때 records에는 recordsMonths에 적힌 달의 전체 내용만 들어있고, 안 보낸
@@ -2186,24 +2290,47 @@ function handleSaveState(data, rawBody) {
 
     // 기록/대용량 필드를 먼저 쓰고, 저장 버전(serverUpdatedAt)이 담긴 프로필은 맨 마지막에 씀.
     // 중간에 실패하면 버전이 안 올라가므로 클라이언트가 같은 기준 버전으로 그대로 다시 시도할 수 있음
+    markTiming(timing, "prepareAndBackup");
     if (recordsPlan) recordsPlan.apply();
     largeFieldsPlan.apply();
     sheet.getRange(row, 3, 1, 2).setValues([[jsonToSave, new Date().toLocaleString('ko-KR')]]);
+    // 새 행이 끝에 붙었거나 이 사람 행이 흩어져 있으면 사번별로 모아둠(다음 로그인·저장에서 읽는 양이 줄어듦).
+    // 정렬은 성능용이라 실패해도 저장 결과에는 영향이 없음
+    try {
+      if ((recordsPlan && recordsPlan.appendCount) || recordsRows.ownerScattered) sortOwnerDataSheet(recordsSheet);
+      if (largeFieldsPlan.appendCount || largeFieldsRows.ownerScattered) sortOwnerDataSheet(largeFieldsSheet);
+    } catch (sortErr) {
+      Logger.log("데이터 시트 정렬 실패(저장은 완료됨): " + sortErr);
+    }
+    markTiming(timing, "write");
 
     // 사람이 보기 편한 시트는 기록/카테고리/일정이 바뀐 경우에만 다시 그림(할일·메모만 바뀐 저장까지
     // 매번 시트 전체를 지우고 다시 그리면 저장이 느려짐)
     const touchesReadable = !isPartial || touchesRecords ||
       ['categories', 'archivedCategories', 'events'].some(function(k) { return Object.prototype.hasOwnProperty.call(data, k); });
+    // 다만 입력 중 자동저장마다 몇 년치를 다시 그리면 저장이 그만큼 느려지므로, 사번당 READABLE_REFRESH_MIN_MS에
+    // 한 번만 바로 그리고 그 사이 저장은 "다시 그릴 것" 표시만 남김(시간 트리거가 몇 분 뒤 최신 내용으로 그림)
     if (touchesReadable) {
-      const existingFullProfile = applyLargeFieldsToProfile(employeeId, Object.assign({}, existingProfile), largeFieldsRows);
-      // 활동기록을 이번에 건너뛰었다면(recordsSafetyBlocked) 사람이 보기 편한 시트도 빈 기록이 아니라 기존 기록 그대로 유지
-      readableUpdatePayload = Object.assign({}, existingFullProfile, dataToSave, largeData, { records: recordsSafetyBlocked ? existingRecords : finalRecords });
+      if (isReadableRefreshDue(employeeId)) {
+        const existingFullProfile = applyLargeFieldsToProfile(employeeId, Object.assign({}, existingProfile), largeFieldsRows);
+        // 활동기록을 이번에 건너뛰었다면(recordsSafetyBlocked) 사람이 보기 편한 시트도 빈 기록이 아니라 기존 기록 그대로 유지
+        readableUpdatePayload = Object.assign({}, existingFullProfile, dataToSave, largeData, { records: recordsSafetyBlocked ? existingRecords : finalRecords });
+        setReadablePending(employeeId, false);
+      } else {
+        setReadablePending(employeeId, true);
+        ensureReadableFlushTrigger();
+      }
     }
   } finally {
     lock.releaseLock();
   }
 
-  if (readableUpdatePayload) updateReadableSheetWithRetry(employeeId, readableUpdatePayload);
+  if (readableUpdatePayload) {
+    markReadableRefreshed(employeeId);
+    markTiming(timing, "beforeReadable");
+    updateReadableSheetWithRetry(employeeId, readableUpdatePayload);
+  }
+  logTiming("save", timing);
 
   if (recordsSafetyBlocked) {
     return jsonResponse({
@@ -2276,26 +2403,52 @@ function writeBackupRow(employeeId, profile, records) {
     return;
   }
 
-  backupSheet.insertRowBefore(2);
-  lockEmployeeIdCellAsText(backupSheet, 2, 2);
-  backupSheet.getRange(2, 1, 1, 3).setValues([[new Date().toLocaleString('ko-KR'), employeeId, payloadJson]]);
+  // 예전에는 맨 위(2행)에 행을 끼워 넣어서 백업이 생길 때마다 시트 전체가 한 칸씩 밀렸음(행이 많을수록 느림).
+  // 이제 맨 아래에 붙이고, D열에 정렬용 시각(ms)을 남겨 목록·정리 때 최신순을 이 값으로 판단함
+  if (!backupSheet.getRange(1, 4).getValue()) backupSheet.getRange(1, 4).setValue("정렬키");
+  const newRow = backupSheet.getLastRow() + 1;
+  lockEmployeeIdCellAsText(backupSheet, newRow, 2);
+  backupSheet.getRange(newRow, 1, 1, 4).setValues([[new Date().toLocaleString('ko-KR'), employeeId, payloadJson, Date.now()]]);
   pruneBackupRows(backupSheet, employeeId);
 }
 
+// 백업 행이 최신일수록 큰 값. D열(정렬키)이 있는 행(맨 아래에 붙이기 시작한 뒤의 백업)은 그 시각을,
+// 없는 예전 행(맨 위에 끼워 넣던 시절, 위쪽일수록 최신)은 행 번호를 거꾸로 써서 항상 새 방식 행보다 오래된 것으로 봄
+function backupRecencyKey(sortKeyCell, rowNumber) {
+  const ms = Number(sortKeyCell);
+  return (ms > 0) ? [1, ms] : [0, -rowNumber];
+}
+
+function compareBackupRecency(a, b) {
+  return (a[0] - b[0]) || (a[1] - b[1]);
+}
+
 function pruneBackupRows(backupSheet, employeeId) {
-  let lastRow = backupSheet.getLastRow();
+  const lastRow = backupSheet.getLastRow();
   if (lastRow < 2) return;
+  // 데이터(C열, 큰 JSON)는 읽지 않고 사번(B)과 정렬키(D)만 읽음
   const ids = backupSheet.getRange(2, 2, lastRow - 1, 1).getValues();
-  const rowsToDelete = [];
-  let seen = 0;
-  for (let i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() !== employeeId) continue;
-    seen++;
-    if (seen > BACKUP_MAX_PER_USER) rowsToDelete.push(i + 2);
+  const sortKeys = backupSheet.getRange(2, 4, lastRow - 1, 1).getValues();
+  const all = ids.map(function(r, i) { return { row: i + 2, id: String(r[0]).trim(), key: backupRecencyKey(sortKeys[i][0], i + 2) }; });
+  const toDelete = {};
+
+  // 사번별 최신 BACKUP_MAX_PER_USER개만 남김
+  all.filter(function(x) { return x.id === employeeId; })
+    .sort(function(a, b) { return compareBackupRecency(b.key, a.key); })
+    .slice(BACKUP_MAX_PER_USER)
+    .forEach(function(x) { toDelete[x.row] = true; });
+
+  // 전체 행 한도를 넘으면 가장 오래된 백업부터 지움
+  const remaining = all.filter(function(x) { return !toDelete[x.row]; });
+  if (remaining.length > BACKUP_MAX_TOTAL_ROWS) {
+    remaining.sort(function(a, b) { return compareBackupRecency(a.key, b.key); })
+      .slice(0, remaining.length - BACKUP_MAX_TOTAL_ROWS)
+      .forEach(function(x) { toDelete[x.row] = true; });
   }
-  for (let j = rowsToDelete.length - 1; j >= 0; j--) backupSheet.deleteRow(rowsToDelete[j]);
-  lastRow = backupSheet.getLastRow();
-  if (lastRow > BACKUP_MAX_TOTAL_ROWS + 1) backupSheet.deleteRows(BACKUP_MAX_TOTAL_ROWS + 2, lastRow - BACKUP_MAX_TOTAL_ROWS - 1);
+
+  // 아래 행부터 지워야 위쪽 행 번호가 밀리지 않음
+  Object.keys(toDelete).map(Number).sort(function(a, b) { return b - a; })
+    .forEach(function(row) { backupSheet.deleteRow(row); });
 }
 
 // 이 사번의 자동 백업 목록 조회 (설정 탭 "자동 백업"에서 씀).
@@ -2309,14 +2462,18 @@ function handleGetMyBackups(data) {
   const lastRow = backupSheet ? backupSheet.getLastRow() : 0;
   if (!backupSheet || lastRow < 2) return jsonResponse({ status: "success", backups: [] });
 
-  const values = backupSheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  const lastCol = Math.max(3, Math.min(4, backupSheet.getLastColumn()));
+  const values = backupSheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
   const backups = [];
   values.forEach(function (r, i) {
     if (String(r[1]).trim() !== employeeId) return;
     let dateCount = 0;
     try { dateCount = Object.keys(JSON.parse(r[2] || "{}").records || {}).length; } catch (parseErr) {}
-    backups.push({ rowIndex: i + 2, savedAt: r[0] ? r[0].toString() : "", dateCount: dateCount });
+    backups.push({ rowIndex: i + 2, savedAt: r[0] ? r[0].toString() : "", dateCount: dateCount, _key: backupRecencyKey(r[3], i + 2) });
   });
+  // 최신 백업이 위로 오게 (예전 행은 위쪽일수록, 새 행은 정렬키가 클수록 최신)
+  backups.sort(function(a, b) { return compareBackupRecency(b._key, a._key); });
+  backups.forEach(function(b) { delete b._key; });
 
   return jsonResponse({ status: "success", backups: backups });
 }
@@ -2356,6 +2513,11 @@ function handleRestoreFromBackup(data) {
     const backupRow = backupSheet.getRange(rowIndex, 1, 1, 3).getValues()[0];
     if (String(backupRow[1]).trim() !== employeeId) {
       return jsonResponse({ status: "error", message: "본인 백업만 되돌릴 수 있습니다." });
+    }
+    // 목록을 받은 뒤 오래된 백업이 정리되면 행 번호가 밀려 같은 사람의 다른 백업을 가리킬 수 있으므로,
+    // 화면에서 본 백업 시각과 지금 그 행의 시각이 같은지도 확인함(예전 화면은 savedAt을 안 보내서 건너뜀)
+    if (data.savedAt && String(backupRow[0] ? backupRow[0].toString() : "") !== String(data.savedAt)) {
+      return jsonResponse({ status: "error", message: "백업 목록이 바뀌었습니다. 목록을 새로고침한 뒤 다시 시도해주세요." });
     }
 
     let backupPayload;
@@ -2831,6 +2993,8 @@ function isGeminiOverloadedError(responseCode, responseData) {
 // 수십 초가 걸릴 수 있음. 일일/주간 요약처럼 단순히 정리만 하면 되는 작업은 options.thinkingLevel="low"로
 // 추론을 줄여 응답을 빠르게 받음. (월별 피드백/목표수립처럼 판단이 필요한 작업은 기본값 유지)
 const GEMINI_FAST_THINKING_LEVEL = "low";
+// 내 기록에게 물어보기의 "질문에서 검색어·기간만 뽑기"처럼 짧은 JSON만 받으면 되는 단계는 추론을 최소로 줄임
+const GEMINI_MINIMAL_THINKING_LEVEL = "minimal";
 
 function callGeminiRawText(apiKey, contents, systemPrompt, callOptions) {
   const payload = {
@@ -2879,8 +3043,16 @@ function callGeminiRawText(apiKey, contents, systemPrompt, callOptions) {
 
     lastErrMsg = (responseData && responseData.error && responseData.error.message) ? responseData.error.message : "";
 
-    // 모델이 바뀌어 추론 수준 설정을 지원하지 않으면(400) 설정을 빼고 곧바로 다시 요청함(재시도 횟수 차감 없음)
+    // 모델이 바뀌어 추론 수준 설정을 지원하지 않으면(400) 곧바로 다시 요청함(재시도 횟수 차감 없음).
+    // "minimal"을 못 받는 모델이면 먼저 "low"로 낮춰 보고, 그래도 안 되면 설정을 아예 뺌
     if (responseCode === 400 && payload.generationConfig) {
+      const thinking = payload.generationConfig.thinkingConfig;
+      if (thinking && thinking.thinkingLevel === GEMINI_MINIMAL_THINKING_LEVEL) {
+        thinking.thinkingLevel = GEMINI_FAST_THINKING_LEVEL;
+        options.payload = JSON.stringify(payload);
+        attempt--;
+        continue;
+      }
       delete payload.generationConfig;
       options.payload = JSON.stringify(payload);
       attempt--;
@@ -3420,7 +3592,7 @@ function handleAskLogPlan(data) {
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
 
   try {
-    const raw = callGeminiRawText(apiKey, contents, buildAskLogPlanSystemPrompt(), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
+    const raw = callGeminiRawText(apiKey, contents, buildAskLogPlanSystemPrompt(), { thinkingLevel: GEMINI_MINIMAL_THINKING_LEVEL });
     const parsed = extractJsonFromAiText(raw) || {};
     const keywords = (Array.isArray(parsed.keywords) ? parsed.keywords : [])
       .map(k => String(k || "").trim())
@@ -3540,6 +3712,109 @@ function handleGaugeRead(data) {
 // updateReadableSheet는 항상 저장 락을 놓은 뒤(Users/Records 저장이 이미 끝난 뒤)에 호출되는
 // 파생 데이터 갱신이라, 여기서 실패해도 호출한 쪽의 응답은 항상 성공으로 처리함. 다만 일시적인
 // 오류(쿼터/네트워크 순단 등)일 수 있으니 몇 번 재시도하고, 그래도 안 되면 실행 로그에 남겨둠
+// ===== 사람이 보기 편한 시트 다시 그리기 간격 조절 =====
+const READABLE_REFRESH_MIN_MS = 10 * 60 * 1000;
+const READABLE_PENDING_PROPERTY = "readablePendingIds"; // {사번: 표시한 시각} - 아직 최신 내용으로 다시 그리지 않은 사번
+const READABLE_FLUSH_HANDLER = "flushPendingReadableSheets";
+
+function isReadableRefreshDue(employeeId) {
+  const last = Number(CacheService.getScriptCache().get("readableAt:" + employeeId) || 0);
+  return Date.now() - last >= READABLE_REFRESH_MIN_MS;
+}
+
+function markReadableRefreshed(employeeId) {
+  try { CacheService.getScriptCache().put("readableAt:" + employeeId, String(Date.now()), Math.ceil(READABLE_REFRESH_MIN_MS / 1000)); } catch (cacheErr) {}
+}
+
+function readReadablePending() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(READABLE_PENDING_PROPERTY) || "{}") || {}; } catch (parseErr) { return {}; }
+}
+
+// 스크립트 잠금 안에서 부를 것(여러 저장이 동시에 이 목록을 고쳐 서로 덮어쓰지 않게)
+function setReadablePending(employeeId, pending) {
+  try {
+    const map = readReadablePending();
+    if (pending && map[employeeId]) return; // 이미 표시돼 있으면 다시 쓰지 않음(자동저장마다 쓰지 않게)
+    if (pending) map[employeeId] = Date.now();
+    else if (map[employeeId]) delete map[employeeId];
+    else return;
+    PropertiesService.getScriptProperties().setProperty(READABLE_PENDING_PROPERTY, JSON.stringify(map));
+  } catch (propErr) {
+    Logger.log("읽기용 시트 대기 표시 실패: " + propErr);
+  }
+}
+
+// 대기 중인 읽기용 시트를 처리하는 10분 간격 트리거가 없으면 만듦(6시간에 한 번만 확인). 잠금 안에서 부를 것.
+// Apps Script 편집기에서 setupReadableSheetTrigger()를 직접 실행해 둬도 같은 트리거가 만들어짐
+function ensureReadableFlushTrigger() {
+  const cache = CacheService.getScriptCache();
+  if (cache.get("readableTriggerChecked")) return;
+  try {
+    const exists = ScriptApp.getProjectTriggers().some(function(t) { return t.getHandlerFunction() === READABLE_FLUSH_HANDLER; });
+    if (!exists) ScriptApp.newTrigger(READABLE_FLUSH_HANDLER).timeBased().everyMinutes(10).create();
+    cache.put("readableTriggerChecked", "1", 6 * 60 * 60);
+  } catch (triggerErr) {
+    Logger.log("읽기용 시트 트리거 확인 실패: " + triggerErr);
+  }
+}
+
+function setupReadableSheetTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === READABLE_FLUSH_HANDLER) ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger(READABLE_FLUSH_HANDLER).timeBased().everyMinutes(10).create();
+}
+
+// 시간 트리거: "다시 그릴 것" 표시가 남은 사번의 읽기용 시트를 지금 서버에 있는 최신 내용으로 그림
+function flushPendingReadableSheets() {
+  const lock = LockService.getScriptLock();
+  let ids = [];
+  try {
+    lock.waitLock(30000);
+    ids = Object.keys(readReadablePending());
+    if (ids.length) PropertiesService.getScriptProperties().deleteProperty(READABLE_PENDING_PROPERTY);
+  } catch (lockErr) {
+    Logger.log("읽기용 시트 일괄 갱신: 잠금 실패, 다음에 다시 시도: " + lockErr);
+    return;
+  } finally {
+    lock.releaseLock();
+  }
+  if (ids.length === 0) return;
+
+  const usersSheet = getUsersSheet();
+  ids.forEach(function(employeeId) {
+    try {
+      const row = findUserRow(usersSheet, employeeId);
+      if (row === -1) return;
+      const profile = parseUserJson(usersSheet.getRange(row, 3).getValue());
+      profile.records = loadMergedRecords(employeeId, profile);
+      applyLargeFieldsToProfile(employeeId, profile);
+      markReadableRefreshed(employeeId);
+      updateReadableSheetWithRetry(employeeId, profile);
+    } catch (flushErr) {
+      Logger.log("읽기용 시트 일괄 갱신 실패 (" + employeeId + "): " + flushErr);
+    }
+  });
+}
+
+// 단계별 소요 시간을 앱스 스크립트 "실행" 기록에 남김(속도 문제를 찾을 때 확인용). 사번 등 개인정보는 남기지 않음
+function logTiming(label, timing) {
+  try {
+    const parts = [];
+    let prev = timing.start;
+    timing.marks.forEach(function(m) { parts.push(m.name + "=" + (m.at - prev) + "ms"); prev = m.at; });
+    console.log("[" + label + "] " + parts.join(" ") + " total=" + (prev - timing.start) + "ms");
+  } catch (logErr) {}
+}
+
+function startTiming() {
+  return { start: Date.now(), marks: [] };
+}
+
+function markTiming(timing, name) {
+  timing.marks.push({ name: name, at: Date.now() });
+}
+
 function updateReadableSheetWithRetry(employeeId, data) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {

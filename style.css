@@ -6391,3 +6391,13 @@ body {
 .dark-mode .inv-log-qty-input:focus { background: var(--d-bg3); border-color: #8b9cf0; }
 .dark-mode .inv-plan-line.is-short .inv-plan-when { color: #f0b0a0; }
 .dark-mode .inv-plan-warn { background: #3a1f1f; color: #ff9b8f; }
+
+/* 로그인 창: 이 기기에서 로그인 유지 */
+.search-scope-label.login-remember-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -4px 0 12px;
+    font-size: 13px;
+    white-space: normal;
+}
