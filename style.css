@@ -5898,3 +5898,258 @@ body {
 /* 정비계획: 예전 월 단위 차기 점검 값 안내 */
 .maint-legacy-hint { margin-top: 6px; font-size: 12px; line-height: 1.5; color: #b26a00; }
 .dark-mode .maint-legacy-hint { color: #f0b860; }
+
+/* ===== 재고 관리 =====
+   카드·배지·모달은 기존(개선과제/정비계획) 모양을 그대로 쓰고, 재고만의 요소는 수위계처럼 읽히는
+   게이지 하나로 둠: 채움 = 현재 재고, 세로 눈금 = 최소 재고. 색은 상태(정상/임박/부족/없음)를 뜻함 */
+.inv-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.inv-summary:empty { display: none; }
+.inv-summary-item {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: #f1f3f8;
+}
+.inv-summary-item.inv-tone-low { background: #ffe0e0; color: #c0392b; }
+.inv-summary-item.inv-tone-soon { background: #fff3cd; color: #9a6f00; }
+
+.inv-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+}
+.inv-list > .no-projects { grid-column: 1 / -1; }
+
+.project-card.inv-card {
+    cursor: default;
+    margin-bottom: 0;
+    border-left-color: #4a8fb8;
+}
+.project-card.inv-card:hover { transform: none; }
+.project-card.inv-card.inv-level-soon { border-left-color: #d4a017; }
+.project-card.inv-card.inv-level-low { border-left-color: #e67e22; }
+.project-card.inv-card.inv-level-out { border-left-color: #e74c3c; background: #fff5f5; }
+
+.inv-card-title {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 700;
+    font-size: 15px;
+    color: #333;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+}
+.inv-card-title:hover,
+.inv-card-title:focus-visible { text-decoration-color: currentColor; }
+
+.project-badge.inv-badge-soon { background: #fff3cd; color: #9a6f00; }
+.project-badge.inv-badge-low { background: #ffe8cc; color: #b8621b; }
+.project-badge.inv-badge-out { background: #ffe0e0; color: #c0392b; }
+
+.inv-qty-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 6px;
+}
+.inv-qty-now {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.1;
+    color: #2b3a4a;
+    font-variant-numeric: tabular-nums;
+}
+.inv-qty-unit {
+    font-size: 14px;
+    font-weight: 600;
+    margin-left: 3px;
+    color: #667;
+}
+.inv-qty-min {
+    font-size: 12px;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+}
+
+.inv-gauge {
+    position: relative;
+    height: 12px;
+    margin: 8px 0 6px;
+    border-radius: 6px;
+    background: #e8edf3;
+    box-shadow: inset 0 1px 2px rgba(30, 50, 80, 0.12);
+    overflow: hidden;
+}
+.inv-gauge-fill {
+    height: 100%;
+    border-radius: 6px 0 0 6px;
+    background: #4a8fb8;
+    transition: width 0.3s ease;
+}
+.inv-level-soon .inv-gauge-fill { background: #d4a017; }
+.inv-level-low .inv-gauge-fill { background: #e67e22; }
+.inv-level-out .inv-gauge-fill { background: #e74c3c; }
+.inv-gauge-min {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: #2b3a4a;
+    opacity: 0.55;
+}
+
+.inv-forecast {
+    font-size: 12.5px;
+    color: #666;
+    line-height: 1.5;
+}
+
+.inv-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+}
+.inv-action-btn {
+    flex: 1;
+    padding: 8px 0;
+    border: 1.5px solid #d6dbe6;
+    border-radius: 8px;
+    background: #fff;
+    color: #3a4a5c;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.inv-action-btn:hover { border-color: #667eea; color: #667eea; }
+.inv-action-btn:focus-visible { outline: 2px solid #667eea; outline-offset: 2px; }
+
+.inv-qty-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.inv-qty-input-wrap input { flex: 1; min-width: 0; }
+.inv-qty-input-unit {
+    font-weight: 600;
+    color: #666;
+    white-space: nowrap;
+}
+.inv-log-hint {
+    margin: -8px 0 16px;
+    font-size: 12.5px;
+    color: #777;
+}
+
+.inv-log-list {
+    max-height: 220px;
+    overflow-y: auto;
+}
+.inv-log-item {
+    display: grid;
+    grid-template-columns: auto auto auto 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+}
+.inv-log-date { color: #888; font-size: 12px; font-variant-numeric: tabular-nums; }
+.inv-log-type {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #eef1f6;
+    color: #556;
+}
+.inv-log-type.inv-log-in { background: #ddeef8; color: #2f6f96; }
+.inv-log-type.inv-log-use { background: #f4ece0; color: #8a5a1c; }
+.inv-log-qty { font-weight: 700; font-variant-numeric: tabular-nums; }
+.inv-log-note { color: #777; min-width: 0; overflow-wrap: anywhere; }
+.inv-log-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    opacity: 0.6;
+    padding: 2px 4px;
+}
+.inv-log-delete:hover { opacity: 1; }
+.inv-log-empty { color: #999; font-size: 13px; margin: 0; }
+
+@media (max-width: 768px) {
+    .inv-list { grid-template-columns: 1fr; }
+    .inv-log-item { grid-template-columns: auto auto 1fr auto; }
+    .inv-log-note { grid-column: 1 / -1; grid-row: 2; }
+}
+
+.dark-mode .inv-summary-item { background: var(--d-bg3); color: var(--d-text2); }
+.dark-mode .inv-summary-item.inv-tone-low { background: #3a1f1f; color: #ff9b8f; }
+.dark-mode .inv-summary-item.inv-tone-soon { background: #3a3319; color: #f0c860; }
+.dark-mode .project-card.inv-card.inv-level-out { background: #3a1f1f; }
+.dark-mode .inv-card-title,
+.dark-mode .inv-qty-now { color: var(--d-text1); }
+.dark-mode .inv-qty-unit,
+.dark-mode .inv-forecast,
+.dark-mode .inv-qty-input-unit,
+.dark-mode .inv-log-hint,
+.dark-mode .inv-log-note { color: var(--d-text2); }
+.dark-mode .inv-qty-min,
+.dark-mode .inv-log-date,
+.dark-mode .inv-log-empty { color: var(--d-text3); }
+.dark-mode .inv-gauge { background: var(--d-bg3); box-shadow: none; }
+.dark-mode .inv-gauge-min { background: var(--d-text1); }
+.dark-mode .inv-action-btn { background: var(--d-bg3); border-color: var(--d-border); color: var(--d-text1); }
+.dark-mode .inv-action-btn:hover { border-color: #8b9cf0; color: #aab6ff; }
+.dark-mode .inv-log-item { border-bottom-color: var(--d-border); }
+.dark-mode .inv-log-type { background: var(--d-bg3); color: var(--d-text2); }
+.dark-mode .inv-log-type.inv-log-in { background: #1f3346; color: #8fc4e6; }
+.dark-mode .inv-log-type.inv-log-use { background: #3a2c1a; color: #e8b878; }
+.dark-mode .project-badge.inv-badge-soon { background: #3a3319; color: #f0c860; }
+.dark-mode .project-badge.inv-badge-low { background: #3a2c1a; color: #f0a860; }
+.dark-mode .project-badge.inv-badge-out { background: #3a1f1f; color: #ff9b8f; }
+
+/* 재고 모달의 숫자 입력·분류 선택도 텍스트 입력과 같은 모양으로 (공용 규칙은 text/date만 다룸) */
+#inventoryItemModal .modal-field input[type="number"],
+#inventoryItemModal .modal-field select,
+#inventoryLogModal .modal-field input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    background: #fff;
+    color: inherit;
+}
+#inventoryItemModal .modal-field select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+.dark-mode #inventoryItemModal .modal-field input[type="number"],
+.dark-mode #inventoryItemModal .modal-field select,
+.dark-mode #inventoryLogModal .modal-field input[type="number"] {
+    background: var(--d-bg3);
+    border-color: var(--d-border);
+    color: var(--d-text1);
+}
+/* 다크 모드 공용 규칙(.dark-mode .quick-preset-btn)이 선택 표시를 덮어써서, 재고 화면에서는 선택된 칸을 다시 보이게 함 */
+.dark-mode #inventoryCategoryFilterRow .quick-preset-btn.selected,
+.dark-mode #inventoryLogTypeRow .quick-preset-btn.selected {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: transparent;
+    color: #fff;
+}

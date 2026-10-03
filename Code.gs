@@ -11,7 +11,8 @@ const LARGE_FIELDS_SHEET_NAME = "ProfileLargeFields"; // 흐름도/메모장/절
 // recordRevisions: 활동기록 날짜·카테고리별 수정 이력(되돌리기용). 프론트가 전체 크기를 2만자 이내로 제한해서 보냄
 // events/todo/dateCategoryBoxHeights/hiddenCategoriesByDate/dateCategoryOrder: 날짜가 지날수록 계속 쌓이는 값이라
 // 프로필 셀에 두면 1~2년 뒤 5만자를 넘겨 저장이 통째로 막힐 수 있어서 함께 분리함
-const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule', 'categoryImages', 'monthlyFeedbacks', 'recordRevisions',
+// inventoryItems: 재고 품목마다 입출고 기록이 계속 쌓이므로 처음부터 분리 저장함
+const LARGE_FIELD_KEYS = ['waterFlowDiagrams', 'freeNotesPages', 'savingsProjects', 'maintenanceSchedule', 'inventoryItems', 'categoryImages', 'monthlyFeedbacks', 'recordRevisions',
   'events', 'todo', 'dateCategoryBoxHeights', 'hiddenCategoriesByDate', 'dateCategoryOrder'];
 // 구글 시트는 셀 하나에 5만자까지만 들어감. 넘기면 setValues가 예외를 던져 저장 전체가 실패하므로,
 // 한 달치 기록/대용량 필드는 CELL_SAFE_MAX_CHARS 단위로 여러 행에 나눠 저장하고(여유분 확보),

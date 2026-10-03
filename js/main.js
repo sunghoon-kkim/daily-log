@@ -128,11 +128,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             improvement: '💡 개선/절감 과제',
             trend: '📈 설비 데이터 분석',
             maintenance: '🔧 정비계획',
+            inventory: '📦 재고 관리',
             waterFlow: '🔀 흐름도',
             teamReport: '📋 팀 보고',
             settings: '⚙️ 환경설정'
         };
-        let tabOrder = ['calendar', 'category', 'query', 'notes', 'ai', 'improvement', 'trend', 'maintenance', 'waterFlow', 'teamReport', 'settings'];
+        let tabOrder = ['calendar', 'category', 'query', 'notes', 'ai', 'improvement', 'trend', 'maintenance', 'inventory', 'waterFlow', 'teamReport', 'settings'];
         let activeTabId = 'calendar';
         // 환경설정에서 꺼둔(비활성화한) 탭 id 목록. 'settings'는 절대 여기 들어가지 않음(항상 표시)
         let disabledTabIds = [];
@@ -217,6 +218,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 }
             },
             {
+                key: 'inventory',
+                label: '📦 재고 관리',
+                features: {
+                    inventoryManage: '📦 재고 관리 (입출고·소진 예측)'
+                }
+            },
+            {
                 key: 'waterFlow',
                 label: '🔀 흐름도',
                 features: {
@@ -282,6 +290,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let savingsProjects = []; // [{id, title, month, targetAmount, actualAmount, status, note}] - 에너지/비용절감 과제 트래커
         let trendSubject = ''; // 설비·측정 항목 (매번 같은 값을 다시 적지 않도록 저장)
         let trendSpec = '';    // 관리 기준 (동일)
+        let inventoryItems = []; // [{id, name, category, unit, minQty, location, note, logs: [{id, type: 'in'|'use'|'adjust', qty, date, note, loggedAt}]}]
         let maintenanceSchedule = []; // [{id, equipment, item, sop, cycle, status, lastDone, nextDue, note, ackFor, updatedAt}]
         let editingMaintenanceId = null;
         // 흐름도는 여러 개를 만들어 구분해서 볼 수 있음. waterFlowDiagrams가 실제 저장 단위이고,
@@ -365,6 +374,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             trendSpec = localStorage.getItem('trendSpec') || '';
             const storedMaintenance = localStorage.getItem('maintenanceSchedule');
             maintenanceSchedule = storedMaintenance ? safeJsonParse(storedMaintenance, [], 'maintenanceSchedule') : [];
+            const storedInventory = localStorage.getItem('inventoryItems');
+            inventoryItems = storedInventory ? safeJsonParse(storedInventory, [], 'inventoryItems') : [];
             const storedWaterFlowDiagrams = localStorage.getItem('waterFlowDiagrams');
             waterFlowDiagrams = storedWaterFlowDiagrams ? safeJsonParse(storedWaterFlowDiagrams, [], 'waterFlowDiagrams') : [];
             currentWaterFlowDiagramId = localStorage.getItem('currentWaterFlowDiagramId') || null;
@@ -393,6 +404,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             applyTrendSettings();
             setupTrendSettingsAutosave();
             renderMaintenanceSchedule();
+            renderInventory();
             renderWaterFlowDiagramTabs();
             renderWaterFlowCanvas();
             renderSettingsTab();
@@ -549,8 +561,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function reconcileTabOrder(order) {
             const allTabs = Object.keys(TAB_LABELS);
             const valid = (order || []).filter(id => allTabs.includes(id));
+            // 새로 생긴 탭은 맨 끝(환경설정 뒤)이 아니라 환경설정 바로 앞에 끼워 넣음
             for (const id of allTabs) {
-                if (!valid.includes(id)) valid.push(id);
+                if (valid.includes(id)) continue;
+                const settingsIndex = valid.indexOf('settings');
+                if (id !== 'settings' && settingsIndex !== -1) valid.splice(settingsIndex, 0, id);
+                else valid.push(id);
             }
             return valid;
         }
@@ -810,6 +826,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 trendSubject,
                 trendSpec,
                 maintenanceSchedule,
+                inventoryItems,
                 waterFlowDiagrams,
                 currentWaterFlowDiagramId,
                 archivedCategories,
@@ -847,6 +864,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             safeSetItem('trendSubject', trendSubject);
             safeSetItem('trendSpec', trendSpec);
             safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
+            safeSetItem('inventoryItems', JSON.stringify(inventoryItems));
             syncActiveWaterFlowDiagramData();
             safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
             safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
@@ -983,6 +1001,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     trendSubject = (typeof data.trendSubject === 'string') ? data.trendSubject : '';
                     trendSpec = (typeof data.trendSpec === 'string') ? data.trendSpec : '';
                     maintenanceSchedule = Array.isArray(data.maintenanceSchedule) ? data.maintenanceSchedule : [];
+                    inventoryItems = Array.isArray(data.inventoryItems) ? data.inventoryItems : [];
                     waterFlowDiagrams = Array.isArray(data.waterFlowDiagrams) ? data.waterFlowDiagrams : [];
                     currentWaterFlowDiagramId = data.currentWaterFlowDiagramId || null;
                     if (waterFlowDiagrams.length === 0) {
@@ -1020,6 +1039,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (typeof renderSavingsProjects === 'function') renderSavingsProjects();
                     if (typeof applyTrendSettings === 'function') applyTrendSettings();
                     if (typeof renderMaintenanceSchedule === 'function') renderMaintenanceSchedule();
+                    if (typeof renderInventory === 'function') renderInventory();
                     if (typeof renderWaterFlowDiagramTabs === 'function') renderWaterFlowDiagramTabs();
                     if (typeof renderWaterFlowCanvas === 'function') renderWaterFlowCanvas();
                     applyEditLockUI(); // 방금 받아온 이름을 상단 계정 표시에 반영
@@ -1069,7 +1089,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 충돌 안내에 표시할 이름 (화면 크기/접힘 상태 같은 사소한 설정은 안내하지 않음)
         const SYNC_FIELD_LABELS = {
             events: '일정', categories: '카테고리', categoryColors: '카테고리 색상', todo: '할일', freeNotesPages: '메모장',
-            maintenanceSchedule: '정비계획', savingsProjects: '개선과제', waterFlowDiagrams: '흐름도',
+            maintenanceSchedule: '정비계획', inventoryItems: '재고', savingsProjects: '개선과제', waterFlowDiagrams: '흐름도',
             monthlyFeedbacks: '월별 피드백', recordSnippets: '상용구', weekdayTemplates: '요일 템플릿',
             archivedCategories: '보관 카테고리', aiTemplate: 'AI 템플릿', categoryImages: '첨부 이미지'
         };
@@ -2501,7 +2521,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'categoryColors', 'categoryDefaultCollapsed', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
             'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate',
-            'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
+            'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'inventoryItems', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment',
             'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory',
             'recentSearchKeywords', 'recentEquipmentNames', 'recentKeywordStats'
@@ -2593,6 +2613,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'eventModal') closeEventModal();
             else if (id === 'projectModal') closeProjectModal();
             else if (id === 'maintenanceModal') closeMaintenanceModal();
+            else if (id === 'inventoryItemModal') closeInventoryItemModal();
+            else if (id === 'inventoryLogModal') closeInventoryLogModal();
             else if (id === 'maintCompleteModal') closeMaintenanceCompleteModal();
             else if (id === 'recordRevisionModal') closeRecordRevisionModal();
             else if (id === 'recordImportModal') closeRecordImportModal();

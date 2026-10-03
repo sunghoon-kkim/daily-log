@@ -109,6 +109,17 @@
                 }
             }
 
+            // 재고 부족·소진 임박 (재고 관리 탭을 쓰는 경우만)
+            if (!disabledTabIds.includes('inventory') && !isFeatureDisabled('inventoryManage') && typeof getInventoryAlertCounts === 'function') {
+                const inv = getInventoryAlertCounts();
+                if (inv.shortage + inv.soon > 0) {
+                    const parts = [];
+                    if (inv.shortage) parts.push(`부족 ${inv.shortage}`);
+                    if (inv.soon) parts.push(`2주 내 소진 ${inv.soon}`);
+                    chip(inv.shortage ? 'alert' : 'warn', '📦', `재고 ${parts.join(' · ')}품목`, `switchTab('inventory')`);
+                }
+            }
+
             const d = parseLocalDate(todayStr);
             el.innerHTML = `<div class="today-summary-title">🌅 오늘 · ${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_NAMES[d.getDay()]})</div>
                 <div class="today-summary-chips">${chips.join('')}</div>`;

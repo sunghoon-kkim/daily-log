@@ -21,6 +21,7 @@ const CORE_ASSETS = [
   './js/savings-projects.js',
   './js/trend-analysis.js',
   './js/maintenance.js',
+  './js/inventory.js',
   './js/flowchart.js',
   './js/team-report.js',
   './js/settings.js',

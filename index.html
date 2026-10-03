@@ -731,6 +731,31 @@
             </div>
         </div>
 
+        <!-- 재고 관리 -->
+        <div id="inventory" class="tab-content">
+            <div class="ai-status" data-empty-message-group="inventory" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 기능이 없습니다. 관리자에게 문의해주세요.</div>
+
+            <div class="query-container" data-feature="inventoryManage">
+                <div class="project-header-row">
+                    <h3>📦 재고 관리</h3>
+                    <button class="add-category-btn" onclick="openInventoryItemModal(null)">➕ 품목 추가</button>
+                </div>
+                <p style="color: #666; font-size: 14px; margin-bottom: 16px;">소금, 시약, 필터처럼 떨어지면 곤란한 품목을 등록하고 입고·사용을 기록하세요. 현재 재고는 기록을 합산해 계산하고, 최근 사용량으로 언제쯤 바닥날지 알려드려요. 실제로 세어 본 수량은 실사로 맞추면 됩니다.</p>
+
+                <div class="inv-summary" id="inventorySummary" aria-live="polite"></div>
+
+                <div class="quick-preset-row" id="inventoryCategoryFilterRow" style="margin-bottom:16px;">
+                    <button type="button" class="quick-preset-btn selected" data-filter="전체" onclick="setInventoryCategoryFilter('전체')">전체</button>
+                    <button type="button" class="quick-preset-btn" data-filter="약품" onclick="setInventoryCategoryFilter('약품')">약품</button>
+                    <button type="button" class="quick-preset-btn" data-filter="소모품" onclick="setInventoryCategoryFilter('소모품')">소모품</button>
+                    <button type="button" class="quick-preset-btn" data-filter="부품" onclick="setInventoryCategoryFilter('부품')">부품</button>
+                    <button type="button" class="quick-preset-btn" data-filter="기타" onclick="setInventoryCategoryFilter('기타')">기타</button>
+                </div>
+
+                <div id="inventoryList" class="inv-list"></div>
+            </div>
+        </div>
+
         <!-- 탭 9: 흐름도 -->
         <div id="waterFlow" class="tab-content">
             <div class="ai-status" data-empty-message-group="waterFlow" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 기능이 없습니다. 관리자에게 문의해주세요.</div>
@@ -1242,6 +1267,102 @@
             </div>
         </div>
     </div>
+    <div class="modal-overlay" id="inventoryItemModal" role="dialog" aria-modal="true" aria-labelledby="inventoryItemModalTitle">
+        <div class="modal-box">
+            <h3 id="inventoryItemModalTitle">📦 품목 추가</h3>
+
+            <div class="modal-field">
+                <label for="inventoryNameInput">품목명</label>
+                <input type="text" id="inventoryNameInput" maxlength="60" placeholder="예: 소프트너 재생용 소금">
+            </div>
+
+            <div class="modal-field-row">
+                <div class="modal-field">
+                    <label for="inventoryCategoryInput">분류</label>
+                    <select id="inventoryCategoryInput">
+                        <option value="약품">약품</option>
+                        <option value="소모품">소모품</option>
+                        <option value="부품">부품</option>
+                        <option value="기타">기타</option>
+                    </select>
+                </div>
+                <div class="modal-field">
+                    <label for="inventoryUnitInput">단위</label>
+                    <input type="text" id="inventoryUnitInput" maxlength="10" placeholder="예: 포, L, 개, 병">
+                </div>
+            </div>
+
+            <div class="modal-field-row">
+                <div class="modal-field" id="inventoryStartQtyField">
+                    <label for="inventoryStartQtyInput">지금 재고</label>
+                    <input type="number" id="inventoryStartQtyInput" min="0" step="any" inputmode="decimal" placeholder="지금 남은 수량">
+                </div>
+                <div class="modal-field">
+                    <label for="inventoryMinInput">최소 재고 (이하로 떨어지면 부족 표시)</label>
+                    <input type="number" id="inventoryMinInput" min="0" step="any" inputmode="decimal" placeholder="비워두면 표시 안 함">
+                </div>
+            </div>
+
+            <div class="modal-field">
+                <label for="inventoryLocationInput">보관 위치</label>
+                <input type="text" id="inventoryLocationInput" maxlength="60" placeholder="예: 기계실 약품 창고 2번 선반">
+            </div>
+
+            <div class="modal-field">
+                <label for="inventoryNoteInput">메모</label>
+                <input type="text" id="inventoryNoteInput" maxlength="200" placeholder="발주처, 규격, 발주 소요일 등">
+            </div>
+
+            <div id="inventoryLogSection" style="display:none;">
+                <div class="modal-field">
+                    <label>입출고 기록 (최신순)</label>
+                    <div id="inventoryLogList" class="inv-log-list"></div>
+                </div>
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-save-btn" onclick="saveInventoryItem()">💾 저장</button>
+                <button class="modal-btn modal-delete-btn" id="deleteInventoryItemBtn" onclick="deleteInventoryItem()" style="display:none;">🗑️ 삭제</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeInventoryItemModal()">취소</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay" id="inventoryLogModal" role="dialog" aria-modal="true" aria-labelledby="inventoryLogModalTitle">
+        <div class="modal-box">
+            <h3 id="inventoryLogModalTitle">입고</h3>
+
+            <div class="quick-preset-row" id="inventoryLogTypeRow" style="margin-bottom:16px;">
+                <button type="button" class="quick-preset-btn" data-type="in" onclick="setInventoryLogType('in')">+ 입고</button>
+                <button type="button" class="quick-preset-btn" data-type="use" onclick="setInventoryLogType('use')">− 사용</button>
+                <button type="button" class="quick-preset-btn" data-type="adjust" onclick="setInventoryLogType('adjust')">실사</button>
+            </div>
+
+            <div class="modal-field-row">
+                <div class="modal-field">
+                    <label for="inventoryLogQtyInput" id="inventoryLogQtyLabel">수량</label>
+                    <div class="inv-qty-input-wrap">
+                        <input type="number" id="inventoryLogQtyInput" min="0" step="any" inputmode="decimal" onkeydown="if (event.key === 'Enter') saveInventoryLog()">
+                        <span id="inventoryLogUnit" class="inv-qty-input-unit"></span>
+                    </div>
+                </div>
+                <div class="modal-field">
+                    <label for="inventoryLogDateInput">날짜</label>
+                    <input type="date" id="inventoryLogDateInput">
+                </div>
+            </div>
+            <p id="inventoryLogHint" class="inv-log-hint"></p>
+
+            <div class="modal-field">
+                <label for="inventoryLogNoteInput">메모 (선택)</label>
+                <input type="text" id="inventoryLogNoteInput" maxlength="100" placeholder="예: 소프트너 A 재생, 3월 정기 발주분">
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn modal-save-btn" id="inventoryLogSaveBtn" onclick="saveInventoryLog()">기록</button>
+                <button class="modal-btn modal-cancel-btn" onclick="closeInventoryLogModal()">취소</button>
+            </div>
+        </div>
+    </div>
     <div class="modal-overlay" id="maintenanceModal" role="dialog" aria-modal="true">
         <div class="modal-box modal-box-wide">
             <h3 id="maintenanceModalTitle">🔧 정비계획 추가</h3>
@@ -1679,6 +1800,7 @@
     <script src="js/savings-projects.js"></script>
     <script src="js/trend-analysis.js"></script>
     <script src="js/maintenance.js"></script>
+    <script src="js/inventory.js"></script>
     <script src="js/flowchart.js"></script>
     <script src="js/team-report.js"></script>
     <script src="js/settings.js"></script>
