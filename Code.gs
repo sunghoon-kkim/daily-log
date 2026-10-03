@@ -2398,18 +2398,60 @@ function writeBackupRow(employeeId, profile, records) {
   if (payloadJson.length > CELL_MAX_CHARS) {
     payloadJson = JSON.stringify({ records: records });
   }
-  if (payloadJson.length > CELL_MAX_CHARS) {
-    Logger.log("백업 데이터가 셀 한도를 넘어 건너뜀: " + employeeId);
-    return;
-  }
 
   // 예전에는 맨 위(2행)에 행을 끼워 넣어서 백업이 생길 때마다 시트 전체가 한 칸씩 밀렸음(행이 많을수록 느림).
   // 이제 맨 아래에 붙이고, D열에 정렬용 시각(ms)을 남겨 목록·정리 때 최신순을 이 값으로 판단함
-  if (!backupSheet.getRange(1, 4).getValue()) backupSheet.getRange(1, 4).setValue("정렬키");
+  if (!backupSheet.getRange(1, 4).getValue()) backupSheet.getRange(1, 4).setValues([["정렬키"]]);
+  const savedAt = new Date().toLocaleString('ko-KR');
+  const sortKey = Date.now();
+  let rows;
+  if (payloadJson.length <= CELL_MAX_CHARS) {
+    rows = [[savedAt, employeeId, payloadJson, sortKey, ""]];
+  } else {
+    // 기록만 남겨도 셀 한도를 넘으면(기록이 아주 많은 달) 예전에는 백업을 건너뛰었음. 이제 활동기록 저장과 같은
+    // 방식으로 날짜 단위로 잘라 여러 행에 나눠 쓰고, E열에 같은 묶음 ID를 넣어 목록·되돌리기·정리 때 한 건으로 다룸.
+    // 각 행에는 몇 번째 조각인지(backupPart/backupParts)를 넣어 되돌릴 때 빠진 조각이 없는지 확인함
+    let chunks;
+    try {
+      chunks = splitRecordsMonthIntoChunks(records, "backup");
+    } catch (chunkErr) {
+      Logger.log("백업 데이터를 나눌 수 없어 건너뜀: " + employeeId + " " + chunkErr);
+      return;
+    }
+    const groupId = "b" + sortKey + "_" + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+    rows = chunks.map(function(chunk, i) {
+      return [savedAt, employeeId, JSON.stringify({ records: chunk, backupPart: i + 1, backupParts: chunks.length }), sortKey, groupId];
+    });
+    if (!backupSheet.getRange(1, 5).getValue()) backupSheet.getRange(1, 5).setValues([["묶음"]]);
+  }
   const newRow = backupSheet.getLastRow() + 1;
-  lockEmployeeIdCellAsText(backupSheet, newRow, 2);
-  backupSheet.getRange(newRow, 1, 1, 4).setValues([[new Date().toLocaleString('ko-KR'), employeeId, payloadJson, Date.now()]]);
+  backupSheet.getRange(newRow, 2, rows.length, 1).setNumberFormat('@'); // 사번 앞자리 0이 사라지지 않게
+  backupSheet.getRange(newRow, 1, rows.length, 5).setValues(rows);
   pruneBackupRows(backupSheet, employeeId);
+}
+
+// 백업 시트를 "백업 한 건" 단위로 묶음. 조각으로 나뉜 백업(E열 묶음 ID가 같은 행들)은 한 건으로 봄.
+// 큰 데이터(C열)는 읽지 않고 사번(B)·정렬키(D)·묶음(E)만 씀. 돌려주는 각 건: { id, rows: [행번호...], key }
+function groupBackupRows(backupSheet) {
+  const lastRow = backupSheet.getLastRow();
+  if (lastRow < 2) return [];
+  const ids = backupSheet.getRange(2, 2, lastRow - 1, 1).getValues();
+  const meta = backupSheet.getRange(2, 4, lastRow - 1, 2).getValues(); // D(정렬키), E(묶음)
+  const groups = [];
+  const byGroupId = {};
+  ids.forEach(function(r, i) {
+    const row = i + 2;
+    const id = String(r[0]).trim();
+    const groupId = String(meta[i][1] || "").trim();
+    if (groupId && byGroupId[id + "|" + groupId]) {
+      byGroupId[id + "|" + groupId].rows.push(row);
+      return;
+    }
+    const g = { id: id, rows: [row], key: backupRecencyKey(meta[i][0], row), groupId: groupId };
+    groups.push(g);
+    if (groupId) byGroupId[id + "|" + groupId] = g;
+  });
+  return groups;
 }
 
 // 백업 행이 최신일수록 큰 값. D열(정렬키)이 있는 행(맨 아래에 붙이기 시작한 뒤의 백업)은 그 시각을,
@@ -2424,26 +2466,24 @@ function compareBackupRecency(a, b) {
 }
 
 function pruneBackupRows(backupSheet, employeeId) {
-  const lastRow = backupSheet.getLastRow();
-  if (lastRow < 2) return;
-  // 데이터(C열, 큰 JSON)는 읽지 않고 사번(B)과 정렬키(D)만 읽음
-  const ids = backupSheet.getRange(2, 2, lastRow - 1, 1).getValues();
-  const sortKeys = backupSheet.getRange(2, 4, lastRow - 1, 1).getValues();
-  const all = ids.map(function(r, i) { return { row: i + 2, id: String(r[0]).trim(), key: backupRecencyKey(sortKeys[i][0], i + 2) }; });
+  const all = groupBackupRows(backupSheet);
+  if (all.length === 0) return;
   const toDelete = {};
+  const markGroup = function(g) { g.rows.forEach(function(row) { toDelete[row] = true; }); };
 
-  // 사번별 최신 BACKUP_MAX_PER_USER개만 남김
-  all.filter(function(x) { return x.id === employeeId; })
+  // 사번별 최신 BACKUP_MAX_PER_USER건만 남김(조각으로 나뉜 백업도 한 건으로 셈)
+  all.filter(function(g) { return g.id === employeeId; })
     .sort(function(a, b) { return compareBackupRecency(b.key, a.key); })
     .slice(BACKUP_MAX_PER_USER)
-    .forEach(function(x) { toDelete[x.row] = true; });
+    .forEach(markGroup);
 
-  // 전체 행 한도를 넘으면 가장 오래된 백업부터 지움
-  const remaining = all.filter(function(x) { return !toDelete[x.row]; });
-  if (remaining.length > BACKUP_MAX_TOTAL_ROWS) {
-    remaining.sort(function(a, b) { return compareBackupRecency(a.key, b.key); })
-      .slice(0, remaining.length - BACKUP_MAX_TOTAL_ROWS)
-      .forEach(function(x) { toDelete[x.row] = true; });
+  // 전체 행 한도를 넘으면 가장 오래된 백업부터(조각은 함께) 지움
+  const remaining = all.filter(function(g) { return !toDelete[g.rows[0]]; })
+    .sort(function(a, b) { return compareBackupRecency(a.key, b.key); });
+  let rowCount = remaining.reduce(function(n, g) { return n + g.rows.length; }, 0);
+  for (let i = 0; i < remaining.length && rowCount > BACKUP_MAX_TOTAL_ROWS; i++) {
+    markGroup(remaining[i]);
+    rowCount -= remaining[i].rows.length;
   }
 
   // 아래 행부터 지워야 위쪽 행 번호가 밀리지 않음
@@ -2462,14 +2502,22 @@ function handleGetMyBackups(data) {
   const lastRow = backupSheet ? backupSheet.getLastRow() : 0;
   if (!backupSheet || lastRow < 2) return jsonResponse({ status: "success", backups: [] });
 
-  const lastCol = Math.max(3, Math.min(4, backupSheet.getLastColumn()));
-  const values = backupSheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const values = backupSheet.getRange(2, 1, lastRow - 1, 5).getValues();
   const backups = [];
+  const byGroupId = {};
   values.forEach(function (r, i) {
     if (String(r[1]).trim() !== employeeId) return;
     let dateCount = 0;
     try { dateCount = Object.keys(JSON.parse(r[2] || "{}").records || {}).length; } catch (parseErr) {}
-    backups.push({ rowIndex: i + 2, savedAt: r[0] ? r[0].toString() : "", dateCount: dateCount, _key: backupRecencyKey(r[3], i + 2) });
+    // 조각으로 나뉜 백업은 첫 조각 행 하나로 보여주고 날짜 수는 조각들을 합침
+    const groupId = String(r[4] || "").trim();
+    if (groupId && byGroupId[groupId]) {
+      byGroupId[groupId].dateCount += dateCount;
+      return;
+    }
+    const item = { rowIndex: i + 2, savedAt: r[0] ? r[0].toString() : "", dateCount: dateCount, _key: backupRecencyKey(r[3], i + 2) };
+    backups.push(item);
+    if (groupId) byGroupId[groupId] = item;
   });
   // 최신 백업이 위로 오게 (예전 행은 위쪽일수록, 새 행은 정렬키가 클수록 최신)
   backups.sort(function(a, b) { return compareBackupRecency(b._key, a._key); });
@@ -2510,7 +2558,7 @@ function handleRestoreFromBackup(data) {
       return jsonResponse({ status: "error", message: "이미 사라진 백업입니다. 목록을 새로고침해주세요." });
     }
 
-    const backupRow = backupSheet.getRange(rowIndex, 1, 1, 3).getValues()[0];
+    const backupRow = backupSheet.getRange(rowIndex, 1, 1, 5).getValues()[0];
     if (String(backupRow[1]).trim() !== employeeId) {
       return jsonResponse({ status: "error", message: "본인 백업만 되돌릴 수 있습니다." });
     }
@@ -2526,7 +2574,30 @@ function handleRestoreFromBackup(data) {
       return jsonResponse({ status: "error", message: "백업 데이터를 읽지 못했습니다." });
     }
 
-    const backupRecords = backupPayload.records || {};
+    let backupRecords = backupPayload.records || {};
+    // 조각으로 나뉜 백업이면 같은 묶음의 조각을 전부 모아 합침. 하나라도 빠졌으면 일부만 되돌리지 않고 멈춤
+    const groupId = String(backupRow[4] || "").trim();
+    if (groupId) {
+      const group = groupBackupRows(backupSheet).filter(function(g) { return g.id === employeeId && g.groupId === groupId; })[0];
+      const parts = {};
+      (group ? group.rows : []).forEach(function(r) {
+        let piece = null;
+        try { piece = JSON.parse(backupSheet.getRange(r, 3).getValue() || "null"); } catch (pieceErr) { piece = null; }
+        if (piece && piece.backupPart) parts[piece.backupPart] = piece;
+      });
+      const total = Number(backupPayload.backupParts) || 0;
+      if (total < 1) {
+        return jsonResponse({ status: "error", message: "백업 데이터를 읽지 못했습니다." });
+      }
+      const merged = {};
+      for (let partNo = 1; partNo <= total; partNo++) {
+        if (!parts[partNo]) {
+          return jsonResponse({ status: "error", message: "이 백업의 일부 조각이 없어 되돌릴 수 없습니다. 다른 백업을 선택해주세요." });
+        }
+        Object.assign(merged, parts[partNo].records || {});
+      }
+      backupRecords = merged;
+    }
     let existingProfile = {};
     try { existingProfile = JSON.parse(usersSheet.getRange(row, 3).getValue() || "{}"); } catch (parseErr2) {}
 
