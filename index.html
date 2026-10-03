@@ -1310,13 +1310,6 @@
                 <p class="inv-log-hint inv-link-hint" id="inventoryMaintLinkHint"></p>
             </div>
 
-            <div id="inventoryLogSection" style="display:none;">
-                <div class="modal-field">
-                    <label>입출고 기록 (최신순)</label>
-                    <div id="inventoryLogList" class="inv-log-list"></div>
-                </div>
-            </div>
-
             <div class="modal-buttons">
                 <button class="modal-btn modal-save-btn" onclick="saveInventoryItem()">💾 저장</button>
                 <button class="modal-btn modal-delete-btn" id="deleteInventoryItemBtn" onclick="deleteInventoryItem()" style="display:none;">🗑️ 삭제</button>
@@ -1339,13 +1332,32 @@
             </div>
         </div>
     </div>
+    <div class="modal-overlay" id="inventoryHistoryModal" role="dialog" aria-modal="true" aria-labelledby="inventoryHistoryTitle">
+        <div class="modal-box">
+            <div class="inv-history-head">
+                <h3 id="inventoryHistoryTitle">📋 입출고 기록</h3>
+                <span id="inventoryHistoryCurrent" class="inv-history-current"></span>
+            </div>
+            <div class="quick-preset-row" id="inventoryHistoryFilterRow" style="margin-bottom:12px;">
+                <button type="button" class="quick-preset-btn selected" data-type="all" onclick="setInventoryHistoryFilter('all')">전체</button>
+                <button type="button" class="quick-preset-btn" data-type="in" onclick="setInventoryHistoryFilter('in')">입고</button>
+                <button type="button" class="quick-preset-btn" data-type="use" onclick="setInventoryHistoryFilter('use')">출고</button>
+                <button type="button" class="quick-preset-btn" data-type="adjust" onclick="setInventoryHistoryFilter('adjust')">재고 조정</button>
+            </div>
+            <p class="inv-log-hint inv-history-hint">수량을 눌러 바로 고칠 수 있어요.</p>
+            <div id="inventoryHistoryList" class="inv-log-list inv-history-list"></div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-cancel-btn" onclick="closeInventoryHistoryModal()">닫기</button>
+            </div>
+        </div>
+    </div>
     <div class="modal-overlay" id="inventoryLogModal" role="dialog" aria-modal="true" aria-labelledby="inventoryLogModalTitle">
         <div class="modal-box">
             <h3 id="inventoryLogModalTitle">입고</h3>
 
             <div class="quick-preset-row" id="inventoryLogTypeRow" style="margin-bottom:16px;">
-                <button type="button" class="quick-preset-btn" data-type="in" onclick="setInventoryLogType('in')">+ 입고</button>
-                <button type="button" class="quick-preset-btn" data-type="use" onclick="setInventoryLogType('use')">− 사용</button>
+                <button type="button" class="quick-preset-btn" data-type="in" onclick="setInventoryLogType('in')">입고</button>
+                <button type="button" class="quick-preset-btn" data-type="use" onclick="setInventoryLogType('use')">출고</button>
                 <button type="button" class="quick-preset-btn" data-type="adjust" onclick="setInventoryLogType('adjust')">재고 조정</button>
             </div>
 
@@ -1453,7 +1465,7 @@
                 <select id="maintCompleteCategorySelect" class="search-option-select" aria-label="기록할 카테고리" style="margin-top:6px;"></select>
             </div>
             <div class="modal-field" id="maintCompleteInventoryField" style="display:none;">
-                <label>📦 재고에서 차감</label>
+                <label>📦 재고 출고</label>
                 <div id="maintCompleteInventoryList"></div>
             </div>
             <div class="search-help-text" id="maintCompleteNextDueHint" style="margin:0 0 10px 0;"></div>

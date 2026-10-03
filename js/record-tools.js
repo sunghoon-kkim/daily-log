@@ -112,11 +112,12 @@
             // 재고 부족·소진 임박 (재고 관리 탭을 쓰는 경우만)
             if (!disabledTabIds.includes('inventory') && !isFeatureDisabled('inventoryManage') && typeof getInventoryAlertCounts === 'function') {
                 const inv = getInventoryAlertCounts();
-                if (inv.shortage + inv.soon > 0) {
+                if (inv.shortage + inv.need + inv.soon > 0) {
                     const parts = [];
                     if (inv.shortage) parts.push(`부족 ${inv.shortage}`);
+                    if (inv.need) parts.push(`정비용 확보 필요 ${inv.need}`);
                     if (inv.soon) parts.push(`2주 내 소진 ${inv.soon}`);
-                    chip(inv.shortage ? 'alert' : 'warn', '📦', `재고 ${parts.join(' · ')}품목`, `switchTab('inventory')`);
+                    chip(inv.shortage || inv.need ? 'alert' : 'warn', '📦', `재고 ${parts.join(' · ')}품목`, `switchTab('inventory')`);
                 }
             }
 

@@ -5935,13 +5935,13 @@ body {
 .inv-list > .no-projects { grid-column: 1 / -1; }
 
 .project-card.inv-card {
-    cursor: default;
     margin-bottom: 0;
     border-left-color: #4a8fb8;
 }
 .project-card.inv-card:hover { transform: none; }
 .project-card.inv-card.inv-level-soon { border-left-color: #d4a017; }
-.project-card.inv-card.inv-level-low { border-left-color: #e67e22; }
+.project-card.inv-card.inv-level-low,
+.project-card.inv-card.inv-level-need { border-left-color: #e67e22; }
 .project-card.inv-card.inv-level-out { border-left-color: #e74c3c; background: #fff5f5; }
 
 .inv-card-title {
@@ -5962,7 +5962,8 @@ body {
 .inv-card-title:focus-visible { text-decoration-color: currentColor; }
 
 .project-badge.inv-badge-soon { background: #fff3cd; color: #9a6f00; }
-.project-badge.inv-badge-low { background: #ffe8cc; color: #b8621b; }
+.project-badge.inv-badge-low,
+.project-badge.inv-badge-need { background: #ffe8cc; color: #b8621b; }
 .project-badge.inv-badge-out { background: #ffe0e0; color: #c0392b; }
 
 .inv-qty-line {
@@ -6007,7 +6008,8 @@ body {
     transition: width 0.3s ease;
 }
 .inv-level-soon .inv-gauge-fill { background: #d4a017; }
-.inv-level-low .inv-gauge-fill { background: #e67e22; }
+.inv-level-low .inv-gauge-fill,
+.inv-level-need .inv-gauge-fill { background: #e67e22; }
 .inv-level-out .inv-gauge-fill { background: #e74c3c; }
 .inv-gauge-min {
     position: absolute;
@@ -6069,7 +6071,7 @@ body {
    메모는 둘째 줄에 종류 열부터 시작 */
 .inv-log-item {
     display: grid;
-    grid-template-columns: 72px 66px 52px 1fr 24px;
+    grid-template-columns: 44px 66px 72px 1fr 24px;
     align-items: center;
     column-gap: 8px;
     row-gap: 2px;
@@ -6107,7 +6109,7 @@ body {
 
 @media (max-width: 768px) {
     .inv-list { grid-template-columns: 1fr; }
-    .inv-log-item { grid-template-columns: 70px 64px 44px 1fr 22px; column-gap: 6px; }
+    .inv-log-item { grid-template-columns: 40px 64px 64px 1fr 22px; column-gap: 6px; }
     .inv-log-date { font-size: 11px; }
 }
 
@@ -6135,7 +6137,8 @@ body {
 .dark-mode .inv-log-type.inv-log-in { background: #1f3346; color: #8fc4e6; }
 .dark-mode .inv-log-type.inv-log-use { background: #3a2c1a; color: #e8b878; }
 .dark-mode .project-badge.inv-badge-soon { background: #3a3319; color: #f0c860; }
-.dark-mode .project-badge.inv-badge-low { background: #3a2c1a; color: #f0a860; }
+.dark-mode .project-badge.inv-badge-low,
+.dark-mode .project-badge.inv-badge-need { background: #3a2c1a; color: #f0a860; }
 .dark-mode .project-badge.inv-badge-out { background: #3a1f1f; color: #ff9b8f; }
 
 /* 재고 모달의 숫자 입력·분류 선택도 텍스트 입력과 같은 모양으로 (공용 규칙은 text/date만 다룸) */
@@ -6209,11 +6212,25 @@ body {
 .dark-mode .inv-history-btn { color: #aab6ff; }
 
 /* ===== 재고 ↔ 정비계획 연동 ===== */
-.inv-maint-line {
-    margin-top: 6px;
-    font-size: 12px;
+.inv-plan-line {
+    font-size: 12.5px;
     line-height: 1.6;
     color: #5a6475;
+}
+.inv-plan-line + .inv-plan-line { margin-top: 4px; }
+.inv-plan-label { display: block; font-weight: 600; }
+.inv-plan-when { display: block; padding-left: 1.4em; }
+.inv-plan-line.is-short .inv-plan-when { color: #8a3a2c; }
+.inv-plan-warn {
+    display: inline-block;
+    margin-left: 2px;
+    padding: 0 8px;
+    border-radius: 10px;
+    background: #ffe0e0;
+    color: #c0392b;
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
 }
 .inv-link-row {
     display: grid;
@@ -6295,7 +6312,7 @@ body {
     .inv-link-row .inv-link-qty-label { display: none; }
 }
 
-.dark-mode .inv-maint-line,
+.dark-mode .inv-plan-line,
 .dark-mode .inv-link-qty-label,
 .dark-mode .inv-link-unit,
 .dark-mode .maint-inv-deduct-preview { color: var(--d-text2); }
@@ -6311,3 +6328,66 @@ body {
 .dark-mode .maint-inv-row .maint-inv-ok { color: #6fd3a8; }
 .dark-mode .maint-inv-row .maint-inv-short,
 .dark-mode .maint-inv-deduct-preview.is-short { color: #ff9b8f; }
+
+/* ===== 입출고 기록 창 ===== */
+.inv-history-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.inv-history-head h3 { margin-bottom: 0; }
+.inv-history-current {
+    font-size: 14px;
+    font-weight: 700;
+    color: #2b3a4a;
+    font-variant-numeric: tabular-nums;
+}
+.inv-log-hint.inv-history-hint { margin: 0 0 6px; }
+.inv-log-list.inv-history-list { max-height: 55vh; }
+.inv-log-month {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 8px 0 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #667eea;
+    background: #fff;
+    border-bottom: 1px solid #e3e6f0;
+}
+.inv-log-qty {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+}
+/* 평소엔 글자처럼 보이고, 마우스를 올리거나 누르면 입력칸임을 드러냄 */
+.inv-log-qty-unit { flex: none; white-space: nowrap; font-weight: 700; }
+.inv-log-qty-input {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    padding: 2px 4px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    font: inherit;
+    font-weight: 700;
+    text-align: right;
+    color: inherit;
+    -moz-appearance: textfield;
+}
+.inv-log-qty-input::-webkit-outer-spin-button,
+.inv-log-qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.inv-log-qty-input:hover { border-color: #d6dbe6; }
+.inv-log-qty-input:focus { outline: none; border-color: #667eea; background: #fff; }
+
+.dark-mode .inv-history-current { color: var(--d-text1); }
+.dark-mode .inv-log-month { background: var(--d-bg1); border-bottom-color: var(--d-border); color: #aab6ff; }
+.dark-mode .inv-log-qty-input:hover { border-color: var(--d-border); }
+.dark-mode .inv-log-qty-input:focus { background: var(--d-bg3); border-color: #8b9cf0; }
+.dark-mode .inv-plan-line.is-short .inv-plan-when { color: #f0b0a0; }
+.dark-mode .inv-plan-warn { background: #3a1f1f; color: #ff9b8f; }

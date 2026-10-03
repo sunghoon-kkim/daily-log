@@ -2622,6 +2622,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'inventoryItemModal') closeInventoryItemModal();
             else if (id === 'inventoryLogModal') closeInventoryLogModal();
             else if (id === 'inventoryCategoryModal') closeInventoryCategoryModal();
+            else if (id === 'inventoryHistoryModal') closeInventoryHistoryModal();
             else if (id === 'maintCompleteModal') closeMaintenanceCompleteModal();
             else if (id === 'recordRevisionModal') closeRecordRevisionModal();
             else if (id === 'recordImportModal') closeRecordImportModal();

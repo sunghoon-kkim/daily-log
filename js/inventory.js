@@ -7,7 +7,7 @@
         const INVENTORY_UNCATEGORIZED = '__none__'; // 필터에서 "미분류"를 뜻하는 값 (분류 이름과 겹치지 않게)
         const INVENTORY_NEW_CATEGORY = '__new__'; // 품목 창 분류 선택의 "직접 입력"
         const INVENTORY_CATEGORY_MAX_LENGTH = 20;
-        const INVENTORY_LOG_LABELS = { in: '입고', use: '사용', adjust: '재고 조정' };
+        const INVENTORY_LOG_LABELS = { in: '입고', use: '출고', adjust: '재고 조정' }; // 'use'는 저장 값이라 그대로 두고 화면에만 "출고"로 표시
         const INVENTORY_FORECAST_WINDOW_DAYS = 60; // 하루 평균 사용량을 계산할 최근 기간
         const INVENTORY_FORECAST_MIN_SPAN_DAYS = 7; // 사용 기록이 이 기간보다 짧으면 예측하지 않음(너무 들쭉날쭉)
         const INVENTORY_SOON_DAYS = 14; // 이 일수 안에 바닥날 것 같으면 "소진 임박"
@@ -15,6 +15,8 @@
         let editingInventoryItemId = null;
         let inventoryLogTarget = null; // { itemId, type }
         let editingInventoryCategory = null; // 분류 창: null이면 새 분류 추가, 문자열이면 그 분류 이름 변경
+        let inventoryHistoryItemId = null; // 입출고 기록 창에 띄운 품목
+        let inventoryHistoryFilter = 'all'; // 'all' | 'in' | 'use' | 'adjust'
 
         function roundInventoryQty(n) {
             return Math.round(n * 100) / 100;
@@ -215,21 +217,24 @@
             return used / spanDays;
         }
 
-        // 카드·오늘 요약에 쓰는 상태: out(바닥) > low(최소 재고 이하) > soon(2주 안 소진 예상) > ok
+        // 카드·오늘 요약에 쓰는 상태: out(바닥) > low(최소 재고 이하) > need(예정된 정비에 쓸 재고 모자람)
+        // > soon(2주 안 소진 예상) > ok
         function getInventoryStatus(item, todayStr) {
             const current = getInventoryCurrentQty(item);
             const minQty = Number(item.minQty) || 0;
             const dailyUse = getInventoryDailyUse(item, todayStr);
             const daysLeft = dailyUse ? Math.floor(Math.max(current, 0) / dailyUse) : null;
+            const plan = getInventoryMaintPlan(item, current);
             let level = 'ok';
             if (current <= 0 && (item.logs || []).length > 0) level = 'out';
             else if (minQty > 0 && current <= minQty) level = 'low';
+            else if (plan.some(p => p.short)) level = 'need';
             else if (daysLeft !== null && daysLeft <= INVENTORY_SOON_DAYS) level = 'soon';
-            return { current, minQty, dailyUse, daysLeft, level };
+            return { current, minQty, dailyUse, daysLeft, plan, level };
         }
 
-        const INVENTORY_LEVEL_ORDER = { out: 0, low: 1, soon: 2, ok: 3 };
-        const INVENTORY_LEVEL_BADGES = { out: '재고 없음', low: '부족', soon: '소진 임박', ok: '' };
+        const INVENTORY_LEVEL_ORDER = { out: 0, low: 1, need: 2, soon: 3, ok: 4 };
+        const INVENTORY_LEVEL_BADGES = { out: '재고 없음', low: '부족', need: '확보 필요', soon: '소진 임박', ok: '' };
 
         function setInventoryCategoryFilter(category) {
             inventoryCategoryFilter = category;
@@ -255,9 +260,11 @@
             if (summaryEl) {
                 const count = lv => withStatus.filter(x => x.st.level === lv).length;
                 const shortage = count('out') + count('low');
+                const need = count('need');
                 const soon = count('soon');
                 summaryEl.innerHTML = inventoryItems.length === 0 ? '' : [
                     shortage ? `<span class="inv-summary-item inv-tone-low">부족 ${shortage}</span>` : '',
+                    need ? `<span class="inv-summary-item inv-tone-low">정비용 재고 확보 필요 ${need}</span>` : '',
                     soon ? `<span class="inv-summary-item inv-tone-soon">2주 안에 소진 예상 ${soon}</span>` : '',
                     `<span class="inv-summary-item">전체 ${inventoryItems.length}품목</span>`
                 ].filter(Boolean).join('');
@@ -288,25 +295,26 @@
                 const scale = Math.max(st.current, st.minQty * 3, 1);
                 const fillPct = Math.max(0, Math.min(100, st.current / scale * 100));
                 const minPct = st.minQty > 0 ? Math.min(100, st.minQty / scale * 100) : null;
+                // 정비계획과 연동된 품목은 "언제 몇 개 사용 예정"을, 아니면 최근 출고량으로 소진 예상을 보여줌
                 let forecast;
-                if (st.dailyUse) {
-                    forecast = st.current <= 0
-                        ? `하루 평균 ${formatInventoryQty(st.dailyUse)}${unit} 사용`
-                        : `약 ${st.daysLeft}일 뒤 소진 예상 · 하루 평균 ${formatInventoryQty(st.dailyUse)}${unit} 사용`;
+                if (st.plan.length > 0 && isMaintenanceFeatureOn()) {
+                    forecast = renderInventoryMaintPlanLines(st.plan, unit);
+                } else if (st.dailyUse) {
+                    forecast = st.current > 0 ? `약 ${st.daysLeft}일 뒤 소진 예상` : '';
                 } else {
-                    forecast = '사용 기록이 1주일 이상 쌓이면 소진 예상일을 알려드려요';
+                    forecast = '출고 기록이 1주일 이상 쌓이면 소진 예상일을 알려드려요';
                 }
                 const meta = [escapeHtml(item.category || '미분류'), item.location ? escapeHtml(item.location) : ''].filter(Boolean).join(' · ');
                 const { lastIn, lastUse, lastAdjust } = getInventoryLastDates(item);
-                // 입고·사용이 아직 없으면(처음 등록만 한 품목) 마지막 재고 조정 날짜라도 보여줌
+                // 입고·출고가 아직 없으면(처음 등록만 한 품목) 마지막 재고 조정 날짜라도 보여줌
                 const lastDates = (lastIn || lastUse)
-                    ? [lastIn ? `최근 입고 ${formatInventoryShortDate(lastIn)}` : '', lastUse ? `최근 사용 ${formatInventoryShortDate(lastUse)}` : ''].filter(Boolean).join(' · ')
+                    ? [lastIn ? `최근 입고 ${formatInventoryShortDate(lastIn)}` : '', lastUse ? `최근 출고 ${formatInventoryShortDate(lastUse)}` : ''].filter(Boolean).join(' · ')
                     : (lastAdjust ? `최근 재고 조정 ${formatInventoryShortDate(lastAdjust)}` : '');
                 const badge = INVENTORY_LEVEL_BADGES[st.level];
                 return `
-                <div class="project-card inv-card inv-level-${st.level}">
+                <div class="project-card inv-card inv-level-${st.level}" onclick="openInventoryItemModal('${idArg}')">
                     <div class="project-card-top">
-                        <button type="button" class="inv-card-title" onclick="openInventoryItemModal('${idArg}')">${escapeHtml(item.name)}</button>
+                        <button type="button" class="inv-card-title" onclick="event.stopPropagation(); openInventoryItemModal('${idArg}')">${escapeHtml(item.name)}</button>
                         ${badge ? `<span class="project-badge inv-badge-${st.level}">${badge}</span>` : ''}
                     </div>
                     <div class="project-card-category">${meta}</div>
@@ -318,24 +326,22 @@
                         <div class="inv-gauge-fill" style="width:${fillPct}%"></div>
                         ${minPct !== null ? `<div class="inv-gauge-min" style="left:${minPct}%"></div>` : ''}
                     </div>
-                    <div class="inv-forecast">${forecast}</div>
-                    ${renderInventoryMaintLinksLine(item)}
+                    ${forecast ? `<div class="inv-forecast">${forecast}</div>` : ''}
                     <div class="inv-history-line">
                         <span>${lastDates || '아직 기록이 없어요'}</span>
-                        <button type="button" class="inv-history-btn" onclick="openInventoryItemModal('${idArg}', true)">기록 보기</button>
+                        <button type="button" class="inv-history-btn" onclick="event.stopPropagation(); openInventoryHistoryModal('${idArg}')">기록 보기</button>
                     </div>
                     <div class="inv-actions">
-                        <button type="button" class="inv-action-btn" onclick="openInventoryLogModal('${idArg}', 'in')">+ 입고</button>
-                        <button type="button" class="inv-action-btn" onclick="openInventoryLogModal('${idArg}', 'use')">− 사용</button>
-                        <button type="button" class="inv-action-btn" onclick="openInventoryLogModal('${idArg}', 'adjust')">조정</button>
+                        <button type="button" class="inv-action-btn" onclick="event.stopPropagation(); openInventoryLogModal('${idArg}', 'in')">입고</button>
+                        <button type="button" class="inv-action-btn" onclick="event.stopPropagation(); openInventoryLogModal('${idArg}', 'use')">출고</button>
+                        <button type="button" class="inv-action-btn" onclick="event.stopPropagation(); openInventoryLogModal('${idArg}', 'adjust')">재고 조정</button>
                     </div>
                 </div>`;
             }).join('');
         }
 
         // ----- 품목 추가/수정 -----
-        // showHistory: 카드의 [기록 보기]로 열면 입출고 기록 위치로 바로 내려감
-        function openInventoryItemModal(itemId, showHistory) {
+        function openInventoryItemModal(itemId) {
             if (!checkEditPermission()) return;
             editingInventoryItemId = itemId;
             const item = itemId ? inventoryItems.find(x => x.id === itemId) : null;
@@ -351,16 +357,10 @@
             document.getElementById('inventoryStartQtyInput').value = '';
             // 시작 재고는 처음 등록할 때만 받음(이후에는 재고 조정으로 맞춤)
             document.getElementById('inventoryStartQtyField').style.display = item ? 'none' : '';
-            document.getElementById('inventoryLogSection').style.display = item ? '' : 'none';
             document.getElementById('deleteInventoryItemBtn').style.display = item ? 'inline-block' : 'none';
-            if (item) renderInventoryLogList(item);
             renderInventoryMaintLinkEditor(item);
             document.getElementById('inventoryItemModal').classList.add('active');
-            if (item && showHistory) {
-                document.getElementById('inventoryLogSection').scrollIntoView({ block: 'start' });
-            } else {
-                document.getElementById('inventoryNameInput').focus();
-            }
+            document.getElementById('inventoryNameInput').focus();
         }
 
         function closeInventoryItemModal() {
@@ -430,20 +430,43 @@
             });
         }
 
-        function renderInventoryLogList(item) {
-            const listEl = document.getElementById('inventoryLogList');
-            if (!listEl) return;
-            const logs = getSortedInventoryLogs(item).reverse();
-            if (logs.length === 0) {
-                listEl.innerHTML = '<p class="inv-log-empty">아직 입출고 기록이 없습니다.</p>';
-                return;
-            }
+        // ----- 입출고 기록 창 -----
+        function openInventoryHistoryModal(itemId) {
+            if (!checkEditPermission()) return;
+            const item = inventoryItems.find(x => x.id === itemId);
+            if (!item) return;
+            inventoryHistoryItemId = itemId;
+            inventoryHistoryFilter = 'all';
+            renderInventoryHistory();
+            document.getElementById('inventoryHistoryModal').classList.add('active');
+        }
+
+        function closeInventoryHistoryModal() {
+            document.getElementById('inventoryHistoryModal').classList.remove('active');
+            inventoryHistoryItemId = null;
+        }
+
+        function setInventoryHistoryFilter(type) {
+            inventoryHistoryFilter = type;
+            renderInventoryHistory();
+        }
+
+        // 최신순, 달마다 구분선. 각 줄 끝에는 그 기록을 반영한 직후의 총 재고. 수량은 바로 고칠 수 있음
+        function renderInventoryHistory() {
+            const item = inventoryItems.find(x => x.id === inventoryHistoryItemId);
+            const listEl = document.getElementById('inventoryHistoryList');
+            if (!item || !listEl) return;
             const unit = escapeHtml(item.unit || '');
-            const itemArg = escapeForOnclickArg(item.id);
-            // 기록마다 "그 기록을 반영한 직후의 총 재고"를 날짜순으로 이어 계산해 둠
+            document.getElementById('inventoryHistoryTitle').textContent = `📋 ${item.name} 입출고 기록`;
+            document.getElementById('inventoryHistoryCurrent').textContent = `현재 재고 ${formatInventoryQty(getInventoryCurrentQty(item))}${item.unit || ''}`;
+            document.querySelectorAll('#inventoryHistoryFilterRow .quick-preset-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.type === inventoryHistoryFilter);
+            });
+
+            const sorted = getSortedInventoryLogs(item);
             const balanceById = {};
             let balance = 0;
-            for (const log of getSortedInventoryLogs(item)) {
+            for (const log of sorted) {
                 const n = Number(log.qty) || 0;
                 if (log.type === 'in') balance += n;
                 else if (log.type === 'use') balance -= n;
@@ -451,19 +474,70 @@
                 balance = roundInventoryQty(balance);
                 balanceById[log.id] = balance;
             }
-            // 종류(입고/사용/재고 조정)가 이미 앞에 있으니 수량에는 +/− 부호를 붙이지 않음
+            const logs = sorted.reverse().filter(log => {
+                const type = INVENTORY_LOG_LABELS[log.type] ? log.type : 'adjust';
+                return inventoryHistoryFilter === 'all' || type === inventoryHistoryFilter;
+            });
+            if (logs.length === 0) {
+                listEl.innerHTML = `<p class="inv-log-empty">${inventoryHistoryFilter === 'all' ? '아직 입출고 기록이 없습니다.' : `${INVENTORY_LOG_LABELS[inventoryHistoryFilter]} 기록이 없습니다.`}</p>`;
+                return;
+            }
+            const itemArg = escapeForOnclickArg(item.id);
+            let lastMonth = '';
+            // 종류(입고/출고/재고 조정)가 이미 앞에 있으니 수량에는 +/− 부호를 붙이지 않음
             listEl.innerHTML = logs.map(log => {
                 const type = INVENTORY_LOG_LABELS[log.type] ? log.type : 'adjust';
-                return `
+                const month = (log.date || '').slice(0, 7);
+                let monthHeader = '';
+                if (month !== lastMonth) {
+                    lastMonth = month;
+                    monthHeader = /^\d{4}-\d{2}$/.test(month)
+                        ? `<div class="inv-log-month">${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월</div>`
+                        : '<div class="inv-log-month">날짜 없음</div>';
+                }
+                const logArg = escapeForOnclickArg(log.id);
+                return `${monthHeader}
                 <div class="inv-log-item">
-                    <span class="inv-log-date">${escapeHtml(log.date || '')}</span>
+                    <span class="inv-log-date">${escapeHtml((log.date || '').slice(5))}</span>
                     <span class="inv-log-type inv-log-${type}">${INVENTORY_LOG_LABELS[type]}</span>
-                    <span class="inv-log-qty">${formatInventoryQty(Number(log.qty) || 0)}${unit}</span>
+                    <span class="inv-log-qty">
+                        <input type="number" class="inv-log-qty-input" min="0" step="any" inputmode="decimal" value="${escapeHtml(String(Number(log.qty) || 0))}"
+                            aria-label="${escapeHtml(log.date || '')} ${INVENTORY_LOG_LABELS[type]} 수량 수정" onchange="updateInventoryLogQty('${itemArg}', '${logArg}', this)"
+                            onkeydown="if (event.key === 'Enter') this.blur()"><span class="inv-log-qty-unit">${unit}</span>
+                    </span>
                     <span class="inv-log-balance">(총 재고 : ${formatInventoryQty(balanceById[log.id] || 0)}${unit})</span>
-                    <button type="button" class="inv-log-delete" aria-label="이 기록 삭제" onclick="deleteInventoryLog('${itemArg}', '${escapeForOnclickArg(log.id)}')">🗑️</button>
+                    <button type="button" class="inv-log-delete" aria-label="이 기록 삭제" onclick="deleteInventoryLog('${itemArg}', '${logArg}')">🗑️</button>
                     ${log.note ? `<span class="inv-log-note">${escapeHtml(log.note)}</span>` : ''}
                 </div>`;
             }).join('');
+        }
+
+        // 기록 창에서 수량을 바로 고침. 고친 뒤 어느 날짜든 재고가 마이너스가 되면 되돌림
+        function updateInventoryLogQty(itemId, logId, input) {
+            if (!checkEditPermission()) { renderInventoryHistory(); return; }
+            const item = inventoryItems.find(x => x.id === itemId);
+            const log = item && (item.logs || []).find(l => l.id === logId);
+            if (!log) return;
+            const qty = parseInventoryQtyInput(input.value);
+            const minOk = log.type === 'adjust' ? qty >= 0 : qty > 0;
+            if (qty === null || Number.isNaN(qty) || !minOk) {
+                showAppToast(log.type === 'adjust' ? '수량을 0 이상의 숫자로 입력해주세요' : '수량을 0보다 큰 숫자로 입력해주세요', 'error');
+                renderInventoryHistory();
+                return;
+            }
+            if (qty === Number(log.qty)) return;
+            const negative = findInventoryNegativePoint(item.logs.map(l => l.id === logId ? Object.assign({}, l, { qty }) : l));
+            if (negative) {
+                showAppToast(`이렇게 고치면 ${negative.date}에 재고가 ${formatInventoryQty(negative.qty)}${item.unit || ''}(으)로 내려가서 고칠 수 없어요`, 'error');
+                renderInventoryHistory();
+                return;
+            }
+            log.qty = qty;
+            log.editedAt = new Date().toISOString();
+            item.updatedAt = log.editedAt;
+            saveInventory();
+            renderInventoryHistory();
+            showAppToast(`수량을 ${formatInventoryQty(qty)}${item.unit || ''}(으)로 고쳤어요 · 현재 재고 ${formatInventoryQty(getInventoryCurrentQty(item))}${item.unit || ''}`, 'success');
         }
 
         function deleteInventoryLog(itemId, logId) {
@@ -472,18 +546,18 @@
             if (!item) return;
             const negative = findInventoryNegativePoint((item.logs || []).filter(l => l.id !== logId));
             if (negative) {
-                showAppToast(`이 기록을 지우면 ${negative.date}에 재고가 ${formatInventoryQty(negative.qty)}${item.unit || ''}(으)로 내려가서 지울 수 없어요. 사용 기록을 먼저 고쳐주세요`, 'error');
+                showAppToast(`이 기록을 지우면 ${negative.date}에 재고가 ${formatInventoryQty(negative.qty)}${item.unit || ''}(으)로 내려가서 지울 수 없어요. 출고 기록을 먼저 고쳐주세요`, 'error');
                 return;
             }
             confirmModal('이 입출고 기록을 삭제하시겠습니까? 현재 재고가 다시 계산됩니다.', () => {
                 item.logs = (item.logs || []).filter(l => l.id !== logId);
                 item.updatedAt = new Date().toISOString();
-                renderInventoryLogList(item);
                 saveInventory();
+                renderInventoryHistory();
             });
         }
 
-        // ----- 입고/사용/실사 기록 -----
+        // ----- 입고/출고/재고 조정 기록 -----
         function openInventoryLogModal(itemId, type) {
             if (!checkEditPermission()) return;
             const item = inventoryItems.find(x => x.id === itemId);
@@ -506,12 +580,12 @@
                 btn.classList.toggle('selected', btn.dataset.type === type);
             });
             document.getElementById('inventoryLogModalTitle').textContent = `${item ? item.name : ''} ${INVENTORY_LOG_LABELS[type]}`;
-            document.getElementById('inventoryLogQtyLabel').textContent = type === 'adjust' ? '실제로 센 수량' : type === 'in' ? '들어온 수량' : '사용한 수량';
+            document.getElementById('inventoryLogQtyLabel').textContent = type === 'adjust' ? '실제로 센 수량' : type === 'in' ? '입고 수량' : '출고 수량';
             const current = item ? getInventoryCurrentQty(item) : 0;
             document.getElementById('inventoryLogHint').textContent = type === 'adjust'
                 ? `기록상 현재 재고는 ${formatInventoryQty(current)}${item && item.unit ? item.unit : ''}입니다. 실제로 센 수량으로 맞춥니다.`
                 : `현재 재고 ${formatInventoryQty(current)}${item && item.unit ? item.unit : ''}`;
-            document.getElementById('inventoryLogSaveBtn').textContent = type === 'adjust' ? '재고 조정' : `${INVENTORY_LOG_LABELS[type]} 기록`;
+            document.getElementById('inventoryLogSaveBtn').textContent = INVENTORY_LOG_LABELS[type];
         }
 
         function closeInventoryLogModal() {
@@ -545,7 +619,7 @@
                 const unit = item.unit || '';
                 const isLatest = existingLogs.every(l => (l.date || '') <= date);
                 showAppToast(isLatest
-                    ? `현재 재고 ${formatInventoryQty(getInventoryCurrentQty(item))}${unit}보다 많이 사용할 수 없어요`
+                    ? `현재 재고 ${formatInventoryQty(getInventoryCurrentQty(item))}${unit}보다 많이 출고할 수 없어요`
                     : `${negative.date} 기준 재고가 ${formatInventoryQty(negative.qty)}${unit}(으)로 내려가서 저장할 수 없어요. 날짜나 수량을 확인해주세요`, 'error');
                 return;
             }
@@ -554,20 +628,21 @@
             item.updatedAt = now.toISOString();
             closeInventoryLogModal();
             saveInventory();
-            if (editingInventoryItemId === item.id) renderInventoryLogList(item);
-            showAppToast(`${item.name} ${INVENTORY_LOG_LABELS[type]} 기록함 · 지금 ${formatInventoryQty(getInventoryCurrentQty(item))}${item.unit || ''}`, 'success');
+            if (inventoryHistoryItemId === item.id) renderInventoryHistory();
+            showAppToast(`${item.name} ${INVENTORY_LOG_LABELS[type]} 완료 · 현재 재고 ${formatInventoryQty(getInventoryCurrentQty(item))}${item.unit || ''}`, 'success');
         }
 
         // 오늘 요약 카드용: 부족(바닥 포함)·소진 임박 품목 수
         function getInventoryAlertCounts() {
             const todayStr = formatDate(new Date());
-            let shortage = 0, soon = 0;
+            let shortage = 0, need = 0, soon = 0;
             inventoryItems.forEach(item => {
                 const lv = getInventoryStatus(item, todayStr).level;
                 if (lv === 'out' || lv === 'low') shortage++;
+                else if (lv === 'need') need++;
                 else if (lv === 'soon') soon++;
             });
-            return { shortage, soon };
+            return { shortage, need, soon };
         }
 
         // ===== 정비계획 연동 =====
@@ -597,18 +672,42 @@
             return '';
         }
 
-        // 재고 카드에 들어갈 "🔧 연결된 정비 항목 · 차기 일정" 줄
-        function renderInventoryMaintLinksLine(item) {
-            if (!isMaintenanceFeatureOn()) return '';
-            const links = getInventoryMaintLinks(item);
-            if (links.length === 0) return '';
-            const unit = escapeHtml(item.unit || '');
-            const parts = links.map(l => {
+        // 연동된 정비 항목의 사용 예정. 차기 점검일 순서로 현재 재고에서 차례로 빼 보고, 모자라는 회차부터 short
+        function getInventoryMaintPlan(item, current) {
+            if (!isMaintenanceFeatureOn()) return [];
+            const plan = getInventoryMaintLinks(item).map(l => {
                 const m = maintenanceSchedule.find(x => x.id === l.maintId);
-                const due = formatMaintenanceDueShort(m.nextDue);
-                return `${escapeHtml(getMaintenanceLabel(m))} ${formatInventoryQty(Number(l.qty))}${unit}${due ? ` · 차기 ${due}` : ''}`;
+                const due = (m.status !== '보류' && isValidNextDue(m.nextDue)) ? m.nextDue : '';
+                return { m, qty: Number(l.qty), due };
             });
-            return `<div class="inv-maint-line">🔧 ${parts.join('<br>🔧 ')}</div>`;
+            plan.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
+            let left = current;
+            plan.forEach(p => {
+                if (!p.due) { p.short = false; return; }
+                left = roundInventoryQty(left - p.qty);
+                p.short = left < 0;
+            });
+            return plan;
+        }
+
+        // "26년 11월 15일" (월만 정한 일정은 "26년 11월 중")
+        function formatInventoryPlanDate(due) {
+            const yy = due.slice(2, 4);
+            const mo = Number(due.slice(5, 7));
+            return due.length === 10 ? `${yy}년 ${mo}월 ${Number(due.slice(8, 10))}일` : `${yy}년 ${mo}월 중`;
+        }
+
+        function renderInventoryMaintPlanLines(plan, unit) {
+            return plan.map(p => {
+                const label = escapeHtml(getMaintenanceLabel(p.m));
+                const qty = `${formatInventoryQty(p.qty)}${unit}`;
+                const when = p.due ? `${formatInventoryPlanDate(p.due)}${p.due.length === 10 ? '에' : ''}` : '';
+                const text = p.due ? `${when} ${qty} 사용 예정` : `1회 ${qty} 사용 (차기 일정 미정)`;
+                return `<div class="inv-plan-line${p.short ? ' is-short' : ''}">
+                    <span class="inv-plan-label">🔧 ${label}</span>
+                    <span class="inv-plan-when">${text}${p.short ? ' <span class="inv-plan-warn">⚠️ 재고 확보 필요</span>' : ''}</span>
+                </div>`;
+            }).join('');
         }
 
         // ----- 품목 창의 연동 행 -----
@@ -640,7 +739,7 @@
             const hasMaint = maintenanceSchedule.length > 0;
             addBtn.style.display = hasMaint ? '' : 'none';
             hint.textContent = hasMaint
-                ? '연동하면 정비 완료 처리할 때 1회 사용량만큼 재고에서 빠져요. 연동하지 않는 재고는 비워두세요.'
+                ? '연동하면 정비 완료 처리할 때 1회 사용량만큼 출고돼요. 연동하지 않는 재고는 비워두세요.'
                 : '정비계획 탭에 등록된 항목이 없어요. 정비 항목을 먼저 만들면 연동할 수 있어요.';
         }
 
@@ -763,7 +862,7 @@
                 done.push(`${item.name} ${formatInventoryQty(qty)}${item.unit || ''}`);
             });
             if (done.length) saveInventory();
-            return [done.length ? `재고 차감: ${done.join(', ')}` : '', skipped.length ? `재고 부족으로 차감 안 함: ${skipped.join(', ')}` : ''].filter(Boolean).join(' · ');
+            return [done.length ? `재고 출고: ${done.join(', ')}` : '', skipped.length ? `재고 부족으로 출고 안 함: ${skipped.join(', ')}` : ''].filter(Boolean).join(' · ');
         }
 
         // 정비 항목을 지우면 그 항목을 가리키던 연동만 풂(품목과 기록은 그대로)
