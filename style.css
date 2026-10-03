@@ -4741,6 +4741,13 @@ html {
     border-color: var(--d-border);
 }
 
+/* 위 규칙이 선택된 칩의 그라데이션까지 덮어써서 다크 모드에서 어떤 칩이 선택됐는지 안 보였음 */
+.dark-mode .quick-preset-btn.selected {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: transparent;
+    color: #fff;
+}
+
 .dark-mode .todo-item-wrap {
     border-color: var(--d-border);
 }
@@ -6154,13 +6161,6 @@ body {
     border-color: var(--d-border);
     color: var(--d-text1);
 }
-/* 다크 모드 공용 규칙(.dark-mode .quick-preset-btn)이 선택 표시를 덮어써서, 재고 화면에서는 선택된 칸을 다시 보이게 함 */
-.dark-mode #inventoryCategoryFilterRow .quick-preset-btn.selected,
-.dark-mode #inventoryLogTypeRow .quick-preset-btn.selected {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-color: transparent;
-    color: #fff;
-}
 
 /* 재고 분류 칩 줄: [+ 분류 추가]는 점선으로 "새로 만드는 칸"임을 표시, 선택한 분류 옆에 수정 버튼 */
 .quick-preset-btn.inv-category-add-btn {
@@ -6207,3 +6207,107 @@ body {
 .dark-mode .inv-category-edit-btn { color: var(--d-text2); }
 .dark-mode .inv-history-line { color: var(--d-text3); }
 .dark-mode .inv-history-btn { color: #aab6ff; }
+
+/* ===== 재고 ↔ 정비계획 연동 ===== */
+.inv-maint-line {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #5a6475;
+}
+.inv-link-row {
+    display: grid;
+    grid-template-columns: 1fr auto 64px 32px 28px;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.inv-link-row select,
+.inv-link-row input,
+.maint-inv-deduct-qty {
+    width: 100%;
+    min-width: 0;
+    padding: 8px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 13px;
+    background: #fff;
+    color: inherit;
+}
+.inv-link-row select:focus,
+.inv-link-row input:focus,
+.maint-inv-deduct-qty:focus { outline: none; border-color: #667eea; }
+.inv-link-qty-label,
+.inv-link-unit { font-size: 12px; color: #666; white-space: nowrap; }
+.inv-link-remove {
+    background: none;
+    border: none;
+    font-size: 14px;
+    color: #999;
+    cursor: pointer;
+    padding: 4px;
+}
+.inv-link-remove:hover { color: #c0392b; }
+.inv-link-add-btn {
+    padding: 7px 14px;
+    border: 2px dashed #c9d0e6;
+    border-radius: 8px;
+    background: transparent;
+    color: #667eea;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.inv-link-add-btn:hover { border-color: #667eea; }
+.inv-log-hint.inv-link-hint { margin: 8px 0 0; }
+
+.maint-inv-row .maint-inv-ok { color: #1a8f63; }
+.maint-inv-row .maint-inv-short { color: #c0392b; font-weight: 700; }
+
+.maint-inv-deduct-row {
+    display: grid;
+    grid-template-columns: 1fr 64px 32px;
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 2px;
+    margin-bottom: 8px;
+}
+.maint-inv-deduct-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    min-width: 0;
+    cursor: pointer;
+}
+.maint-inv-deduct-check span { overflow-wrap: anywhere; }
+.maint-inv-deduct-preview {
+    grid-column: 1 / -1;
+    padding-left: 24px;
+    font-size: 12px;
+    color: #777;
+    font-variant-numeric: tabular-nums;
+}
+.maint-inv-deduct-preview.is-short { color: #c0392b; font-weight: 600; }
+
+@media (max-width: 768px) {
+    .inv-link-row { grid-template-columns: 1fr 56px 28px 24px; }
+    .inv-link-row .inv-link-qty-label { display: none; }
+}
+
+.dark-mode .inv-maint-line,
+.dark-mode .inv-link-qty-label,
+.dark-mode .inv-link-unit,
+.dark-mode .maint-inv-deduct-preview { color: var(--d-text2); }
+.dark-mode .inv-link-row select,
+.dark-mode .inv-link-row input,
+.dark-mode .maint-inv-deduct-qty {
+    background: var(--d-bg3);
+    border-color: var(--d-border);
+    color: var(--d-text1);
+}
+.dark-mode .inv-link-add-btn { border-color: var(--d-border); color: #aab6ff; }
+.dark-mode .inv-link-remove { color: var(--d-text3); }
+.dark-mode .maint-inv-row .maint-inv-ok { color: #6fd3a8; }
+.dark-mode .maint-inv-row .maint-inv-short,
+.dark-mode .maint-inv-deduct-preview.is-short { color: #ff9b8f; }

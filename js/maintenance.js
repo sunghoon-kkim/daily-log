@@ -183,6 +183,7 @@
                     ${m.cycle ? `<div class="project-card-row"><b>주기:</b> ${escapeHtml(m.cycle)}</div>` : ''}
                     ${(m.cycle && !parseCycleIntervalMonths(m.cycle)) ? `<div class="project-card-row maint-cycle-warning">⚠️ 주기 표현을 자동으로 인식하지 못해, 등록된 차기 점검월만 표시돼요. ("3개월", "격월", "분기", "반기", "매년" 등으로 적으면 반복월이 자동 계산됩니다)</div>` : ''}
                     ${m.sop ? `<div class="project-card-row"><b>SOP:</b> ${escapeHtml(m.sop)}</div>` : ''}
+                    ${typeof renderMaintenanceInventoryRow === 'function' ? renderMaintenanceInventoryRow(m) : ''}
                     ${renderMaintenanceLastDoneRow(m)}
                     ${showAck ? `
                     <label class="maint-ack-row" onclick="event.stopPropagation()">
@@ -375,17 +376,20 @@
             queueSync();
             closeMaintenanceModal();
             renderMaintenanceSchedule();
+            if (typeof renderInventory === 'function') renderInventory(); // 재고 카드의 연동 항목 이름·차기 일정
         }
 
         function deleteMaintenanceItem() {
             if (!checkEditPermission()) return;
             if (!editingMaintenanceId) return;
             confirmModal('이 정비계획 항목을 삭제하시겠습니까?', () => {
-                maintenanceSchedule = maintenanceSchedule.filter(m => m.id !== editingMaintenanceId);
+                const deletedId = editingMaintenanceId;
+                maintenanceSchedule = maintenanceSchedule.filter(m => m.id !== deletedId);
                 safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
                 queueSync();
                 closeMaintenanceModal();
                 renderMaintenanceSchedule();
+                if (typeof removeInventoryMaintLinks === 'function') removeInventoryMaintLinks(deletedId);
             });
         }
 
@@ -468,6 +472,7 @@
             document.getElementById('maintCompleteLogCheckbox').checked = categories.length > 0;
 
             refreshMaintenanceCompleteHint();
+            if (typeof renderMaintCompleteInventory === 'function') renderMaintCompleteInventory(m);
             document.getElementById('maintCompleteModal').classList.add('active');
             applyFormLockState();
         }
@@ -512,7 +517,8 @@
             const category = document.getElementById('maintCompleteCategorySelect').value;
 
             if (!Array.isArray(m.completions)) m.completions = [];
-            m.completions.push({ id: 'mc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), date, note, loggedAt: new Date().toISOString() });
+            const completionId = 'mc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+            m.completions.push({ id: completionId, date, note, loggedAt: new Date().toISOString() });
             m.completions.sort((a, b) => a.date.localeCompare(b.date));
             const latest = m.completions[m.completions.length - 1].date;
             m.lastDone = latest;
@@ -530,6 +536,8 @@
             }
 
             safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
+            // 연동된 재고 차감 (재고 쪽 저장·다시 그리기는 함수 안에서 함). 창을 닫기 전에 체크 상태를 읽어야 함
+            const inventoryMsg = typeof applyMaintCompleteInventory === 'function' ? applyMaintCompleteInventory(m, date, completionId) : '';
             queueSync();
             closeMaintenanceCompleteModal();
 
@@ -545,7 +553,9 @@
             renderMaintenanceSchedule();
             renderCalendar();
             if (selectedDate === date) renderRecordForm();
-            showAppToast(logToRecord && category ? `완료 처리했습니다 (${date} 활동기록 [${category}]에도 기록됨)` : '완료 처리했습니다', 'success');
+            if (typeof renderInventory === 'function') renderInventory(); // 재고 카드의 차기 일정
+            const baseMsg = logToRecord && category ? `완료 처리했습니다 (${date} 활동기록 [${category}]에도 기록됨)` : '완료 처리했습니다';
+            showAppToast(inventoryMsg ? `${baseMsg} · ${inventoryMsg}` : baseMsg, 'success');
         }
 
         function deleteMaintenanceCompletion(itemId, completionId) {

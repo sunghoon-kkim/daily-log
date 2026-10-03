@@ -1278,7 +1278,7 @@
                 </div>
                 <div class="modal-field">
                     <label for="inventoryUnitInput">단위</label>
-                    <input type="text" id="inventoryUnitInput" maxlength="10" placeholder="예: EA, Set">
+                    <input type="text" id="inventoryUnitInput" maxlength="10" placeholder="예: EA, Set" oninput="syncInventoryMaintLinkUnit()">
                 </div>
             </div>
 
@@ -1301,6 +1301,13 @@
             <div class="modal-field">
                 <label for="inventoryNoteInput">메모</label>
                 <input type="text" id="inventoryNoteInput" maxlength="200" placeholder="모델명, 규격 등">
+            </div>
+
+            <div class="modal-field" id="inventoryMaintLinkSection">
+                <label>정비계획 연동 (선택)</label>
+                <div id="inventoryMaintLinkList"></div>
+                <button type="button" class="inv-link-add-btn" id="inventoryMaintLinkAddBtn" onclick="addInventoryMaintLinkRow()">+ 정비 항목 연결</button>
+                <p class="inv-log-hint inv-link-hint" id="inventoryMaintLinkHint"></p>
             </div>
 
             <div id="inventoryLogSection" style="display:none;">
@@ -1444,6 +1451,10 @@
             <div class="modal-field">
                 <label class="search-scope-label"><input type="checkbox" id="maintCompleteLogCheckbox" checked> 완료일의 활동기록에도 한 줄 남기기</label>
                 <select id="maintCompleteCategorySelect" class="search-option-select" aria-label="기록할 카테고리" style="margin-top:6px;"></select>
+            </div>
+            <div class="modal-field" id="maintCompleteInventoryField" style="display:none;">
+                <label>📦 재고에서 차감</label>
+                <div id="maintCompleteInventoryList"></div>
             </div>
             <div class="search-help-text" id="maintCompleteNextDueHint" style="margin:0 0 10px 0;"></div>
 

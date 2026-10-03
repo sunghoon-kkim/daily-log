@@ -241,6 +241,7 @@
             queueSync();
             renderInventory();
             if (typeof renderTodaySummary === 'function') renderTodaySummary();
+            if (typeof renderMaintenanceSchedule === 'function') renderMaintenanceSchedule(); // 정비 카드의 필요 재고 표시
         }
 
         function renderInventory() {
@@ -318,6 +319,7 @@
                         ${minPct !== null ? `<div class="inv-gauge-min" style="left:${minPct}%"></div>` : ''}
                     </div>
                     <div class="inv-forecast">${forecast}</div>
+                    ${renderInventoryMaintLinksLine(item)}
                     <div class="inv-history-line">
                         <span>${lastDates || '아직 기록이 없어요'}</span>
                         <button type="button" class="inv-history-btn" onclick="openInventoryItemModal('${idArg}', true)">기록 보기</button>
@@ -352,6 +354,7 @@
             document.getElementById('inventoryLogSection').style.display = item ? '' : 'none';
             document.getElementById('deleteInventoryItemBtn').style.display = item ? 'inline-block' : 'none';
             if (item) renderInventoryLogList(item);
+            renderInventoryMaintLinkEditor(item);
             document.getElementById('inventoryItemModal').classList.add('active');
             if (item && showHistory) {
                 document.getElementById('inventoryLogSection').scrollIntoView({ block: 'start' });
@@ -386,6 +389,8 @@
                 if (error) { showAppToast(error); return; }
                 if (!existing) addInventoryCategory(category);
             }
+            const linkResult = isMaintenanceFeatureOn() ? readInventoryMaintLinkRows() : null;
+            if (linkResult && linkResult.error) { showAppToast(linkResult.error); return; }
             const fields = {
                 name,
                 category,
@@ -395,6 +400,7 @@
                 note: document.getElementById('inventoryNoteInput').value.trim(),
                 updatedAt: new Date().toISOString()
             };
+            if (linkResult) fields.maintLinks = linkResult.links; // 정비 탭을 안 쓰는 계정은 기존 연동을 건드리지 않음
 
             if (editingInventoryItemId) {
                 const item = inventoryItems.find(x => x.id === editingInventoryItemId);
@@ -562,4 +568,212 @@
                 else if (lv === 'soon') soon++;
             });
             return { shortage, soon };
+        }
+
+        // ===== 정비계획 연동 =====
+        // 품목마다 maintLinks: [{ maintId, qty }]로 "이 정비 항목을 한 번 할 때 몇 개 쓰는지"를 저장함(연동은 선택).
+        // 정비 완료 처리 때 그 수량만큼 사용 기록을 남기고, 정비 카드에는 필요 재고가 충분한지 보여줌
+        function isInventoryFeatureOn() {
+            return !disabledTabIds.includes('inventory') && !isFeatureDisabled('inventoryManage');
+        }
+
+        function isMaintenanceFeatureOn() {
+            return !disabledTabIds.includes('maintenance') && !isFeatureDisabled('maintenanceSchedule');
+        }
+
+        function getMaintenanceLabel(m) {
+            return `${m.equipment || '(설비 미지정)'} - ${m.item || '점검'}`;
+        }
+
+        // 지워진 정비 항목을 가리키는 연결은 빼고 돌려줌
+        function getInventoryMaintLinks(item) {
+            return (Array.isArray(item.maintLinks) ? item.maintLinks : [])
+                .filter(l => l && maintenanceSchedule.some(m => m.id === l.maintId) && Number(l.qty) > 0);
+        }
+
+        function formatMaintenanceDueShort(nextDue) {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(nextDue || '')) return formatInventoryShortDate(nextDue);
+            if (/^\d{4}-\d{2}$/.test(nextDue || '')) return `${Number(nextDue.slice(5, 7))}월`;
+            return '';
+        }
+
+        // 재고 카드에 들어갈 "🔧 연결된 정비 항목 · 차기 일정" 줄
+        function renderInventoryMaintLinksLine(item) {
+            if (!isMaintenanceFeatureOn()) return '';
+            const links = getInventoryMaintLinks(item);
+            if (links.length === 0) return '';
+            const unit = escapeHtml(item.unit || '');
+            const parts = links.map(l => {
+                const m = maintenanceSchedule.find(x => x.id === l.maintId);
+                const due = formatMaintenanceDueShort(m.nextDue);
+                return `${escapeHtml(getMaintenanceLabel(m))} ${formatInventoryQty(Number(l.qty))}${unit}${due ? ` · 차기 ${due}` : ''}`;
+            });
+            return `<div class="inv-maint-line">🔧 ${parts.join('<br>🔧 ')}</div>`;
+        }
+
+        // ----- 품목 창의 연동 행 -----
+        function buildInventoryMaintLinkRow(link, unit) {
+            const options = maintenanceSchedule.slice()
+                .sort((a, b) => getMaintenanceLabel(a).localeCompare(getMaintenanceLabel(b), 'ko'))
+                .map(m => `<option value="${escapeHtml(m.id)}"${link && link.maintId === m.id ? ' selected' : ''}>${escapeHtml(getMaintenanceLabel(m))}</option>`)
+                .join('');
+            return `
+                <div class="inv-link-row">
+                    <select class="inv-link-select" aria-label="연동할 정비 항목"><option value="">정비 항목 선택</option>${options}</select>
+                    <span class="inv-link-qty-label">1회</span>
+                    <input type="number" class="inv-link-qty" min="0" step="any" inputmode="decimal" aria-label="1회 사용량" value="${link ? escapeHtml(String(link.qty)) : ''}">
+                    <span class="inv-link-unit">${escapeHtml(unit || '')}</span>
+                    <button type="button" class="inv-link-remove" aria-label="이 연동 빼기" onclick="this.closest('.inv-link-row').remove()">✕</button>
+                </div>`;
+        }
+
+        function renderInventoryMaintLinkEditor(item) {
+            const section = document.getElementById('inventoryMaintLinkSection');
+            if (!section) return;
+            section.style.display = isMaintenanceFeatureOn() ? '' : 'none';
+            const list = document.getElementById('inventoryMaintLinkList');
+            const addBtn = document.getElementById('inventoryMaintLinkAddBtn');
+            const hint = document.getElementById('inventoryMaintLinkHint');
+            const links = item ? getInventoryMaintLinks(item) : [];
+            const unit = item ? item.unit : document.getElementById('inventoryUnitInput').value.trim();
+            list.innerHTML = links.map(l => buildInventoryMaintLinkRow(l, unit)).join('');
+            const hasMaint = maintenanceSchedule.length > 0;
+            addBtn.style.display = hasMaint ? '' : 'none';
+            hint.textContent = hasMaint
+                ? '연동하면 정비 완료 처리할 때 1회 사용량만큼 재고에서 빠져요. 연동하지 않는 재고는 비워두세요.'
+                : '정비계획 탭에 등록된 항목이 없어요. 정비 항목을 먼저 만들면 연동할 수 있어요.';
+        }
+
+        function addInventoryMaintLinkRow() {
+            const unit = document.getElementById('inventoryUnitInput').value.trim();
+            document.getElementById('inventoryMaintLinkList').insertAdjacentHTML('beforeend', buildInventoryMaintLinkRow(null, unit));
+            const rows = document.querySelectorAll('#inventoryMaintLinkList .inv-link-row');
+            rows[rows.length - 1].querySelector('select').focus();
+        }
+
+        // 단위를 바꾸면 연동 행의 단위 글자도 같이 바꿈
+        function syncInventoryMaintLinkUnit() {
+            const unit = document.getElementById('inventoryUnitInput').value.trim();
+            document.querySelectorAll('#inventoryMaintLinkList .inv-link-unit').forEach(el => { el.textContent = unit; });
+        }
+
+        // 품목 창의 연동 행을 읽어서 검증함. 오류면 { error }, 아니면 { links }
+        function readInventoryMaintLinkRows() {
+            const links = [];
+            for (const row of document.querySelectorAll('#inventoryMaintLinkList .inv-link-row')) {
+                const maintId = row.querySelector('.inv-link-select').value;
+                const qtyRaw = row.querySelector('.inv-link-qty').value;
+                if (!maintId && String(qtyRaw).trim() === '') continue; // 비워둔 행은 무시
+                if (!maintId) return { error: '연동할 정비 항목을 선택해주세요' };
+                const qty = parseInventoryQtyInput(qtyRaw);
+                if (qty === null || Number.isNaN(qty) || qty <= 0) return { error: '정비 1회 사용량을 0보다 큰 숫자로 입력해주세요' };
+                if (links.some(l => l.maintId === maintId)) return { error: '같은 정비 항목이 두 번 연결돼 있어요' };
+                links.push({ maintId, qty });
+            }
+            return { links };
+        }
+
+        // ----- 정비 카드: 필요 재고 -----
+        function getInventoryNeedsForMaintenance(maintId) {
+            const needs = [];
+            inventoryItems.forEach(item => {
+                const link = getInventoryMaintLinks(item).find(l => l.maintId === maintId);
+                if (!link) return;
+                const current = getInventoryCurrentQty(item);
+                const qty = Number(link.qty);
+                needs.push({ item, qty, current, enough: current >= qty });
+            });
+            return needs;
+        }
+
+        function renderMaintenanceInventoryRow(m) {
+            if (!isInventoryFeatureOn()) return '';
+            const needs = getInventoryNeedsForMaintenance(m.id);
+            if (needs.length === 0) return '';
+            const parts = needs.map(n => {
+                const unit = escapeHtml(n.item.unit || '');
+                return `${escapeHtml(n.item.name)} ${formatInventoryQty(n.qty)}${unit} · ${n.enough
+                    ? `<span class="maint-inv-ok">현재 ${formatInventoryQty(n.current)}${unit} ✅</span>`
+                    : `<span class="maint-inv-short">⚠️ 부족 (현재 ${formatInventoryQty(n.current)}${unit})</span>`}`;
+            });
+            return `<div class="project-card-row maint-inv-row"><b>📦 필요 재고:</b> ${parts.join(' / ')}</div>`;
+        }
+
+        // ----- 정비 완료 처리 창: 재고 차감 -----
+        function renderMaintCompleteInventory(m) {
+            const field = document.getElementById('maintCompleteInventoryField');
+            const list = document.getElementById('maintCompleteInventoryList');
+            if (!field || !list) return;
+            const needs = isInventoryFeatureOn() ? getInventoryNeedsForMaintenance(m.id) : [];
+            field.style.display = needs.length ? '' : 'none';
+            list.innerHTML = needs.map(n => `
+                <div class="maint-inv-deduct-row" data-item-id="${escapeHtml(n.item.id)}">
+                    <label class="maint-inv-deduct-check">
+                        <input type="checkbox" class="maint-inv-deduct-checkbox"${n.enough ? ' checked' : ''}>
+                        <span>${escapeHtml(n.item.name)}</span>
+                    </label>
+                    <input type="number" class="maint-inv-deduct-qty" min="0" step="any" inputmode="decimal" value="${escapeHtml(String(n.qty))}" aria-label="${escapeHtml(n.item.name)} 차감 수량" oninput="refreshMaintCompleteInventoryRow(this)">
+                    <span class="inv-link-unit">${escapeHtml(n.item.unit || '')}</span>
+                    <span class="maint-inv-deduct-preview"></span>
+                </div>`).join('');
+            list.querySelectorAll('.maint-inv-deduct-qty').forEach(input => refreshMaintCompleteInventoryRow(input));
+        }
+
+        function refreshMaintCompleteInventoryRow(input) {
+            const row = input.closest('.maint-inv-deduct-row');
+            const item = inventoryItems.find(x => x.id === row.dataset.itemId);
+            if (!item) return;
+            const current = getInventoryCurrentQty(item);
+            const qty = parseInventoryQtyInput(input.value);
+            const preview = row.querySelector('.maint-inv-deduct-preview');
+            const unit = item.unit || '';
+            const short = qty !== null && !Number.isNaN(qty) && qty > current;
+            preview.classList.toggle('is-short', short);
+            preview.textContent = short
+                ? `재고 부족 (현재 ${formatInventoryQty(current)}${unit})`
+                : `현재 ${formatInventoryQty(current)}${unit} → ${formatInventoryQty(current - (qty > 0 ? qty : 0))}${unit}`;
+            const checkbox = row.querySelector('.maint-inv-deduct-checkbox');
+            if (short) checkbox.checked = false;
+        }
+
+        // 정비 완료를 저장할 때 호출: 체크된 품목마다 사용 기록을 남김. 재고가 모자라면 그 품목만 건너뜀.
+        // 돌려주는 값은 토스트에 붙일 안내 문구
+        function applyMaintCompleteInventory(m, date, completionId) {
+            const rows = document.querySelectorAll('#maintCompleteInventoryList .maint-inv-deduct-row');
+            if (!isInventoryFeatureOn() || rows.length === 0) return '';
+            const done = [], skipped = [];
+            const now = new Date();
+            rows.forEach((row, i) => {
+                if (!row.querySelector('.maint-inv-deduct-checkbox').checked) return;
+                const item = inventoryItems.find(x => x.id === row.dataset.itemId);
+                if (!item) return;
+                const qty = parseInventoryQtyInput(row.querySelector('.maint-inv-deduct-qty').value);
+                if (qty === null || Number.isNaN(qty) || qty <= 0) { skipped.push(item.name); return; }
+                const log = {
+                    id: 'invlog_' + now.getTime() + '_' + i + '_' + Math.random().toString(36).slice(2, 7),
+                    type: 'use', qty, date,
+                    note: `[정비완료] ${getMaintenanceLabel(m)}`,
+                    maintCompletionId: completionId,
+                    loggedAt: now.toISOString()
+                };
+                const logs = Array.isArray(item.logs) ? item.logs : [];
+                if (findInventoryNegativePoint(logs.concat(log))) { skipped.push(item.name); return; }
+                item.logs = logs.concat(log);
+                item.updatedAt = now.toISOString();
+                done.push(`${item.name} ${formatInventoryQty(qty)}${item.unit || ''}`);
+            });
+            if (done.length) saveInventory();
+            return [done.length ? `재고 차감: ${done.join(', ')}` : '', skipped.length ? `재고 부족으로 차감 안 함: ${skipped.join(', ')}` : ''].filter(Boolean).join(' · ');
+        }
+
+        // 정비 항목을 지우면 그 항목을 가리키던 연동만 풂(품목과 기록은 그대로)
+        function removeInventoryMaintLinks(maintId) {
+            let changed = false;
+            inventoryItems.forEach(item => {
+                if (Array.isArray(item.maintLinks) && item.maintLinks.some(l => l.maintId === maintId)) {
+                    item.maintLinks = item.maintLinks.filter(l => l.maintId !== maintId);
+                    changed = true;
+                }
+            });
+            if (changed) saveInventory();
         }
