@@ -226,19 +226,23 @@
                 warnEl.textContent = `⚠️ 출처를 확인할 수 없는 내용이 ${invalidCitations}곳 있습니다. 그 부분은 믿지 말고 원본 기록을 직접 확인해주세요.`;
             } else if (items.length > 0 && cited.size === 0 && !/찾을 수 없습니다/.test(answer)) {
                 warnEl.style.display = 'block';
-                warnEl.textContent = '⚠️ 답변에 출처 표시가 없습니다. 아래 원본 기록과 직접 대조해 확인해주세요.';
+                warnEl.textContent = '⚠️ 답변에 출처 표시가 없습니다. 아래 검색된 기록과 직접 대조해 확인해주세요.';
             } else {
                 warnEl.style.display = 'none';
             }
 
             const rangeLabel = (from || to) ? ` · 기간 ${from || '처음'} ~ ${to || '지금'}` : '';
             document.getElementById('askLogMeta').textContent = items.length
-                ? `검색어: ${terms.join(', ')}${rangeLabel} · 참고한 기록 ${items.length}건`
+                ? `검색어: ${terms.join(', ')}${rangeLabel} · 검색된 기록 ${items.length}건${cited.size ? ` · 답변 근거 ${cited.size}건` : ''}`
                 : `검색어: ${terms.join(', ') || '(없음)'}${rangeLabel} · 일치하는 기록이 없습니다`;
 
+            // 답변에 출처 번호가 붙은 기록만 보여줌. 출처 표시가 하나도 없으면 대조할 수 있게 검색된 기록 전체를 보여줌
+            // (번호 #n은 AI에게 보낸 순서 그대로라 답변의 [#n]과 맞음)
+            const showAll = cited.size === 0;
             const listEl = document.getElementById('askLogSources');
             listEl.innerHTML = items.map((item, i) => {
                 const n = i + 1;
+                if (!showAll && !cited.has(n)) return '';
                 return `<div class="ask-log-source${cited.has(n) ? ' cited' : ''}" id="askLogSource${n}">
                     <div class="ask-log-source-head">
                         <span class="ask-log-source-num">#${n}</span>
@@ -251,6 +255,9 @@
             const sourcesDetails = document.getElementById('askLogSourcesDetails');
             sourcesDetails.style.display = items.length ? '' : 'none';
             sourcesDetails.open = false;
+            document.getElementById('askLogSourcesSummary').textContent = showAll
+                ? `📚 검색된 기록 보기 (${items.length}건)`
+                : `📚 답변 근거 기록 보기 (${cited.size}건)`;
 
             document.getElementById('askLogResultBlock').style.display = 'block';
         }
