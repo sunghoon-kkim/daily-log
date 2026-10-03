@@ -434,16 +434,28 @@
             }
             const unit = escapeHtml(item.unit || '');
             const itemArg = escapeForOnclickArg(item.id);
+            // 기록마다 "그 기록을 반영한 직후의 총 재고"를 날짜순으로 이어 계산해 둠
+            const balanceById = {};
+            let balance = 0;
+            for (const log of getSortedInventoryLogs(item)) {
+                const n = Number(log.qty) || 0;
+                if (log.type === 'in') balance += n;
+                else if (log.type === 'use') balance -= n;
+                else balance = n;
+                balance = roundInventoryQty(balance);
+                balanceById[log.id] = balance;
+            }
+            // 종류(입고/사용/재고 조정)가 이미 앞에 있으니 수량에는 +/− 부호를 붙이지 않음
             listEl.innerHTML = logs.map(log => {
                 const type = INVENTORY_LOG_LABELS[log.type] ? log.type : 'adjust';
-                const sign = type === 'in' ? '+' : type === 'use' ? '−' : '=';
                 return `
                 <div class="inv-log-item">
                     <span class="inv-log-date">${escapeHtml(log.date || '')}</span>
                     <span class="inv-log-type inv-log-${type}">${INVENTORY_LOG_LABELS[type]}</span>
-                    <span class="inv-log-qty">${sign}${formatInventoryQty(Number(log.qty) || 0)}${unit}</span>
-                    <span class="inv-log-note">${escapeHtml(log.note || '')}</span>
+                    <span class="inv-log-qty">${formatInventoryQty(Number(log.qty) || 0)}${unit}</span>
+                    <span class="inv-log-balance">(총 재고 : ${formatInventoryQty(balanceById[log.id] || 0)}${unit})</span>
                     <button type="button" class="inv-log-delete" aria-label="이 기록 삭제" onclick="deleteInventoryLog('${itemArg}', '${escapeForOnclickArg(log.id)}')">🗑️</button>
+                    ${log.note ? `<span class="inv-log-note">${escapeHtml(log.note)}</span>` : ''}
                 </div>`;
             }).join('');
         }

@@ -6058,28 +6058,35 @@ body {
     max-height: 220px;
     overflow-y: auto;
 }
+/* 모든 줄의 열 너비를 고정해서 날짜·종류·수량·총 재고가 위아래로 같은 위치에 오게 함.
+   메모는 둘째 줄에 종류 열부터 시작 */
 .inv-log-item {
     display: grid;
-    grid-template-columns: auto auto auto 1fr auto;
+    grid-template-columns: 72px 66px 52px 1fr 24px;
     align-items: center;
-    gap: 8px;
+    column-gap: 8px;
+    row-gap: 2px;
     padding: 7px 0;
     border-bottom: 1px solid #eee;
     font-size: 13px;
 }
-.inv-log-date { color: #888; font-size: 12px; font-variant-numeric: tabular-nums; }
+.inv-log-date { color: #888; font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .inv-log-type {
+    display: block;
+    text-align: center;
+    white-space: nowrap;
     font-size: 11px;
     font-weight: 700;
-    padding: 2px 8px;
+    padding: 2px 6px;
     border-radius: 10px;
     background: #eef1f6;
     color: #556;
 }
 .inv-log-type.inv-log-in { background: #ddeef8; color: #2f6f96; }
 .inv-log-type.inv-log-use { background: #f4ece0; color: #8a5a1c; }
-.inv-log-qty { font-weight: 700; font-variant-numeric: tabular-nums; }
-.inv-log-note { color: #777; min-width: 0; overflow-wrap: anywhere; }
+.inv-log-qty { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+.inv-log-balance { color: #666; font-size: 11.5px; font-variant-numeric: tabular-nums; min-width: 0; }
+.inv-log-note { grid-column: 2 / -1; color: #777; font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
 .inv-log-delete {
     background: none;
     border: none;
@@ -6093,8 +6100,8 @@ body {
 
 @media (max-width: 768px) {
     .inv-list { grid-template-columns: 1fr; }
-    .inv-log-item { grid-template-columns: auto auto 1fr auto; }
-    .inv-log-note { grid-column: 1 / -1; grid-row: 2; }
+    .inv-log-item { grid-template-columns: 70px 64px 44px 1fr 22px; column-gap: 6px; }
+    .inv-log-date { font-size: 11px; }
 }
 
 .dark-mode .inv-summary-item { background: var(--d-bg3); color: var(--d-text2); }
@@ -6107,7 +6114,8 @@ body {
 .dark-mode .inv-forecast,
 .dark-mode .inv-qty-input-unit,
 .dark-mode .inv-log-hint,
-.dark-mode .inv-log-note { color: var(--d-text2); }
+.dark-mode .inv-log-note,
+.dark-mode .inv-log-balance { color: var(--d-text2); }
 .dark-mode .inv-qty-min,
 .dark-mode .inv-log-date,
 .dark-mode .inv-log-empty { color: var(--d-text3); }
