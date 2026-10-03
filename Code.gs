@@ -3472,7 +3472,8 @@ function handleAskLog(data) {
 
   const userPrompt = `[오늘 날짜] ${data.today || ""}\n\n[질문]\n${question}\n\n[검색된 기록]\n${contextText}`;
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
-  return callGeminiAndRespond(apiKey, contents, buildAskLogSystemPrompt());
+  // 찾아 준 기록 안에서만 답하는 작업이라 깊은 추론이 필요 없음. 기본(medium)이면 답이 수십 초씩 걸려서 low로 줄임
+  return callGeminiAndRespond(apiKey, contents, buildAskLogSystemPrompt(), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
 }
 
 // ===== 계기판 사진 판독 =====
