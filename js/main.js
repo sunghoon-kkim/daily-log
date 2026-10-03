@@ -291,6 +291,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let trendSubject = ''; // 설비·측정 항목 (매번 같은 값을 다시 적지 않도록 저장)
         let trendSpec = '';    // 관리 기준 (동일)
         let inventoryItems = []; // [{id, name, category, unit, minQty, location, note, logs: [{id, type: 'in'|'use'|'adjust', qty, date, note, loggedAt}]}]
+        let inventoryCategories = []; // 재고 분류 이름 목록(사용자가 만든 순서). 품목이 없는 빈 분류도 남겨두려고 따로 저장
         let maintenanceSchedule = []; // [{id, equipment, item, sop, cycle, status, lastDone, nextDue, note, ackFor, updatedAt}]
         let editingMaintenanceId = null;
         // 흐름도는 여러 개를 만들어 구분해서 볼 수 있음. waterFlowDiagrams가 실제 저장 단위이고,
@@ -376,6 +377,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             maintenanceSchedule = storedMaintenance ? safeJsonParse(storedMaintenance, [], 'maintenanceSchedule') : [];
             const storedInventory = localStorage.getItem('inventoryItems');
             inventoryItems = storedInventory ? safeJsonParse(storedInventory, [], 'inventoryItems') : [];
+            const storedInventoryCategories = localStorage.getItem('inventoryCategories');
+            inventoryCategories = storedInventoryCategories ? safeJsonParse(storedInventoryCategories, [], 'inventoryCategories') : [];
             const storedWaterFlowDiagrams = localStorage.getItem('waterFlowDiagrams');
             waterFlowDiagrams = storedWaterFlowDiagrams ? safeJsonParse(storedWaterFlowDiagrams, [], 'waterFlowDiagrams') : [];
             currentWaterFlowDiagramId = localStorage.getItem('currentWaterFlowDiagramId') || null;
@@ -827,6 +830,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 trendSpec,
                 maintenanceSchedule,
                 inventoryItems,
+                inventoryCategories,
                 waterFlowDiagrams,
                 currentWaterFlowDiagramId,
                 archivedCategories,
@@ -865,6 +869,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             safeSetItem('trendSpec', trendSpec);
             safeSetItem('maintenanceSchedule', JSON.stringify(maintenanceSchedule));
             safeSetItem('inventoryItems', JSON.stringify(inventoryItems));
+            safeSetItem('inventoryCategories', JSON.stringify(inventoryCategories));
             syncActiveWaterFlowDiagramData();
             safeSetItem('waterFlowDiagrams', JSON.stringify(waterFlowDiagrams));
             safeSetItem('currentWaterFlowDiagramId', currentWaterFlowDiagramId || '');
@@ -1002,6 +1007,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     trendSpec = (typeof data.trendSpec === 'string') ? data.trendSpec : '';
                     maintenanceSchedule = Array.isArray(data.maintenanceSchedule) ? data.maintenanceSchedule : [];
                     inventoryItems = Array.isArray(data.inventoryItems) ? data.inventoryItems : [];
+                    inventoryCategories = Array.isArray(data.inventoryCategories) ? data.inventoryCategories.filter(c => typeof c === 'string' && c) : [];
                     waterFlowDiagrams = Array.isArray(data.waterFlowDiagrams) ? data.waterFlowDiagrams : [];
                     currentWaterFlowDiagramId = data.currentWaterFlowDiagramId || null;
                     if (waterFlowDiagrams.length === 0) {
@@ -1089,7 +1095,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 충돌 안내에 표시할 이름 (화면 크기/접힘 상태 같은 사소한 설정은 안내하지 않음)
         const SYNC_FIELD_LABELS = {
             events: '일정', categories: '카테고리', categoryColors: '카테고리 색상', todo: '할일', freeNotesPages: '메모장',
-            maintenanceSchedule: '정비계획', inventoryItems: '재고', savingsProjects: '개선과제', waterFlowDiagrams: '흐름도',
+            maintenanceSchedule: '정비계획', inventoryItems: '재고', inventoryCategories: '재고 분류', savingsProjects: '개선과제', waterFlowDiagrams: '흐름도',
             monthlyFeedbacks: '월별 피드백', recordSnippets: '상용구', weekdayTemplates: '요일 템플릿',
             archivedCategories: '보관 카테고리', aiTemplate: 'AI 템플릿', categoryImages: '첨부 이미지'
         };
@@ -2521,7 +2527,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'categoryColors', 'categoryDefaultCollapsed', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
             'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate',
-            'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'inventoryItems', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
+            'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'inventoryItems', 'inventoryCategories', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment',
             'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory',
             'recentSearchKeywords', 'recentEquipmentNames', 'recentKeywordStats'
@@ -2615,6 +2621,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'maintenanceModal') closeMaintenanceModal();
             else if (id === 'inventoryItemModal') closeInventoryItemModal();
             else if (id === 'inventoryLogModal') closeInventoryLogModal();
+            else if (id === 'inventoryCategoryModal') closeInventoryCategoryModal();
             else if (id === 'maintCompleteModal') closeMaintenanceCompleteModal();
             else if (id === 'recordRevisionModal') closeRecordRevisionModal();
             else if (id === 'recordImportModal') closeRecordImportModal();

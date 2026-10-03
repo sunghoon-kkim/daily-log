@@ -3,14 +3,18 @@
         // 그래야 기록을 지우거나 고쳐도 숫자가 어긋나지 않음. 실사(adjust)는 "그날 세어 본 실제 수량"이라
         // 그 시점의 재고를 그 값으로 맞추고, 이후 기록을 이어서 더하고 뺌
         // 소진 예측은 AI가 아니라 최근 사용 기록의 하루 평균으로 계산함(근거가 분명하고 지어낼 여지가 없음)
-        const INVENTORY_CATEGORIES = ['약품', '소모품', '부품', '기타'];
-        const INVENTORY_LOG_LABELS = { in: '입고', use: '사용', adjust: '실사' };
+        // 분류는 사용자가 직접 만듦(inventoryCategories). 품목에 쓰였지만 목록에 없는 분류(예전 기본 분류 등)도 함께 보여줌
+        const INVENTORY_UNCATEGORIZED = '__none__'; // 필터에서 "미분류"를 뜻하는 값 (분류 이름과 겹치지 않게)
+        const INVENTORY_NEW_CATEGORY = '__new__'; // 품목 창 분류 선택의 "직접 입력"
+        const INVENTORY_CATEGORY_MAX_LENGTH = 20;
+        const INVENTORY_LOG_LABELS = { in: '입고', use: '사용', adjust: '재고 조정' };
         const INVENTORY_FORECAST_WINDOW_DAYS = 60; // 하루 평균 사용량을 계산할 최근 기간
         const INVENTORY_FORECAST_MIN_SPAN_DAYS = 7; // 사용 기록이 이 기간보다 짧으면 예측하지 않음(너무 들쭉날쭉)
         const INVENTORY_SOON_DAYS = 14; // 이 일수 안에 바닥날 것 같으면 "소진 임박"
         let inventoryCategoryFilter = '전체';
         let editingInventoryItemId = null;
         let inventoryLogTarget = null; // { itemId, type }
+        let editingInventoryCategory = null; // 분류 창: null이면 새 분류 추가, 문자열이면 그 분류 이름 변경
 
         function roundInventoryQty(n) {
             return Math.round(n * 100) / 100;
@@ -34,6 +38,162 @@
                 else if (log.type === 'adjust') qty = n;
             }
             return roundInventoryQty(qty);
+        }
+
+        // 날짜순으로 이어 계산했을 때 재고가 처음으로 0 아래로 내려가는 기록을 찾음(없으면 null).
+        // 과거 날짜로 사용을 넣거나 입고 기록을 지우면 지금 재고는 괜찮아도 중간에 마이너스가 될 수 있어서 전체를 확인함
+        function findInventoryNegativePoint(logs) {
+            let qty = 0;
+            for (const log of getSortedInventoryLogs({ logs })) {
+                const n = Number(log.qty) || 0;
+                if (log.type === 'in') qty += n;
+                else if (log.type === 'use') qty -= n;
+                else if (log.type === 'adjust') qty = n;
+                qty = roundInventoryQty(qty);
+                if (qty < 0) return { date: log.date, qty };
+            }
+            return null;
+        }
+
+        function formatInventoryShortDate(dateStr) {
+            const d = parseLocalDate(dateStr);
+            return `${d.getMonth() + 1}/${d.getDate()}`;
+        }
+
+        // 품목 목록에서 가장 최근 입고/사용 날짜
+        function getInventoryLastDates(item) {
+            let lastIn = '', lastUse = '', lastAdjust = '';
+            for (const log of (Array.isArray(item.logs) ? item.logs : [])) {
+                if (!log || !/^\d{4}-\d{2}-\d{2}$/.test(log.date || '')) continue;
+                if (log.type === 'in' && log.date > lastIn) lastIn = log.date;
+                if (log.type === 'use' && log.date > lastUse) lastUse = log.date;
+                if (log.type === 'adjust' && log.date > lastAdjust) lastAdjust = log.date;
+            }
+            return { lastIn, lastUse, lastAdjust };
+        }
+
+        // ----- 분류 -----
+        // 사용자가 만든 분류 + 품목에 쓰였지만 목록에 없는 분류(만든 순서 뒤에 이름순)
+        function getInventoryCategoryList() {
+            const list = inventoryCategories.filter(c => typeof c === 'string' && c);
+            const extra = new Set();
+            inventoryItems.forEach(item => {
+                if (item.category && !list.includes(item.category)) extra.add(item.category);
+            });
+            return list.concat(Array.from(extra).sort((a, b) => a.localeCompare(b, 'ko')));
+        }
+
+        function hasUncategorizedInventory() {
+            return inventoryItems.some(item => !item.category);
+        }
+
+        function renderInventoryCategoryFilter() {
+            const row = document.getElementById('inventoryCategoryFilterRow');
+            if (!row) return;
+            const list = getInventoryCategoryList();
+            if (inventoryCategoryFilter !== '전체' && inventoryCategoryFilter !== INVENTORY_UNCATEGORIZED && !list.includes(inventoryCategoryFilter)) {
+                inventoryCategoryFilter = '전체';
+            }
+            if (inventoryCategoryFilter === INVENTORY_UNCATEGORIZED && !hasUncategorizedInventory()) inventoryCategoryFilter = '전체';
+            const chip = (value, label) => `<button type="button" class="quick-preset-btn${inventoryCategoryFilter === value ? ' selected' : ''}" onclick="setInventoryCategoryFilter('${escapeForOnclickArg(value)}')">${escapeHtml(label)}</button>`;
+            const chips = [chip('전체', '전체')]
+                .concat(list.map(c => chip(c, c)))
+                .concat(hasUncategorizedInventory() ? [chip(INVENTORY_UNCATEGORIZED, '미분류')] : []);
+            chips.push('<button type="button" class="quick-preset-btn inv-category-add-btn" onclick="openInventoryCategoryModal(null)">+ 분류 추가</button>');
+            if (list.includes(inventoryCategoryFilter)) {
+                chips.push(`<button type="button" class="inv-category-edit-btn" onclick="openInventoryCategoryModal('${escapeForOnclickArg(inventoryCategoryFilter)}')" aria-label="${escapeHtml(inventoryCategoryFilter)} 분류 이름 변경 또는 삭제">✏️ 분류 수정</button>`);
+            }
+            row.innerHTML = chips.join('');
+        }
+
+        function validateInventoryCategoryName(name, exceptName) {
+            if (!name) return '분류 이름을 입력해주세요';
+            if (name.length > INVENTORY_CATEGORY_MAX_LENGTH) return `분류 이름은 ${INVENTORY_CATEGORY_MAX_LENGTH}자 이내로 입력해주세요`;
+            if (name === '전체' || name === '미분류' || name.startsWith('__')) return `'${name}'은(는) 분류 이름으로 쓸 수 없어요`;
+            if (name !== exceptName && getInventoryCategoryList().includes(name)) return '이미 있는 분류입니다';
+            return '';
+        }
+
+        function addInventoryCategory(name) {
+            if (!inventoryCategories.includes(name)) inventoryCategories.push(name);
+            safeSetItem('inventoryCategories', JSON.stringify(inventoryCategories));
+        }
+
+        function openInventoryCategoryModal(name) {
+            if (!checkEditPermission()) return;
+            editingInventoryCategory = name;
+            document.getElementById('inventoryCategoryModalTitle').textContent = name ? '분류 수정' : '분류 추가';
+            document.getElementById('inventoryCategoryNameInput').value = name || '';
+            document.getElementById('deleteInventoryCategoryBtn').style.display = name ? 'inline-block' : 'none';
+            const count = name ? inventoryItems.filter(i => i.category === name).length : 0;
+            document.getElementById('inventoryCategoryHint').textContent = name
+                ? (count ? `이 분류의 품목 ${count}개도 새 이름으로 바뀌어요. 삭제하면 품목은 미분류로 옮겨져요.` : '이 분류에 들어 있는 품목이 없어요.')
+                : '';
+            document.getElementById('inventoryCategoryModal').classList.add('active');
+            setTimeout(() => document.getElementById('inventoryCategoryNameInput').focus(), 50);
+        }
+
+        function closeInventoryCategoryModal() {
+            document.getElementById('inventoryCategoryModal').classList.remove('active');
+            editingInventoryCategory = null;
+        }
+
+        function saveInventoryCategory() {
+            if (!checkEditPermission()) return;
+            const name = document.getElementById('inventoryCategoryNameInput').value.trim();
+            const oldName = editingInventoryCategory;
+            if (oldName && name === oldName) { closeInventoryCategoryModal(); return; }
+            const error = validateInventoryCategoryName(name, oldName);
+            if (error) { showAppToast(error); return; }
+            if (oldName) {
+                const idx = inventoryCategories.indexOf(oldName);
+                if (idx !== -1) inventoryCategories[idx] = name;
+                else inventoryCategories.push(name); // 품목에만 쓰이던 분류(목록에 없던 것)를 이름 바꾸면 목록에 올림
+                inventoryItems.forEach(item => { if (item.category === oldName) item.category = name; });
+                if (inventoryCategoryFilter === oldName) inventoryCategoryFilter = name;
+            } else {
+                inventoryCategories.push(name);
+                inventoryCategoryFilter = name; // 방금 만든 분류를 바로 보여줌(품목 추가 시 기본 분류가 됨)
+            }
+            safeSetItem('inventoryCategories', JSON.stringify(inventoryCategories));
+            closeInventoryCategoryModal();
+            saveInventory();
+        }
+
+        function deleteInventoryCategory() {
+            if (!checkEditPermission()) return;
+            const name = editingInventoryCategory;
+            if (!name) return;
+            const count = inventoryItems.filter(i => i.category === name).length;
+            const message = count
+                ? `'${name}' 분류를 삭제할까요? 품목 ${count}개와 입출고 기록은 그대로 두고 미분류로 옮겨요.`
+                : `'${name}' 분류를 삭제할까요?`;
+            confirmModal(message, () => {
+                inventoryCategories = inventoryCategories.filter(c => c !== name);
+                inventoryItems.forEach(item => { if (item.category === name) item.category = ''; });
+                if (inventoryCategoryFilter === name) inventoryCategoryFilter = '전체';
+                safeSetItem('inventoryCategories', JSON.stringify(inventoryCategories));
+                closeInventoryCategoryModal();
+                saveInventory();
+            });
+        }
+
+        // 품목 창의 분류 선택: 미분류 + 분류 목록 + 직접 입력
+        function renderInventoryCategorySelect(selected) {
+            const select = document.getElementById('inventoryCategoryInput');
+            const list = getInventoryCategoryList();
+            select.innerHTML = `<option value="">미분류</option>`
+                + list.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')
+                + `<option value="${INVENTORY_NEW_CATEGORY}">✏️ 직접 입력</option>`;
+            select.value = list.includes(selected) ? selected : '';
+            onInventoryCategorySelectChange();
+        }
+
+        function onInventoryCategorySelectChange() {
+            const isNew = document.getElementById('inventoryCategoryInput').value === INVENTORY_NEW_CATEGORY;
+            const input = document.getElementById('inventoryNewCategoryInput');
+            input.style.display = isNew ? '' : 'none';
+            if (isNew) { input.value = ''; input.focus(); }
         }
 
         // 최근 사용 기록으로 하루 평균 사용량을 구함. 기록 기간이 짧으면 null(예측 안 함)
@@ -73,9 +233,6 @@
 
         function setInventoryCategoryFilter(category) {
             inventoryCategoryFilter = category;
-            document.querySelectorAll('#inventoryCategoryFilterRow .quick-preset-btn').forEach(btn => {
-                btn.classList.toggle('selected', btn.dataset.filter === category);
-            });
             renderInventory();
         }
 
@@ -91,6 +248,7 @@
             const summaryEl = document.getElementById('inventorySummary');
             if (!container) return;
             const todayStr = formatDate(new Date());
+            renderInventoryCategoryFilter();
 
             const withStatus = inventoryItems.map(item => ({ item, st: getInventoryStatus(item, todayStr) }));
             if (summaryEl) {
@@ -105,13 +263,16 @@
             }
 
             if (inventoryItems.length === 0) {
-                container.innerHTML = '<div class="no-projects">아직 등록된 품목이 없습니다. "품목 추가"로 소금이나 시약부터 등록해보세요.</div>';
+                container.innerHTML = '<div class="no-projects">아직 등록된 품목이 없습니다. "품목 추가"로 첫 품목을 등록해보세요.</div>';
                 return;
             }
 
-            const filtered = withStatus.filter(x => inventoryCategoryFilter === '전체' || x.item.category === inventoryCategoryFilter);
+            const filtered = withStatus.filter(x => inventoryCategoryFilter === '전체'
+                || (inventoryCategoryFilter === INVENTORY_UNCATEGORIZED ? !x.item.category : x.item.category === inventoryCategoryFilter));
             if (filtered.length === 0) {
-                container.innerHTML = '<div class="no-projects">이 분류에 등록된 품목이 없습니다.</div>';
+                container.innerHTML = inventoryCategoryFilter === INVENTORY_UNCATEGORIZED
+                    ? '<div class="no-projects">미분류 품목이 없습니다.</div>'
+                    : '<div class="no-projects">이 분류에 등록된 품목이 없습니다. "품목 추가"를 누르면 이 분류로 등록돼요.</div>';
                 return;
             }
 
@@ -134,7 +295,12 @@
                 } else {
                     forecast = '사용 기록이 1주일 이상 쌓이면 소진 예상일을 알려드려요';
                 }
-                const meta = [escapeHtml(item.category || '기타'), item.location ? escapeHtml(item.location) : ''].filter(Boolean).join(' · ');
+                const meta = [escapeHtml(item.category || '미분류'), item.location ? escapeHtml(item.location) : ''].filter(Boolean).join(' · ');
+                const { lastIn, lastUse, lastAdjust } = getInventoryLastDates(item);
+                // 입고·사용이 아직 없으면(처음 등록만 한 품목) 마지막 재고 조정 날짜라도 보여줌
+                const lastDates = (lastIn || lastUse)
+                    ? [lastIn ? `최근 입고 ${formatInventoryShortDate(lastIn)}` : '', lastUse ? `최근 사용 ${formatInventoryShortDate(lastUse)}` : ''].filter(Boolean).join(' · ')
+                    : (lastAdjust ? `최근 재고 조정 ${formatInventoryShortDate(lastAdjust)}` : '');
                 const badge = INVENTORY_LEVEL_BADGES[st.level];
                 return `
                 <div class="project-card inv-card inv-level-${st.level}">
@@ -152,36 +318,46 @@
                         ${minPct !== null ? `<div class="inv-gauge-min" style="left:${minPct}%"></div>` : ''}
                     </div>
                     <div class="inv-forecast">${forecast}</div>
+                    <div class="inv-history-line">
+                        <span>${lastDates || '아직 기록이 없어요'}</span>
+                        <button type="button" class="inv-history-btn" onclick="openInventoryItemModal('${idArg}', true)">기록 보기</button>
+                    </div>
                     <div class="inv-actions">
                         <button type="button" class="inv-action-btn" onclick="openInventoryLogModal('${idArg}', 'in')">+ 입고</button>
                         <button type="button" class="inv-action-btn" onclick="openInventoryLogModal('${idArg}', 'use')">− 사용</button>
-                        <button type="button" class="inv-action-btn" onclick="openInventoryLogModal('${idArg}', 'adjust')">실사</button>
+                        <button type="button" class="inv-action-btn" onclick="openInventoryLogModal('${idArg}', 'adjust')">조정</button>
                     </div>
                 </div>`;
             }).join('');
         }
 
         // ----- 품목 추가/수정 -----
-        function openInventoryItemModal(itemId) {
+        // showHistory: 카드의 [기록 보기]로 열면 입출고 기록 위치로 바로 내려감
+        function openInventoryItemModal(itemId, showHistory) {
             if (!checkEditPermission()) return;
             editingInventoryItemId = itemId;
             const item = itemId ? inventoryItems.find(x => x.id === itemId) : null;
             if (itemId && !item) return;
             document.getElementById('inventoryItemModalTitle').textContent = item ? '📦 품목 수정' : '📦 품목 추가';
             document.getElementById('inventoryNameInput').value = item ? item.name : '';
-            document.getElementById('inventoryCategoryInput').value = item ? (item.category || '기타') : '약품';
+            const defaultCategory = getInventoryCategoryList().includes(inventoryCategoryFilter) ? inventoryCategoryFilter : '';
+            renderInventoryCategorySelect(item ? (item.category || '') : defaultCategory);
             document.getElementById('inventoryUnitInput').value = item ? (item.unit || '') : '';
             document.getElementById('inventoryMinInput').value = item && item.minQty ? item.minQty : '';
             document.getElementById('inventoryLocationInput').value = item ? (item.location || '') : '';
             document.getElementById('inventoryNoteInput').value = item ? (item.note || '') : '';
             document.getElementById('inventoryStartQtyInput').value = '';
-            // 시작 재고는 처음 등록할 때만 받음(이후에는 실사로 맞춤)
+            // 시작 재고는 처음 등록할 때만 받음(이후에는 재고 조정으로 맞춤)
             document.getElementById('inventoryStartQtyField').style.display = item ? 'none' : '';
             document.getElementById('inventoryLogSection').style.display = item ? '' : 'none';
             document.getElementById('deleteInventoryItemBtn').style.display = item ? 'inline-block' : 'none';
             if (item) renderInventoryLogList(item);
             document.getElementById('inventoryItemModal').classList.add('active');
-            document.getElementById('inventoryNameInput').focus();
+            if (item && showHistory) {
+                document.getElementById('inventoryLogSection').scrollIntoView({ block: 'start' });
+            } else {
+                document.getElementById('inventoryNameInput').focus();
+            }
         }
 
         function closeInventoryItemModal() {
@@ -202,9 +378,17 @@
             if (!name) { showAppToast('품목명을 입력해주세요'); return; }
             const minQty = parseInventoryQtyInput(document.getElementById('inventoryMinInput').value);
             if (Number.isNaN(minQty) || (minQty !== null && minQty < 0)) { showAppToast('최소 재고는 0 이상의 숫자로 입력해주세요'); return; }
+            let category = document.getElementById('inventoryCategoryInput').value;
+            if (category === INVENTORY_NEW_CATEGORY) {
+                category = document.getElementById('inventoryNewCategoryInput').value.trim();
+                const existing = getInventoryCategoryList().includes(category);
+                const error = existing ? '' : validateInventoryCategoryName(category, null);
+                if (error) { showAppToast(error); return; }
+                if (!existing) addInventoryCategory(category);
+            }
             const fields = {
                 name,
-                category: document.getElementById('inventoryCategoryInput').value,
+                category,
                 unit: document.getElementById('inventoryUnitInput').value.trim(),
                 minQty: minQty || 0,
                 location: document.getElementById('inventoryLocationInput').value.trim(),
@@ -217,7 +401,7 @@
                 if (item) Object.assign(item, fields);
             } else {
                 const startQty = parseInventoryQtyInput(document.getElementById('inventoryStartQtyInput').value);
-                if (Number.isNaN(startQty) || (startQty !== null && startQty < 0)) { showAppToast('지금 재고는 0 이상의 숫자로 입력해주세요'); return; }
+                if (Number.isNaN(startQty) || (startQty !== null && startQty < 0)) { showAppToast('현재 재고는 0 이상의 숫자로 입력해주세요'); return; }
                 const now = new Date();
                 const item = Object.assign({ id: 'inv_' + now.getTime() + '_' + Math.random().toString(36).slice(2, 7), logs: [], createdAt: now.toISOString() }, fields);
                 if (startQty !== null) {
@@ -268,6 +452,11 @@
             if (!checkEditPermission()) return;
             const item = inventoryItems.find(x => x.id === itemId);
             if (!item) return;
+            const negative = findInventoryNegativePoint((item.logs || []).filter(l => l.id !== logId));
+            if (negative) {
+                showAppToast(`이 기록을 지우면 ${negative.date}에 재고가 ${formatInventoryQty(negative.qty)}${item.unit || ''}(으)로 내려가서 지울 수 없어요. 사용 기록을 먼저 고쳐주세요`, 'error');
+                return;
+            }
             confirmModal('이 입출고 기록을 삭제하시겠습니까? 현재 재고가 다시 계산됩니다.', () => {
                 item.logs = (item.logs || []).filter(l => l.id !== logId);
                 item.updatedAt = new Date().toISOString();
@@ -299,12 +488,12 @@
                 btn.classList.toggle('selected', btn.dataset.type === type);
             });
             document.getElementById('inventoryLogModalTitle').textContent = `${item ? item.name : ''} ${INVENTORY_LOG_LABELS[type]}`;
-            document.getElementById('inventoryLogQtyLabel').textContent = type === 'adjust' ? '세어 본 실제 수량' : type === 'in' ? '들어온 수량' : '사용한 수량';
+            document.getElementById('inventoryLogQtyLabel').textContent = type === 'adjust' ? '실제로 센 수량' : type === 'in' ? '들어온 수량' : '사용한 수량';
             const current = item ? getInventoryCurrentQty(item) : 0;
             document.getElementById('inventoryLogHint').textContent = type === 'adjust'
-                ? `기록상 재고는 ${formatInventoryQty(current)}${item && item.unit ? item.unit : ''}입니다. 실제로 세어 본 수량으로 맞춥니다.`
-                : `지금 재고 ${formatInventoryQty(current)}${item && item.unit ? item.unit : ''}`;
-            document.getElementById('inventoryLogSaveBtn').textContent = `${INVENTORY_LOG_LABELS[type]} 기록`;
+                ? `기록상 현재 재고는 ${formatInventoryQty(current)}${item && item.unit ? item.unit : ''}입니다. 실제로 센 수량으로 맞춥니다.`
+                : `현재 재고 ${formatInventoryQty(current)}${item && item.unit ? item.unit : ''}`;
+            document.getElementById('inventoryLogSaveBtn').textContent = type === 'adjust' ? '재고 조정' : `${INVENTORY_LOG_LABELS[type]} 기록`;
         }
 
         function closeInventoryLogModal() {
@@ -320,19 +509,30 @@
             const type = inventoryLogTarget.type;
             const qty = parseInventoryQtyInput(document.getElementById('inventoryLogQtyInput').value);
             if (qty === null || Number.isNaN(qty) || qty < 0 || (type !== 'adjust' && qty === 0)) {
-                showAppToast(type === 'adjust' ? '세어 본 수량을 0 이상의 숫자로 입력해주세요' : '수량을 0보다 큰 숫자로 입력해주세요');
+                showAppToast(type === 'adjust' ? '실제로 센 수량을 0 이상의 숫자로 입력해주세요' : '수량을 0보다 큰 숫자로 입력해주세요');
                 return;
             }
             const date = document.getElementById('inventoryLogDateInput').value;
             if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showAppToast('날짜를 선택해주세요'); return; }
             const now = new Date();
-            if (!Array.isArray(item.logs)) item.logs = [];
-            item.logs.push({
+            const newLog = {
                 id: 'invlog_' + now.getTime() + '_' + Math.random().toString(36).slice(2, 7),
                 type, qty, date,
                 note: document.getElementById('inventoryLogNoteInput').value.trim(),
                 loggedAt: now.toISOString()
-            });
+            };
+            const existingLogs = Array.isArray(item.logs) ? item.logs : [];
+            const negative = findInventoryNegativePoint(existingLogs.concat(newLog));
+            if (negative) {
+                const unit = item.unit || '';
+                const isLatest = existingLogs.every(l => (l.date || '') <= date);
+                showAppToast(isLatest
+                    ? `현재 재고 ${formatInventoryQty(getInventoryCurrentQty(item))}${unit}보다 많이 사용할 수 없어요`
+                    : `${negative.date} 기준 재고가 ${formatInventoryQty(negative.qty)}${unit}(으)로 내려가서 저장할 수 없어요. 날짜나 수량을 확인해주세요`, 'error');
+                return;
+            }
+            if (!Array.isArray(item.logs)) item.logs = [];
+            item.logs.push(newLog);
             item.updatedAt = now.toISOString();
             closeInventoryLogModal();
             saveInventory();
