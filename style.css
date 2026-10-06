@@ -3761,6 +3761,13 @@ html {
             border-color: #667eea;
         }
 
+        /* 자동 로그인 중 잠긴 입력칸 */
+        #loginModal input:disabled,
+        #loginModal .password-toggle-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
         .water-flow-import-textarea {
             width: 100%;
             min-height: 220px;

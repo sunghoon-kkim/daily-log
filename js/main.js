@@ -2162,6 +2162,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             infoEl.textContent = '🔄 로그인 유지 중인 계정으로 자동 로그인하는 중...';
             infoEl.style.display = 'block';
             btn.disabled = true;
+            // 자동 로그인 중에는 사번·비밀번호 등을 고칠 수 없게 잠금(끝나면 finally에서 풂)
+            const lockedEls = ['loginEmployeeIdInput', 'loginPasswordInput', 'loginPasswordToggleBtn', 'loginRememberCheckbox']
+                .map(id => document.getElementById(id)).filter(Boolean);
+            lockedEls.forEach(el => { el.disabled = true; });
             try {
                 const result = await fetchAuthAction('login', saved.employeeId, saved.passwordHash);
                 if (result && result.status !== 'error' && !result.isAdmin) {
@@ -2180,6 +2184,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 errEl.style.display = 'block';
             } finally {
                 btn.disabled = false;
+                lockedEls.forEach(el => { el.disabled = false; });
             }
         }
 
