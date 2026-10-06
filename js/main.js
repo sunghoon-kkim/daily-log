@@ -453,7 +453,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             // 홈페이지에 접속하면 항상 로그아웃 상태로 시작: 로그인 모달만 띄워두고 홈페이지
             // 내용은 그리지 않음 (로그인/회원가입 성공 시 그 안에서 initAppUI/loadAllFromServer로 이어짐)
             resetToLoggedOutState();
-            tryRememberedLogin();
+            if (!showLoggedOutByOtherTabNotice()) tryRememberedLogin();
         }
         
         // ===== 저장/로드 (로컬 캐시) =====
@@ -2107,6 +2107,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             currentEmployeeId = employeeId;
             currentPasswordHash = passwordHash;
             editUnlocked = true;
+            safeSetItem(ACTIVE_LOGIN_TAB_KEY, LOGIN_TAB_ID); // 아직 응답 못 한(잠들어 있던) 다른 창이 깨어나면 이걸 보고 로그아웃함
             isAdmin = !!result.isAdmin; // 서버(action=login)가 판별해서 내려준 값. 프론트는 더 이상 사번으로 직접 판단하지 않음
 
             closeLoginModal();
@@ -2123,6 +2124,151 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 await loadAllFromServer(result);
                 await restorePendingOutboxAfterLogin(result); // 지난번에 서버에 못 올린 변경분이 있으면 되살림
             }
+        }
+
+        // ===== 같은 브라우저에서는 한 창(탭)에서만 로그인 =====
+        // 같은 브라우저의 여러 창에서 동시에 로그인해 저장하면 서로의 변경을 덮어쓸 수 있어서, 이미 로그인된 창이
+        // 있으면 로그인 전에 묻고, 그 창이 저장을 마치고 로그아웃한 뒤에 로그인함. 창끼리는 BroadcastChannel로
+        // 주고받고, 이를 지원하지 않거나 그동안 잠들어 있던 창은 localStorage의 마지막 로그인 창 ID를 보고 스스로 로그아웃함
+        // (다른 PC·휴대폰의 로그인은 막지 않음)
+        const LOGIN_TAB_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        const ACTIVE_LOGIN_TAB_KEY = 'activeLoginTab';
+        const LOGGED_OUT_BY_OTHER_TAB_KEY = 'loggedOutByOtherTab'; // sessionStorage: 밀려나서 새로고침한 창 표시
+        const loginTabChannel = (typeof BroadcastChannel === 'function') ? new BroadcastChannel('cal-login-tab') : null;
+        let loggingOutByOtherTab = false;
+        let loginTakeoverPending = false;
+
+        function isLoggedInHere() {
+            return editUnlocked && !!currentEmployeeId && !loggingOutByOtherTab;
+        }
+
+        // 로그인된 다른 창이 있는지 물어서, 응답한 창 ID 목록을 돌려줌
+        function findOtherLoggedInTabs(waitMs = 400) {
+            if (!loginTabChannel) return Promise.resolve([]);
+            return new Promise(resolve => {
+                const found = [];
+                const onMsg = e => {
+                    const m = e.data || {};
+                    if (m.type === 'here' && m.to === LOGIN_TAB_ID && !found.includes(m.from)) found.push(m.from);
+                };
+                loginTabChannel.addEventListener('message', onMsg);
+                loginTabChannel.postMessage({ type: 'who', from: LOGIN_TAB_ID });
+                setTimeout(() => { loginTabChannel.removeEventListener('message', onMsg); resolve(found); }, waitMs);
+            });
+        }
+
+        // 그 창들에 로그아웃을 요청하고, 저장을 마쳤다는 답을 기다림(답이 없으면 timeoutMs까지만)
+        function requestOtherTabsLogout(tabIds, timeoutMs = 10000) {
+            if (!loginTabChannel || !tabIds.length) return Promise.resolve();
+            return new Promise(resolve => {
+                const waiting = new Set(tabIds);
+                let timer = null;
+                const onMsg = e => {
+                    const m = e.data || {};
+                    if (m.type !== 'logged-out' || m.to !== LOGIN_TAB_ID) return;
+                    waiting.delete(m.from);
+                    if (!waiting.size) finish();
+                };
+                const finish = () => { clearTimeout(timer); loginTabChannel.removeEventListener('message', onMsg); resolve(); };
+                timer = setTimeout(finish, timeoutMs);
+                loginTabChannel.addEventListener('message', onMsg);
+                loginTabChannel.postMessage({ type: 'logout', from: LOGIN_TAB_ID, targets: tabIds });
+            });
+        }
+
+        // 로그인 창 안에서 "그 창을 로그아웃하고 로그인할까요?"를 물음(앱 확인 창은 로그인 창 뒤에 깔리고 로그인 전엔 눌리지 않음)
+        function askLoginTakeover(message) {
+            const box = document.getElementById('loginTakeoverBox');
+            const yesBtn = document.getElementById('loginTakeoverConfirmBtn');
+            const noBtn = document.getElementById('loginTakeoverCancelBtn');
+            document.getElementById('loginTakeoverMsg').textContent = message;
+            document.getElementById('loginErrorMsg').style.display = 'none';
+            document.getElementById('loginInfoMsg').style.display = 'none';
+            box.style.display = 'block';
+            return new Promise(resolve => {
+                const done = ok => {
+                    box.style.display = 'none';
+                    yesBtn.onclick = null;
+                    noBtn.onclick = null;
+                    resolve(ok);
+                };
+                yesBtn.onclick = () => done(true);
+                noBtn.onclick = () => done(false);
+            });
+        }
+
+        // 로그인된 다른 창이 없으면 바로 true. 있으면 묻고, 확인하면 그 창을 로그아웃시킨 뒤 true
+        async function confirmTakeOverOtherTabs(message) {
+            const others = await findOtherLoggedInTabs();
+            if (!others.length) return true;
+            loginTakeoverPending = true;
+            try {
+                if (!(await askLoginTakeover(message))) return false;
+                const infoEl = document.getElementById('loginInfoMsg');
+                infoEl.textContent = '🔄 다른 창을 로그아웃하는 중... (저장되지 않은 내용이 있으면 먼저 저장합니다)';
+                infoEl.style.display = 'block';
+                await requestOtherTabsLogout(others);
+                infoEl.style.display = 'none';
+                return true;
+            } finally {
+                loginTakeoverPending = false;
+            }
+        }
+
+        // 다른 창에서 로그인해서 이 창은 로그아웃: 아직 안 올린 변경을 먼저 저장(실패해도 보관함에 남아 새 창이 로그인할 때 되살림)하고,
+        // 다른 창에 끝났다고 알린 뒤 새로고침해서 이 창 메모리의 계정 데이터를 비움. 브라우저에 같이 쓰는 저장값(캐시·로그인 유지)은 지우지 않음
+        async function logoutBecauseOtherTabLoggedIn(requesterTabId) {
+            if (loggingOutByOtherTab) return;
+            loggingOutByOtherTab = true;
+            if (initialLoadDone && currentEmployeeId && !isAdmin) {
+                try {
+                    if (typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
+                } catch (e) { /* 무시 */ }
+                clearTimeout(syncTimeout);
+                try {
+                    await Promise.race([syncToServer(), new Promise(r => setTimeout(r, 8000))]);
+                } catch (e) { /* 무시 */ }
+            }
+            currentEmployeeId = ''; // 새로고침하면서 이 창이 다시 저장하지 않게
+            editUnlocked = false;
+            try { sessionStorage.setItem(LOGGED_OUT_BY_OTHER_TAB_KEY, '1'); } catch (e) { /* 무시 */ }
+            if (loginTabChannel && requesterTabId) loginTabChannel.postMessage({ type: 'logged-out', from: LOGIN_TAB_ID, to: requesterTabId });
+            setTimeout(() => location.reload(), 50);
+        }
+
+        // 잠들어 있다가 깨어났거나 BroadcastChannel이 없는 브라우저에서, 마지막 로그인 창이 내가 아니면 로그아웃
+        function checkLoggedInElsewhere() {
+            if (!isLoggedInHere()) return;
+            let active = null;
+            try { active = localStorage.getItem(ACTIVE_LOGIN_TAB_KEY); } catch (e) { /* 무시 */ }
+            if (active && active !== LOGIN_TAB_ID) logoutBecauseOtherTabLoggedIn();
+        }
+
+        if (loginTabChannel) {
+            loginTabChannel.addEventListener('message', e => {
+                const m = e.data || {};
+                if (m.type === 'who' && isLoggedInHere()) {
+                    loginTabChannel.postMessage({ type: 'here', from: LOGIN_TAB_ID, to: m.from });
+                } else if (m.type === 'logout' && Array.isArray(m.targets) && m.targets.includes(LOGIN_TAB_ID) && isLoggedInHere()) {
+                    logoutBecauseOtherTabLoggedIn(m.from);
+                }
+            });
+        }
+        window.addEventListener('storage', e => { if (e.key === ACTIVE_LOGIN_TAB_KEY) checkLoggedInElsewhere(); });
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkLoggedInElsewhere(); });
+
+        // 밀려나서 새로고침된 창이면 안내만 띄우고 true(이때는 자동 로그인하지 않음)
+        function showLoggedOutByOtherTabNotice() {
+            let flagged = false;
+            try {
+                flagged = sessionStorage.getItem(LOGGED_OUT_BY_OTHER_TAB_KEY) === '1';
+                sessionStorage.removeItem(LOGGED_OUT_BY_OTHER_TAB_KEY);
+            } catch (e) { /* 무시 */ }
+            if (!flagged) return false;
+            const errEl = document.getElementById('loginErrorMsg');
+            errEl.textContent = '다른 창에서 로그인하여 이 창은 로그아웃되었습니다.';
+            errEl.style.display = 'block';
+            return true;
         }
 
         // ===== 이 기기에서 로그인 유지 (선택, 기본 꺼짐) =====
@@ -2167,6 +2313,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 .map(id => document.getElementById(id)).filter(Boolean);
             lockedEls.forEach(el => { el.disabled = true; });
             try {
+                if (!(await confirmTakeOverOtherTabs('다른 창에서 이미 로그인되어 있습니다.\n그 창을 로그아웃하고 이 창에서 자동 로그인할까요?'))) {
+                    infoEl.textContent = '다른 창에서 로그인 중이라 자동 로그인하지 않았습니다.';
+                    infoEl.style.display = 'block';
+                    return;
+                }
+                infoEl.textContent = '🔄 로그인 유지 중인 계정으로 자동 로그인하는 중...';
+                infoEl.style.display = 'block';
                 const result = await fetchAuthAction('login', saved.employeeId, saved.passwordHash);
                 if (result && result.status !== 'error' && !result.isAdmin) {
                     saveRememberedLogin(saved.employeeId, saved.passwordHash); // 쓸 때마다 기간을 다시 7일로
@@ -2290,6 +2443,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const employeeId = idInput.value.trim();
             const password = pwInput.value;
 
+            if (loginTakeoverPending) return; // "다른 창 로그아웃" 질문에 답하기 전에 Enter로 또 누른 경우
             errEl.style.display = 'none';
             document.getElementById('loginInfoMsg').style.display = 'none';
             if (!employeeId) { errEl.textContent = '사번을 입력해주세요'; errEl.style.display = 'block'; return; }
@@ -2305,6 +2459,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (await submitForcedPasswordChange(employeeId, password)) await attemptLogin();
                     return;
                 }
+                if (!(await confirmTakeOverOtherTabs('다른 창에서 이미 로그인되어 있습니다.\n그 창을 로그아웃하고 이 창에서 로그인할까요?'))) return;
                 const passwordHash = await sha256Hex(password + ':' + employeeId);
                 // 로그인 전용 경로(action=login)로 인증함: 등록된 사번+비밀번호가 정확히 일치할
                 // 때만 통과되고, 없는 사번을 입력하면 "등록되지 않은 사번입니다"로 거부됨(회원가입을

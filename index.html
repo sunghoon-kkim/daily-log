@@ -1035,6 +1035,14 @@
             <label class="search-scope-label login-remember-label"><input type="checkbox" id="loginRememberCheckbox"> 이 기기에서 로그인 유지 (7일, 공용 PC에서는 체크하지 마세요)</label>
             <div class="goal-status success" id="loginInfoMsg" style="display:none; margin-bottom:10px;"></div>
             <div class="goal-status error" id="loginErrorMsg" style="display:none; margin-bottom:10px;"></div>
+            <!-- 같은 브라우저의 다른 창에 이미 로그인돼 있을 때, 그 창을 로그아웃하고 여기서 로그인할지 묻는 칸 -->
+            <div class="login-takeover-box" id="loginTakeoverBox" style="display:none;">
+                <p id="loginTakeoverMsg"></p>
+                <div class="modal-buttons">
+                    <button type="button" class="modal-btn modal-save-btn" id="loginTakeoverConfirmBtn">그 창 로그아웃 후 로그인</button>
+                    <button type="button" class="modal-btn modal-cancel-btn" id="loginTakeoverCancelBtn">취소</button>
+                </div>
+            </div>
 
             <div class="modal-buttons">
                 <button class="modal-btn modal-save-btn" id="loginSubmitBtn" onclick="attemptLogin()">🔓 로그인</button>
