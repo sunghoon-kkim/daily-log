@@ -924,6 +924,17 @@ html {
             margin-bottom: 12px;
         }
 
+        .free-notes-folder {
+            flex-basis: 100%;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 8px 12px;
+        }
+        .free-notes-folder > summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+        .free-notes-folder-pages { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .free-notes-ungrouped { flex-basis: 100%; margin-top: 0; }
+        .dark-mode .free-notes-folder { border-color: #555; }
+
         .free-notes-page-tab {
             display: flex;
             align-items: center;
@@ -5975,6 +5986,21 @@ body {
     border-left-color: #4a8fb8;
 }
 .project-card.inv-card:hover { transform: none; }
+.inv-drag-handle {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 22px;
+    padding: 2px 8px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+.inv-drag-handle:active { cursor: grabbing; }
+.inv-drag-handle:focus-visible { outline: 2px solid #4a8fb8; outline-offset: 2px; }
+.project-card.inv-card.dragging { opacity: 0.4; }
+.project-card.inv-card.drag-over { outline: 2px dashed #4a8fb8; outline-offset: 2px; }
 .project-card.inv-card.inv-level-soon { border-left-color: #d4a017; }
 .project-card.inv-card.inv-level-low,
 .project-card.inv-card.inv-level-need { border-left-color: #e67e22; }

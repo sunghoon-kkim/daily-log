@@ -28,15 +28,35 @@
             notesContent = current.content;
         }
 
+        const collapsedFreeNotesFolders = new Set();
+
+        function toggleFreeNotesFolder(folder, open) {
+            if (open) collapsedFreeNotesFolders.delete(folder);
+            else collapsedFreeNotesFolders.add(folder);
+        }
+
         function renderFreeNotesPageTabs() {
             const container = document.getElementById('freeNotesPageTabs');
             if (!container) return;
-            container.innerHTML = freeNotesPages.map(p => `
-                <div class="free-notes-page-tab${p.id === currentFreeNotesPageId ? ' active' : ''}" onclick="switchFreeNotesPage('${p.id}')">
+            const tab = p => `
+                <div class="free-notes-page-tab${p.id === currentFreeNotesPageId ? ' active' : ''}" onclick="switchFreeNotesPage('${escapeForOnclickArg(p.id)}')">
                     <span>${escapeHtml(p.name)}</span>
-                    <button class="free-notes-page-tab-edit" onclick="event.stopPropagation(); openFreeNotesPageModal('${p.id}')" title="이름 변경/삭제" aria-label="이름 변경/삭제">✏️</button>
+                    <button class="free-notes-page-tab-edit" onclick="event.stopPropagation(); openFreeNotesPageModal('${escapeForOnclickArg(p.id)}')" title="이름·폴더 변경/삭제" aria-label="이름·폴더 변경/삭제">✏️</button>
                 </div>
-            `).join('') + '<button class="free-notes-page-add-btn" onclick="addFreeNotesPage()" title="메모장 추가" aria-label="메모장 추가">➕ 메모장 추가</button>';
+            `;
+            const folders = new Map();
+            freeNotesPages.forEach(page => {
+                const folder = page.folder || '';
+                if (!folders.has(folder)) folders.set(folder, []);
+                folders.get(folder).push(page);
+            });
+            container.innerHTML = Array.from(folders, ([folder, pages]) => folder
+                ? `<details class="free-notes-folder"${collapsedFreeNotesFolders.has(folder) ? '' : ' open'} ontoggle="toggleFreeNotesFolder('${escapeForOnclickArg(folder)}', this.open)">
+                    <summary>📁 ${escapeHtml(folder)} <span>(${pages.length})</span></summary>
+                    <div class="free-notes-folder-pages">${pages.map(tab).join('')}</div>
+                   </details>`
+                : `<div class="free-notes-folder-pages free-notes-ungrouped">${pages.map(tab).join('')}</div>`
+            ).join('') + '<button class="free-notes-page-add-btn" onclick="addFreeNotesPage()" title="메모장 추가" aria-label="메모장 추가">➕ 메모장 추가</button>';
         }
 
         function switchFreeNotesPage(pageId) {
@@ -44,6 +64,8 @@
             syncActiveFreeNotesPageData(); // 나가기 전에 지금 보던 메모장 내용을 확실히 반영해둠
             currentFreeNotesPageId = pageId;
             ensureActiveFreeNotesPage();
+            const page = freeNotesPages.find(p => p.id === currentFreeNotesPageId);
+            if (page && page.folder) collapsedFreeNotesFolders.delete(page.folder);
             safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId);
             applyNotesContent();
         }
@@ -54,11 +76,13 @@
             const newPage = {
                 id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
                 name: '메모장 ' + (freeNotesPages.length + 1),
-                content: ''
+                content: '',
+                folder: (freeNotesPages.find(p => p.id === currentFreeNotesPageId) || {}).folder || ''
             };
             freeNotesPages.push(newPage);
             currentFreeNotesPageId = newPage.id;
             notesContent = newPage.content;
+            collapsedFreeNotesFolders.delete(newPage.folder);
             safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
             safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId);
             queueSync();
@@ -71,6 +95,9 @@
             const page = freeNotesPages.find(p => p.id === pageId);
             if (!page) return;
             document.getElementById('freeNotesPageNameInput').value = page.name;
+            document.getElementById('freeNotesPageFolderInput').value = page.folder || '';
+            document.getElementById('freeNotesFolderOptions').innerHTML = Array.from(new Set(freeNotesPages.map(p => p.folder).filter(Boolean)))
+                .map(folder => `<option value="${escapeHtml(folder)}"></option>`).join('');
             const deleteBtn = document.getElementById('deleteFreeNotesPageBtn');
             deleteBtn.style.display = freeNotesPages.length > 1 ? 'inline-block' : 'none'; // 마지막 하나 남은 메모장은 지울 수 없게 함
             document.getElementById('freeNotesPageModal').classList.add('active');
@@ -90,7 +117,10 @@
                 return;
             }
             const page = freeNotesPages.find(p => p.id === editingFreeNotesPageId);
-            if (page) page.name = name;
+            if (!page) return;
+            page.name = name;
+            page.folder = document.getElementById('freeNotesPageFolderInput').value.trim();
+            collapsedFreeNotesFolders.delete(page.folder);
             safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
             queueSync();
             closeFreeNotesPageModal();

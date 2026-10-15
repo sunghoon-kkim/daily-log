@@ -279,7 +279,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 메모장도 흐름도처럼 여러 개 만들어 구분해서 쓸 수 있음. freeNotesPages가 실제 저장 단위이고,
         // notesContent는 그중 지금 보고 있는(currentFreeNotesPageId) 메모장의 내용을 담아두는 변수라서,
         // 페이지를 전환/추가/삭제하기 직전마다 syncActiveFreeNotesPageData()로 반영해줘야 함
-        let freeNotesPages = []; // [{id, name, content}]
+        let freeNotesPages = []; // [{id, name, content, folder?}] — 폴더 없는 기존 메모도 그대로 지원
         let currentFreeNotesPageId = null;
         let editingFreeNotesPageId = null; // 이름 변경/삭제 모달에서 대상이 되는 메모장 id
         let aiTemplateContent = '';

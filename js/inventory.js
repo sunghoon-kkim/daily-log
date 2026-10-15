@@ -233,8 +233,41 @@
             return { current, minQty, dailyUse, daysLeft, plan, level };
         }
 
-        const INVENTORY_LEVEL_ORDER = { out: 0, low: 1, need: 2, soon: 3, ok: 4 };
         const INVENTORY_LEVEL_BADGES = { out: '재고 없음', low: '부족', need: '확보 필요', soon: '소진 임박', ok: '' };
+
+        // 배열 자체가 표시 순서이므로 기존 로컬 저장·동기화·백업에서도 순서가 유지됨.
+        function reorderInventoryItems(fromId, toId) {
+            if (!checkEditPermission()) return;
+            const visible = inventoryItems.filter(item => inventoryCategoryFilter === '전체'
+                || (inventoryCategoryFilter === INVENTORY_UNCATEGORIZED ? !item.category : item.category === inventoryCategoryFilter));
+            const fromIndex = visible.findIndex(item => item.id === fromId);
+            const toIndex = visible.findIndex(item => item.id === toId);
+            if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+            const visibleIds = new Set(visible.map(item => item.id));
+            const [moved] = visible.splice(fromIndex, 1);
+            visible.splice(toIndex, 0, moved);
+            // 분류 필터로 숨겨진 품목은 원래 위치에 두고 표시 중인 품목끼리만 이동.
+            let index = 0;
+            inventoryItems = inventoryItems.map(item => visibleIds.has(item.id) ? visible[index++] : item);
+            saveInventory();
+        }
+
+        const inventoryDragReorder = createDragReorder({
+            itemClass: 'inv-card',
+            ghostClass: 'inv-card-ghost',
+            checkPermission: checkEditPermission,
+            getId: el => el.dataset.inventoryId,
+            handleSelector: '.inv-drag-handle',
+            onReorder: reorderInventoryItems
+        });
+
+        function inventoryPointerDown(event, id) {
+            inventoryDragReorder.pointerDown(event, id);
+        }
+
+        function inventoryKeyDown(event, id) {
+            inventoryDragReorder.keyDown(event, id);
+        }
 
         function setInventoryCategoryFilter(category) {
             inventoryCategoryFilter = category;
@@ -284,10 +317,6 @@
                 return;
             }
 
-            filtered.sort((a, b) => (INVENTORY_LEVEL_ORDER[a.st.level] - INVENTORY_LEVEL_ORDER[b.st.level])
-                || (a.st.daysLeft ?? Infinity) - (b.st.daysLeft ?? Infinity)
-                || (a.item.name || '').localeCompare(b.item.name || '', 'ko'));
-
             container.innerHTML = filtered.map(({ item, st }) => {
                 const idArg = escapeForOnclickArg(item.id);
                 const unit = escapeHtml(item.unit || '');
@@ -312,8 +341,9 @@
                     : (lastAdjust ? `최근 재고 조정 ${formatInventoryShortDate(lastAdjust)}` : '');
                 const badge = INVENTORY_LEVEL_BADGES[st.level];
                 return `
-                <div class="project-card inv-card inv-level-${st.level}" onclick="openInventoryItemModal('${idArg}')">
+                <div class="project-card inv-card inv-level-${st.level}" data-inventory-id="${escapeHtml(item.id)}" onclick="openInventoryItemModal('${idArg}')">
                     <div class="project-card-top">
+                        <button type="button" class="inv-drag-handle" title="드래그하거나 화살표 키로 순서 변경" aria-label="${escapeHtml(item.name)} 순서 변경 (화살표 키 사용 가능)" onclick="event.stopPropagation()" onpointerdown="inventoryPointerDown(event, '${idArg}')" onkeydown="inventoryKeyDown(event, '${idArg}')">⠿</button>
                         <button type="button" class="inv-card-title" onclick="event.stopPropagation(); openInventoryItemModal('${idArg}')">${escapeHtml(item.name)}</button>
                         ${badge ? `<span class="project-badge inv-badge-${st.level}">${badge}</span>` : ''}
                     </div>
