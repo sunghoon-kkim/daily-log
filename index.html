@@ -368,6 +368,14 @@
                     <button class="query-btn" onclick="generateDailySummary()" id="dailySummaryBtn">✨ 오늘 업무 요약 생성</button>
                 </div>
                 
+                <div class="query-control-group" style="margin-bottom: 16px;">
+                    <label for="dailySummaryFixedFirstItem">1번으로 자동 등록할 내용</label>
+                    <input type="text" id="dailySummaryFixedFirstItem" maxlength="300" placeholder="예: 냉동기, 보일러, 수처리 일상점검" aria-describedby="dailySummaryFixedFirstItemHelp">
+                    <small id="dailySummaryFixedFirstItemHelp" style="color: #666;">번호 없이 입력하세요. 입력한 내용은 전체 항목 개수에 포함되며, 빈칸으로 저장하면 고정 항목을 사용하지 않습니다.</small>
+                    <button type="button" class="ai-copy-btn" onclick="saveDailySummarySettings()">💾 1번 항목 저장</button>
+                    <div class="ai-status" id="dailySummarySettingsStatus" role="status"></div>
+                </div>
+
                 <div class="ai-loading" id="dailySummaryLoading">
                     🤖 <span id="dailySummaryLoadingMsg">오늘 업무를 정리하는 중입니다</span>... <span id="dailySummaryLoadingPercent">0%</span>
                     <div class="ai-loading-bar-track"><div class="ai-loading-bar-fill" id="dailySummaryLoadingBar"></div></div>

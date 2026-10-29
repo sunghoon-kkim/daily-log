@@ -3249,8 +3249,7 @@ function handleRevise(data) {
 }
 
 // ===== 일일 업무 요약 =====
-// 사번마다 실제로 맡은 업무가 다르므로, "냉동기/보일러/수처리 일상점검" 고정 항목은
-// 그 업무를 실제로 하는 이 사번(2600643)에게만 넣고 다른 사람에게는 넣지 않음
+// 설정이 없는 기존 클라이언트는 종전 사번별 기본값을 유지함. 빈 문자열은 명시적인 해제.
 const DAILY_SUMMARY_FIXED_ITEM_EMPLOYEE_ID = "2600643";
 const DAILY_SUMMARY_FIXED_ITEM_TEXT = "냉동기, 보일러, 수처리 일상점검";
 
@@ -3264,9 +3263,9 @@ function normalizeDailySummaryItemCount(rawValue) {
   return Math.min(DAILY_SUMMARY_MAX_ITEM_COUNT, Math.max(DAILY_SUMMARY_MIN_ITEM_COUNT, n));
 }
 
-function buildDailySummarySystemPrompt(includeFixedFirstItem, itemCount) {
-  const fixedItemRule = includeFixedFirstItem
-    ? "- 반드시 '1. " + DAILY_SUMMARY_FIXED_ITEM_TEXT + "'를 첫 번째 항목으로 고정해서 넣으세요. 그 다음 번호부터 그날 실제로 기록된 활동들을 이어서 쓰세요.\n"
+function buildDailySummarySystemPrompt(fixedFirstItem, itemCount) {
+  const fixedItemRule = fixedFirstItem
+    ? "- 반드시 '1. " + fixedFirstItem + "'를 첫 번째 항목으로 고정해서 넣으세요. 이 고정 항목도 전체 항목 개수에 포함합니다. 그 다음 번호부터 그날 실제로 기록된 활동들을 이어서 쓰세요.\n"
     : "- 그날 실제로 기록된 활동들만 번호를 매겨 쓰세요 (다른 사람 업무인 '" + DAILY_SUMMARY_FIXED_ITEM_TEXT + "' 같은 항목을 지어내서 넣지 마세요).\n";
 
   return (
@@ -3285,7 +3284,9 @@ function handleDailySummary(data) {
 
   const logText = data.logText || "";
   const dateLabel = data.dateLabel || data.date || "";
-  const includeFixedFirstItem = normalizeEmployeeId(data.employeeId) === DAILY_SUMMARY_FIXED_ITEM_EMPLOYEE_ID;
+  const fixedFirstItem = typeof data.fixedFirstItem === "string"
+    ? data.fixedFirstItem.replace(/\s+/g, " ").trim().replace(/^1[.)]\s*/, "").slice(0, 300)
+    : (normalizeEmployeeId(data.employeeId) === DAILY_SUMMARY_FIXED_ITEM_EMPLOYEE_ID ? DAILY_SUMMARY_FIXED_ITEM_TEXT : "");
   const itemCount = normalizeDailySummaryItemCount(data.itemCount);
 
   if (!logText) {
@@ -3295,7 +3296,7 @@ function handleDailySummary(data) {
   const userPrompt = `[날짜] ${dateLabel}\n\n[오늘 작성한 활동 기록]\n${logText}`;
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
 
-  return callGeminiAndRespond(apiKey, contents, buildDailySummarySystemPrompt(includeFixedFirstItem, itemCount), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
+  return callGeminiAndRespond(apiKey, contents, buildDailySummarySystemPrompt(fixedFirstItem, itemCount), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
 }
 
 // ===== 이번주 업무 요약 =====

@@ -77,6 +77,20 @@
         }
         
         // ===== 일일 업무 요약 (퇴근 전 보고용) =====
+        function saveDailySummarySettings() {
+            if (!checkEditPermission()) return;
+            const input = document.getElementById('dailySummaryFixedFirstItem');
+            dailySummaryFixedFirstItem = input.value.replace(/\s+/g, ' ').trim().replace(/^1[.)]\s*/, '').slice(0, 300);
+            input.value = dailySummaryFixedFirstItem;
+            safeSetItem('dailySummaryFixedFirstItem', dailySummaryFixedFirstItem);
+            queueSync();
+            const status = document.getElementById('dailySummarySettingsStatus');
+            status.textContent = dailySummaryFixedFirstItem
+                ? '✅ 1번 항목을 저장했습니다. 다음 요약 생성부터 적용됩니다.'
+                : '✅ 고정 항목을 해제했습니다.';
+            status.className = 'ai-status success';
+        }
+
         // 일일 업무 요약 로딩 중 보여줄 가짜 진행률 - 실제 API는 진행률을 안 주므로,
         // 남은 구간을 매번 조금씩 채워가며 90%에서 멈춰있다가 응답이 오면 100%로 채움
         let dailySummaryProgressTimer = null;
@@ -175,6 +189,7 @@
                         dateLabel: dateLabel,
                         logText: logText,
                         itemCount: document.getElementById('dailySummaryItemCount').value,
+                        fixedFirstItem: dailySummaryFixedFirstItem,
                         userApiKey: personalAiApiKey, ...getAuthFields()
                     })
                 });

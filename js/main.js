@@ -283,6 +283,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let currentFreeNotesPageId = null;
         let editingFreeNotesPageId = null; // 이름 변경/삭제 모달에서 대상이 되는 메모장 id
         let aiTemplateContent = '';
+        let dailySummaryFixedFirstItem = '';
+
+        function defaultDailySummaryFixedFirstItem() {
+            return currentEmployeeId === '2600643' ? '냉동기, 보일러, 수처리 일상점검' : '';
+        }
+
+        function applyDailySummarySettings() {
+            const input = document.getElementById('dailySummaryFixedFirstItem');
+            if (input) input.value = dailySummaryFixedFirstItem;
+        }
         // 계정별 월별 피드백 & 평가 이력. { 'YYYY-MM': {grade, selfGood, selfImprove, receivedGood, receivedImprove, updatedAt} }
         // AI 월별 피드백 생성 시 누적 이력을 참고 컨텍스트로 함께 보내 톤앤매너를 이어가는 데도 쓰임 (buildFeedbackHistoryContextText 참고)
         let monthlyFeedbacks = {};
@@ -369,6 +379,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             currentUserDepartment = localStorage.getItem('accountDepartment') || '';
             loadTodoItems();
             aiTemplateContent = localStorage.getItem('aiTemplate') || DEFAULT_AI_TEMPLATE;
+            dailySummaryFixedFirstItem = localStorage.getItem('dailySummaryFixedFirstItem') ?? defaultDailySummaryFixedFirstItem();
             const storedMonthlyFeedbacks = localStorage.getItem('monthlyFeedbacks');
             monthlyFeedbacks = storedMonthlyFeedbacks ? safeJsonParse(storedMonthlyFeedbacks, {}, 'monthlyFeedbacks') : {};
             currentFeedbackHistoryMonth = formatDate(new Date()).slice(0, 7);
@@ -403,6 +414,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             applyNotesContent();
             setupNotesAutosave();
             applyAITemplate();
+            applyDailySummarySettings();
             setupAITemplateAutosave();
             renderGoalAreas();
             renderFeedbackHistoryForm();
@@ -828,6 +840,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 currentFreeNotesPageId,
                 todo: todoItems,
                 aiTemplate: aiTemplateContent,
+                dailySummaryFixedFirstItem,
                 monthlyFeedbacks,
                 savingsProjects,
                 trendSubject,
@@ -867,6 +880,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
             safeSetItem('todoItems', JSON.stringify(todoItems));
             safeSetItem('aiTemplate', aiTemplateContent);
+            safeSetItem('dailySummaryFixedFirstItem', dailySummaryFixedFirstItem);
             safeSetItem('monthlyFeedbacks', JSON.stringify(monthlyFeedbacks));
             safeSetItem('savingsProjects', JSON.stringify(savingsProjects));
             safeSetItem('trendSubject', trendSubject);
@@ -1005,6 +1019,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         todoItems = [];
                     }
                     aiTemplateContent = (typeof data.aiTemplate === 'string' && data.aiTemplate) ? data.aiTemplate : DEFAULT_AI_TEMPLATE;
+                    dailySummaryFixedFirstItem = typeof data.dailySummaryFixedFirstItem === 'string' ? data.dailySummaryFixedFirstItem : defaultDailySummaryFixedFirstItem();
                     monthlyFeedbacks = (data.monthlyFeedbacks && typeof data.monthlyFeedbacks === 'object' && !Array.isArray(data.monthlyFeedbacks)) ? data.monthlyFeedbacks : {};
                     savingsProjects = Array.isArray(data.savingsProjects) ? data.savingsProjects : [];
                     trendSubject = (typeof data.trendSubject === 'string') ? data.trendSubject : '';
@@ -1043,6 +1058,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     renderCalendar();
                     applyNotesContent();
                     applyAITemplate();
+                    applyDailySummarySettings();
                     if (typeof renderSettingsTab === 'function') renderSettingsTab();
                     applyFeatureRestrictions();
                     if (selectedDate) renderRecordForm();
@@ -2781,7 +2797,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'activityRecords', 'calendarEvents', 'activityCategories',
             'categoryColors', 'categoryDefaultCollapsed', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
-            'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate',
+            'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate', 'dailySummaryFixedFirstItem',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'inventoryItems', 'inventoryCategories', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment',
             'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory',
