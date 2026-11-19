@@ -130,7 +130,7 @@
                            placeholder="파트 이름" oninput="updatePartManagerRow(${i}, this.value)">
                     <button type="button" class="admin-action-btn danger" onclick="removePartManagerRow(${i})" title="이 파트 삭제">✕</button>
                 </div>
-            `).join('') || '<p style="color:#999; font-size:13px;">➕ 파트 추가 버튼을 눌러 파트를 만들어주세요.</p>';
+            `).join('') || '<p style="color:var(--color-text-tertiary); font-size:13px;">➕ 파트 추가 버튼을 눌러 파트를 만들어주세요.</p>';
         }
 
         function updatePartManagerRow(index, value) {
@@ -588,7 +588,7 @@
             });
 
             if (list.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#999; padding:20px;">계정이 없습니다</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:var(--color-text-tertiary); padding:20px;">계정이 없습니다</td></tr>';
                 return;
             }
 
@@ -610,10 +610,10 @@
                         <span>입력됨</span>
                         <button type="button" class="admin-action-btn" style="padding:3px 7px; font-size:11px;" onclick="openAdminApiKeyViewModal('${u.employeeId}')">확인</button>
                         ${u.duplicateApiKey ? '<div class="admin-apikey-dup">⚠️ 다른 계정과 중복</div>' : ''}
-                    ` : '<span style="color:#999;">미입력</span>'}</td>
+                    ` : '<span style="color:var(--color-text-tertiary);">미입력</span>'}</td>
                     <td>${escapeHtml(u.lastSaved)}</td>
-                    <td>${u.lastLoginAt ? escapeHtml(new Date(u.lastLoginAt).toLocaleString('ko-KR')) : '<span style="color:#999;">기록 없음</span>'}</td>
-                    <td class="admin-actions-cell">${u.isAdmin ? '<span style="color:#999;">관리자 계정</span>' : `
+                    <td>${u.lastLoginAt ? escapeHtml(new Date(u.lastLoginAt).toLocaleString('ko-KR')) : '<span style="color:var(--color-text-tertiary);">기록 없음</span>'}</td>
+                    <td class="admin-actions-cell">${u.isAdmin ? '<span style="color:var(--color-text-tertiary);">관리자 계정</span>' : `
                         <div class="admin-more-wrap">
                             <button type="button" class="admin-more-btn" title="관리 메뉴" onclick="toggleAdminMoreMenu(event, '${u.employeeId}')">⋮${u.passwordResetRequestedAt ? '🔴' : ''}</button>
                             <div class="admin-more-menu" id="adminMoreMenu-${u.employeeId}">
@@ -736,7 +736,7 @@
             if (!tbody) return;
 
             if (adminTrashList.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#999; padding:20px;">휴지통이 비어있습니다</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--color-text-tertiary); padding:20px;">휴지통이 비어있습니다</td></tr>';
                 return;
             }
 
@@ -764,7 +764,7 @@
             if (!tbody) return;
 
             if (adminPendingList.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999; padding:20px;">승인 대기 중인 계정이 없습니다</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--color-text-tertiary); padding:20px;">승인 대기 중인 계정이 없습니다</td></tr>';
                 return;
             }
 

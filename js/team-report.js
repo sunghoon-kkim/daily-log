@@ -129,7 +129,7 @@
             if (!container) return;
 
             if (teamReportMemberList.length === 0) {
-                container.innerHTML = '<p style="color:#999; font-size:13px;">선택 가능한 제출 대상이 없습니다. 관리자에게 역할 지정을 요청해주세요.</p>';
+                container.innerHTML = '<p style="color:var(--color-text-tertiary); font-size:13px;">선택 가능한 제출 대상이 없습니다. 관리자에게 역할 지정을 요청해주세요.</p>';
                 updateTeamReportIntroText();
                 return;
             }
@@ -228,7 +228,7 @@
             const rows = teamReportRows[section];
 
             if (rows.length === 0) {
-                container.innerHTML = '<p style="color:#999; font-size:13px; padding:4px 0 8px;">➕ 항목 추가 버튼을 눌러 작성해주세요.</p>';
+                container.innerHTML = '<p style="color:var(--color-text-tertiary); font-size:13px; padding:4px 0 8px;">➕ 항목 추가 버튼을 눌러 작성해주세요.</p>';
                 return;
             }
 
@@ -425,7 +425,7 @@
             if (!items || items.length === 0) return '';
             return `
                 <div style="margin-bottom:6px;">
-                    <div style="font-size:12.5px; color:#667eea; font-weight:600;">${title}</div>
+                    <div style="font-size:12.5px; color:var(--color-primary); font-weight:600;">${title}</div>
                     ${items.map(it => `<div style="font-size:13.5px; padding-left:6px;">· [${escapeHtml(it.category)}] ${escapeHtml(it.date)} ${escapeHtml(it.content)}</div>`).join('')}
                 </div>
             `;
@@ -484,7 +484,7 @@
             if (!listEl) return;
 
             if (myTeamReportHistoryItems.length === 0) {
-                listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">아직 제출한 보고가 없습니다.</p>';
+                listEl.innerHTML = '<p style="color:var(--color-text-tertiary); text-align:center; padding:16px;">아직 제출한 보고가 없습니다.</p>';
                 return;
             }
 
@@ -494,7 +494,7 @@
                 : myTeamReportHistoryItems;
 
             if (items.length === 0) {
-                listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">이 달에 제출한 보고가 없습니다.</p>';
+                listEl.innerHTML = '<p style="color:var(--color-text-tertiary); text-align:center; padding:16px;">이 달에 제출한 보고가 없습니다.</p>';
                 return;
             }
 
@@ -515,7 +515,7 @@
                             ${renderTeamReportItemsHtml('✅ 이번주 한 일', item.thisWeek)}
                             ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
-                                <span style="color:#999; font-size:12px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</span>
+                                <span style="color:var(--color-text-tertiary); font-size:12px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</span>
                                 <button type="button" class="admin-action-btn danger" onclick="event.stopPropagation(); deleteMyTeamReport('${item.weekStart}')">🗑️ 삭제</button>
                             </div>
                         </div>
@@ -647,7 +647,7 @@
             if (!listEl) return;
 
             if (teamReportInboxItems.length === 0) {
-                listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">나에게 제출된 보고가 없습니다.</p>';
+                listEl.innerHTML = '<p style="color:var(--color-text-tertiary); text-align:center; padding:16px;">나에게 제출된 보고가 없습니다.</p>';
                 return;
             }
 
@@ -657,7 +657,7 @@
                 : teamReportInboxItems;
 
             if (items.length === 0) {
-                listEl.innerHTML = '<p style="color:#999; text-align:center; padding:16px;">이 달에 제출된 보고가 없습니다.</p>';
+                listEl.innerHTML = '<p style="color:var(--color-text-tertiary); text-align:center; padding:16px;">이 달에 제출된 보고가 없습니다.</p>';
                 return;
             }
 
@@ -675,10 +675,10 @@
                     </div>
                     ${isOpen ? `
                         <div class="team-report-history-details">
-                            <div style="color:#999; font-size:12px; margin-bottom:6px;">${escapeHtml(item.department || '')} · ${escapeHtml(item.employeeId)}</div>
+                            <div style="color:var(--color-text-tertiary); font-size:12px; margin-bottom:6px;">${escapeHtml(item.department || '')} · ${escapeHtml(item.employeeId)}</div>
                             ${renderTeamReportItemsHtml('✅ 이번주 한 일', item.thisWeek)}
                             ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
-                            <div style="color:#999; font-size:12px; margin-top:4px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</div>
+                            <div style="color:var(--color-text-tertiary); font-size:12px; margin-top:4px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</div>
                         </div>
                     ` : ''}
                 </div>

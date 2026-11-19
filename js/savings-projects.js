@@ -98,13 +98,13 @@
             if (!listEl) return;
             const logs = Array.isArray(project.monthlyLogs) ? project.monthlyLogs : [];
             if (logs.length === 0) {
-                listEl.innerHTML = '<p style="color:#999; font-size:13px; margin:0;">아직 기록된 월별 진행 내용이 없습니다.</p>';
+                listEl.innerHTML = '<p style="color:var(--color-text-tertiary); font-size:13px; margin:0;">아직 기록된 월별 진행 내용이 없습니다.</p>';
                 return;
             }
             const sorted = logs.slice().sort((a, b) => (b.loggedAt || '').localeCompare(a.loggedAt || ''));
             listEl.innerHTML = sorted.map(log => `
-                <div style="padding:8px 0; border-bottom:1px solid #eee; font-size:13px;">
-                    <div style="color:#667eea; font-weight:600; font-size:12px; margin-bottom:2px;">${escapeHtml(log.month)} · ${escapeHtml(formatTeamReportSubmittedAt(log.loggedAt))}</div>
+                <div style="padding:8px 0; border-bottom:1px solid var(--color-border); font-size:13px;">
+                    <div style="color:var(--color-primary); font-weight:600; font-size:12px; margin-bottom:2px;">${escapeHtml(log.month)} · ${escapeHtml(formatTeamReportSubmittedAt(log.loggedAt))}</div>
                     <div>${escapeHtml(log.note)}</div>
                 </div>
             `).join('');

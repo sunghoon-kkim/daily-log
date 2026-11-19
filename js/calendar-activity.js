@@ -794,7 +794,7 @@
             const container = document.getElementById('recordContent');
             
             if (!selectedDate) {
-                container.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">날짜를 선택해주세요</div>';
+                container.innerHTML = '<div style="text-align: center; color: var(--color-text-tertiary); padding: 20px;">날짜를 선택해주세요</div>';
                 return;
             }
             
