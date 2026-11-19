@@ -53,6 +53,7 @@
     --color-success: #10B981;
     --color-warning: #F59E0B;
     --color-danger: #EF4444;
+    --color-urgent: #F97316;
     /* 활동기록 본문 */
     --leading-relaxed: 1.7;
     --tracking-ko: -0.005em;
@@ -7236,3 +7237,57 @@ input[type="radio"] { accent-color: var(--color-primary); }
 .dark-mode .tab:hover { background: transparent; color: var(--color-text); }
 .dark-mode .tab.active { background: transparent; color: var(--color-text); }
 .dark-mode .upcoming-card-title { color: var(--color-text); }
+
+/* ---- 정비계획 카드: 원색 배경·굵은 왼쪽 막대 대신 1px 틴트 테두리 + 제목 앞 색 점 + 틴트 배지 ----
+   --maint는 급한 정도 색: 지연 빨강, 임박 주황, 인지 필요 노랑. 사전 인지 완료(maint-acked)는 강조 없음 */
+.project-card.maint-card,
+.dark-mode .project-card.maint-card {
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+}
+.project-card.maint-card:hover { border-color: var(--color-border-strong); box-shadow: none; }
+.project-card.maint-overdue { --maint: var(--color-danger); }
+.project-card.maint-urgent { --maint: var(--color-urgent); }
+.project-card.maint-notice { --maint: var(--color-warning); }
+.project-card.maint-card.maint-overdue,
+.project-card.maint-card.maint-urgent,
+.project-card.maint-card.maint-notice,
+.dark-mode .project-card.maint-card.maint-overdue,
+.dark-mode .project-card.maint-card.maint-urgent,
+.dark-mode .project-card.maint-card.maint-notice {
+    background: color-mix(in srgb, var(--maint) 4%, var(--color-surface));
+    border-color: color-mix(in srgb, var(--maint) var(--tint-border), var(--color-border));
+}
+.project-card.maint-card.maint-overdue .maint-card-title::before,
+.project-card.maint-card.maint-urgent .maint-card-title::before,
+.project-card.maint-card.maint-notice .maint-card-title::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--maint);
+    margin-right: var(--space-2);
+    vertical-align: 2px;
+}
+.maint-card .project-badge.urgency-overdue,
+.maint-card .project-badge.urgency-urgent,
+.maint-card .project-badge.urgency-notice,
+.maint-card .project-badge.status-완료 {
+    --maint: var(--color-warning);
+    background: color-mix(in srgb, var(--maint) var(--tint-bg), transparent);
+    border: 1px solid color-mix(in srgb, var(--maint) var(--tint-border), transparent);
+    color: color-mix(in srgb, var(--maint) var(--tint-text-mix), var(--color-text));
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.maint-card .project-badge.urgency-overdue { --maint: var(--color-danger); }
+.maint-card .project-badge.urgency-urgent { --maint: var(--color-urgent); }
+.maint-card .project-badge.status-완료 { --maint: var(--color-success); }
+/* 사전 인지 완료: 배지는 회색으로 옅게만 남김 */
+.maint-card .project-badge.urgency-notice.is-acked {
+    background: transparent;
+    border-color: var(--color-border);
+    color: var(--color-text-tertiary);
+}

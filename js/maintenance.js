@@ -89,6 +89,33 @@
             return daysBetweenDateStrs(formatDate(new Date()), dueStr);
         }
 
+        // 완료일 문자열을 YYYY-MM-DD로 맞춤. 수정 창 안내가 "2025.03.12" 형식이라 점·빗금·하이픈을 모두 인정함.
+        // 날짜 형식이 아니면 앞뒤 공백만 뺀 원래 값을 그대로 돌려줌 (저장된 값을 함부로 지우지 않기 위해)
+        function normalizeMaintDate(str) {
+            if (typeof str !== 'string') return '';
+            const t = str.trim();
+            const m = t.match(/^(\d{4})\s*[.\/-]\s*(\d{1,2})\s*[.\/-]\s*(\d{1,2})\.?$/);
+            if (!m) return t;
+            const mo = parseInt(m[2], 10), d = parseInt(m[3], 10);
+            if (mo < 1 || mo > 12 || d < 1 || d > 31) return t;
+            return `${m[1]}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+
+        // 완료 이력(completions)과 이전 완료일(lastDone) 중 가장 최근 완료일(YYYY-MM-DD). 없으면 ''
+        function getLatestMaintenanceDoneDate(m) {
+            const dates = getMaintenanceCompletions(m).map(c => c && normalizeMaintDate(c.date));
+            dates.push(normalizeMaintDate(m && m.lastDone));
+            return dates.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().pop() || '';
+        }
+
+        // 이번 달에 이미 점검을 마쳤는지(완료 이력이나 이전 완료일이 이번 달인지).
+        // "직전 예정월 이후 완료"로 판단하면 제때 완료한 모든 항목이 해당돼 사전 인지 알림 자체가 사라지므로,
+        // 이번 달로만 한정함. 예: 2개월 주기를 11/10에 완료 → 11월엔 차기(1월) 인지 필요를 띄우지 않고 12월부터 띄움
+        function isMaintenanceDoneThisMonth(m) {
+            const latest = getLatestMaintenanceDoneDate(m);
+            return !!latest && latest.slice(0, 7) === formatDate(new Date()).slice(0, 7);
+        }
+
         function formatDday(days) {
             if (days === 0) return 'D-day';
             return days > 0 ? `D-${days}` : `D+${-days}`;
@@ -107,14 +134,19 @@
             if (daysUntil === null) return { level: 'undated', rank: 4, daysUntil: null };
             if (daysUntil < 0) return { level: 'overdue', rank: 0, daysUntil };
             if (daysUntil <= MAINT_URGENT_DAYS) return { level: 'urgent', rank: 1, daysUntil };
-            if (daysUntil <= MAINT_NOTICE_DAYS) return { level: 'notice', rank: 2, daysUntil };
+            // 이번 달 점검을 이미 끝냈다면 다음 주기를 미리 알리는 "인지 필요"는 이번 달엔 띄우지 않음
+            // (2개월 이하 짧은 주기는 완료하자마자 차기 예정일이 60일 안에 들어와 늘 노란색이 되던 문제)
+            if (daysUntil <= MAINT_NOTICE_DAYS) {
+                if (isMaintenanceDoneThisMonth(item)) return { level: 'normal', rank: 3, daysUntil };
+                return { level: 'notice', rank: 2, daysUntil };
+            }
             return { level: 'normal', rank: 3, daysUntil };
         }
 
         function maintenanceUrgencyBadge(urgency) {
-            if (urgency.level === 'overdue') return `⚠️ 지연 ${formatDday(urgency.daysUntil)}`;
-            if (urgency.level === 'urgent') return `🔥 ${formatDday(urgency.daysUntil)}`;
-            if (urgency.level === 'notice') return `📝 인지 필요 ${formatDday(urgency.daysUntil)}`;
+            if (urgency.level === 'overdue') return `지연 ${formatDday(urgency.daysUntil)}`;
+            if (urgency.level === 'urgent') return `임박 ${formatDday(urgency.daysUntil)}`;
+            if (urgency.level === 'notice') return `인지 필요 ${formatDday(urgency.daysUntil)}`;
             return '';
         }
 
@@ -153,8 +185,10 @@
         // 보고 있는 연도 안의 완료일 목록(오름차순). 예전 데이터(완료 이력 없이 lastDone만 있는 경우)도 인정함
         function getMaintenanceCompletionDatesInYear(m, year) {
             const prefix = year + '-';
-            const dates = getMaintenanceCompletions(m).map(c => c && c.date).filter(d => typeof d === 'string' && d.startsWith(prefix));
-            if (dates.length === 0 && typeof m.lastDone === 'string' && m.lastDone.startsWith(prefix)) dates.push(m.lastDone);
+            const dates = getMaintenanceCompletions(m).map(c => c && normalizeMaintDate(c.date)).filter(d => d.startsWith(prefix));
+            // 수정 창에서 직접 적은 이전 완료일(2026.11.10 같은 점 형식 포함)도 이력에 없으면 함께 인정함
+            const lastDone = normalizeMaintDate(m.lastDone);
+            if (lastDone.startsWith(prefix) && /^\d{4}-\d{2}-\d{2}$/.test(lastDone) && !dates.includes(lastDone)) dates.push(lastDone);
             return dates.sort();
         }
 
@@ -163,7 +197,11 @@
         function renderMaintenanceEquipmentGroup(equipmentName, items) {
             const cardsHtml = items.map(m => {
                 const urgency = m._urgency;
-                const urgencyClass = ['overdue', 'urgent', 'notice'].includes(urgency.level) ? ` maint-${urgency.level}` : '';
+                const acked = m.ackFor && m.ackFor === m.nextDue;
+                // "인지 필요"는 사전 인지 완료를 체크하면 카드 강조를 끔 (지연·임박은 체크해도 그대로 강조)
+                const noticeAcked = urgency.level === 'notice' && acked;
+                const urgencyClass = noticeAcked ? ' maint-acked'
+                    : (['overdue', 'urgent', 'notice'].includes(urgency.level) ? ` maint-${urgency.level}` : '');
                 const doneDates = m._doneDates || [];
                 const doneMonths = doneDates.map(d => parseInt(d.slice(5, 7), 10));
                 const titleText = m.item ? escapeHtml(m.item) : '점검';
@@ -183,12 +221,11 @@
                 const badgeLabel = maintenanceUrgencyBadge(urgency);
                 const lastDoneInYear = doneDates.length ? doneDates[doneDates.length - 1] : '';
                 const badges = [
-                    badgeLabel ? `<span class="project-badge urgency-${urgency.level}">${badgeLabel}</span>` : '',
-                    lastDoneInYear ? `<span class="project-badge status-완료" title="${escapeHtml(lastDoneInYear)} 완료">✅ 완료 ${escapeHtml(lastDoneInYear.slice(5).replace('-', '/'))}</span>` : '',
+                    badgeLabel ? `<span class="project-badge urgency-${urgency.level}${noticeAcked ? ' is-acked' : ''}">${badgeLabel}</span>` : '',
+                    lastDoneInYear ? `<span class="project-badge status-완료" title="${escapeHtml(lastDoneInYear)} 완료">완료 ${escapeHtml(lastDoneInYear.slice(5).replace('-', '/'))}</span>` : '',
                     // "예정"은 기본 상태라 배지를 생략하고, 완료 배지가 이미 있으면 "완료" 상태 배지는 중복이라 생략
                     (m.status && m.status !== '예정' && !(m.status === '완료' && lastDoneInYear)) ? `<span class="project-badge status-${maintenanceStatusClass(m.status)}">${escapeHtml(m.status)}</span>` : ''
                 ].filter(Boolean).join('');
-                const acked = m.ackFor && m.ackFor === m.nextDue;
                 const showAck = ['overdue', 'urgent', 'notice'].includes(urgency.level);
                 const cycleUnknown = m.cycle && !parseCycleIntervalMonths(m.cycle);
                 const dueParts = [];
@@ -378,7 +415,7 @@
             const sop = document.getElementById('maintSopInput').value.trim();
             const cycle = document.getElementById('maintCycleInput').value.trim();
             const status = document.getElementById('maintStatusInput').value;
-            const lastDone = document.getElementById('maintLastDoneInput').value.trim();
+            const lastDone = normalizeMaintDate(document.getElementById('maintLastDoneInput').value);
             const nextDue = document.getElementById('maintNextDueInput').value.trim() || maintLegacyMonthNextDue;
             const note = document.getElementById('maintNoteInput').value.trim();
             const nowStr = formatDate(new Date());
