@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    "ms-vscode.live-server",
+    "usernamehw.errorlens",
+    "ms-playwright.playwright"
+  ]
+}
