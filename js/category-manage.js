@@ -236,9 +236,9 @@
                         <button class="category-default-collapse-toggle${isDefaultCollapsed ? ' active' : ''}" onclick="toggleCategoryDefaultCollapse('${escapeForOnclickArg(category)}')" title="활동기록 탭에서 이 카테고리의 기본 펼침/접힘 상태 (지난 날짜에 내용이 없으면 이 설정과 상관없이 항상 접힘)">${isDefaultCollapsed ? '▸ 기본 최소화' : '▾ 항상 열림'}</button>
                         <input type="color" class="category-color-input" value="${categoryColors[category] || '#667eea'}"
                             onchange="changeCategoryColor('${escapeForOnclickArg(category)}', this.value)" title="박스 색상 설정">
-                        <button class="category-tag-edit" onclick="renameCategory('${escapeForOnclickArg(category)}')" title="이름 수정">✏️</button>
-                        <button class="category-tag-edit" onclick="archiveCategory('${escapeForOnclickArg(category)}')" title="보관: 입력 화면에서만 숨기고 과거 기록은 검색·조회에 그대로 남김">📦</button>
-                        <button class="category-tag-delete" onclick="deleteCategory('${escapeForOnclickArg(category)}')" aria-label="${escapeHtml(category)} 카테고리 삭제">✕</button>
+                        <button class="category-tag-edit" onclick="renameCategory('${escapeForOnclickArg(category)}')" title="이름 수정">${icon('pencil', 'ui-icon-em')}</button>
+                        <button class="category-tag-edit" onclick="archiveCategory('${escapeForOnclickArg(category)}')" title="보관: 입력 화면에서만 숨기고 과거 기록은 검색·조회에 그대로 남김">${icon('package', 'ui-icon-em')}</button>
+                        <button class="category-tag-delete" onclick="deleteCategory('${escapeForOnclickArg(category)}')" aria-label="${escapeHtml(category)} 카테고리 삭제">${icon('x', 'ui-icon-em')}</button>
                     </div>
                 </div>
             `;
@@ -304,7 +304,7 @@
                     </div>
                     <div class="category-tag-actions">
                         <button class="category-default-collapse-toggle" onclick="restoreArchivedCategory('${escapeForOnclickArg(category)}')">↩ 복원</button>
-                        <button class="category-tag-delete" onclick="deleteCategory('${escapeForOnclickArg(category)}')" aria-label="${escapeHtml(category)} 카테고리 영구 삭제" title="기록까지 영구 삭제">✕</button>
+                        <button class="category-tag-delete" onclick="deleteCategory('${escapeForOnclickArg(category)}')" aria-label="${escapeHtml(category)} 카테고리 영구 삭제" title="기록까지 영구 삭제">${icon('x', 'ui-icon-em')}</button>
                     </div>
                 </div>`;
             }).join('');

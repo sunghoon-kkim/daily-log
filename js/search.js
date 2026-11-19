@@ -298,7 +298,7 @@
                         <div class="result-top">
                             <div class="result-date">📅 ${dateLabel} <span class="search-result-tag">[${escapeHtml(r.tag)}]</span></div>
                             <div class="result-actions">
-                                ${editable ? `<button class="result-action-btn" onclick="startInlineEdit(${idx})">✏️ 수정</button>` : ''}
+                                ${editable ? `<button class="result-action-btn" onclick="startInlineEdit(${idx})">수정</button>` : ''}
                                 <button class="result-action-btn" onclick="openSearchResult(${idx})">${openLabel}</button>
                             </div>
                         </div>

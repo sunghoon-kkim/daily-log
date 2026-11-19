@@ -494,7 +494,7 @@
                     const userPromptText = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}${historyBlock}${checkBlock}`;
                     lastGeneratedFeedbackMonth = targetMonth;
                     const saveBtn = document.getElementById('aiSaveToHistoryBtn');
-                    if (saveBtn) saveBtn.textContent = `💾 ${formatYearMonthLabel(targetMonth)} 피드백 이력에 저장`;
+                    if (saveBtn) saveBtn.innerHTML = `${icon('save')}${escapeHtml(formatYearMonthLabel(targetMonth))} 피드백 이력에 저장`;
                     aiConversationHistory = [
                         { role: 'user', text: userPromptText },
                         { role: 'model', text: data.raw || JSON.stringify({ good: data.good, improve: data.improve }) }
@@ -845,13 +845,13 @@
                     <div class="goal-result-block" id="goalResultBlock-${area.id}" style="display:none;">
                         <div class="ai-block-label-row">
                             <label class="ai-block-label">✅ 생성된 초안</label>
-                            <button class="ai-copy-btn" onclick="copyGoalResult('${area.id}')">📋 복사</button>
+                            <button class="ai-copy-btn" onclick="copyGoalResult('${area.id}')">복사</button>
                         </div>
                         <textarea class="goal-result-textarea" id="goalResult-${area.id}"></textarea>
 
                         <div class="goal-revise-row">
                             <input type="text" class="goal-revise-input" id="goalReviseInput-${area.id}" placeholder="이 항목만 수정 요청 (예: 좀 더 구체적으로)">
-                            <button class="goal-revise-btn" id="goalReviseBtn-${area.id}" onclick="reviseGoalDraft('${area.id}')">🔄 수정 반영</button>
+                            <button class="goal-revise-btn" id="goalReviseBtn-${area.id}" onclick="reviseGoalDraft('${area.id}')">수정 반영</button>
                         </div>
                     </div>
 

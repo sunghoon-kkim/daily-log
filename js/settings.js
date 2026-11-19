@@ -101,7 +101,7 @@
                     <tr>
                         <td>${escapeHtml(b.savedAt)}</td>
                         <td>${b.dateCount}일치</td>
-                        <td class="admin-actions-cell"><button class="admin-action-btn danger" onclick="restoreMyBackup(${idx})">♻️ 이 시점으로 되돌리기</button></td>
+                        <td class="admin-actions-cell"><button class="admin-action-btn danger" onclick="restoreMyBackup(${idx})">이 시점으로 되돌리기</button></td>
                     </tr>
                 `).join('');
                 table.style.display = '';

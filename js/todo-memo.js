@@ -41,7 +41,7 @@
             const tab = p => `
                 <div class="free-notes-page-tab${p.id === currentFreeNotesPageId ? ' active' : ''}" onclick="switchFreeNotesPage('${escapeForOnclickArg(p.id)}')">
                     <span>${escapeHtml(p.name)}</span>
-                    <button class="free-notes-page-tab-edit" onclick="event.stopPropagation(); openFreeNotesPageModal('${escapeForOnclickArg(p.id)}')" title="이름·폴더 변경/삭제" aria-label="이름·폴더 변경/삭제">✏️</button>
+                    <button class="free-notes-page-tab-edit" onclick="event.stopPropagation(); openFreeNotesPageModal('${escapeForOnclickArg(p.id)}')" title="이름·폴더 변경/삭제" aria-label="이름·폴더 변경/삭제">${icon('pencil', 'ui-icon-em')}</button>
                 </div>
             `;
             const folders = new Map();
@@ -56,7 +56,7 @@
                     <div class="free-notes-folder-pages">${pages.map(tab).join('')}</div>
                    </details>`
                 : `<div class="free-notes-folder-pages free-notes-ungrouped">${pages.map(tab).join('')}</div>`
-            ).join('') + '<button class="free-notes-page-add-btn" onclick="addFreeNotesPage()" title="메모장 추가" aria-label="메모장 추가">➕ 메모장 추가</button>';
+            ).join('') + '<button class="free-notes-page-add-btn" onclick="addFreeNotesPage()" title="메모장 추가" aria-label="메모장 추가">메모장 추가</button>';
         }
 
         function switchFreeNotesPage(pageId) {
@@ -445,7 +445,7 @@
             deleteBtn.type = 'button';
             deleteBtn.className = 'todo-delete-btn';
             deleteBtn.title = '삭제';
-            deleteBtn.textContent = '✕';
+            deleteBtn.innerHTML = icon('x', 'ui-icon-em');
             deleteBtn.addEventListener('click', () => deleteTodoItem(item.id));
 
             row.appendChild(checkbox);

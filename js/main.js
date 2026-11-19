@@ -2400,7 +2400,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             document.getElementById('loginMustChangeSection').style.display = on ? 'block' : 'none';
             document.getElementById('loginEmployeeIdInput').readOnly = on;
             document.getElementById('loginPasswordInput').readOnly = on;
-            document.getElementById('loginSubmitBtn').textContent = on ? '🔑 비밀번호 변경 후 로그인' : '🔓 로그인';
+            document.getElementById('loginSubmitBtn').innerHTML = icon('log-in') + (on ? '비밀번호 변경 후 로그인' : '로그인');
             if (!on) {
                 document.getElementById('loginNewPasswordInput').value = '';
                 document.getElementById('loginNewPasswordConfirmInput').value = '';
@@ -2454,7 +2454,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const btn = document.getElementById('loginPasswordToggleBtn');
             const willShow = input.type === 'password';
             input.type = willShow ? 'text' : 'password';
-            btn.textContent = willShow ? '🙈' : '👀';
+            btn.innerHTML = icon(willShow ? 'eye-off' : 'eye');
             btn.title = willShow ? '비밀번호 숨기기' : '비밀번호 보기';
         }
 
@@ -2512,7 +2512,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 errEl.style.display = 'block';
             } finally {
                 btn.disabled = false;
-                btn.textContent = isLoginMustChangeMode() ? '🔑 비밀번호 변경 후 로그인' : '🔓 로그인';
+                btn.innerHTML = icon('log-in') + (isLoginMustChangeMode() ? '비밀번호 변경 후 로그인' : '로그인');
             }
         }
 
@@ -2682,7 +2682,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 errEl.style.display = 'block';
             } finally {
                 btn.disabled = false;
-                btn.textContent = '📝 회원가입';
+                btn.innerHTML = icon('user-plus') + '회원가입';
             }
         }
 
@@ -2793,7 +2793,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 errEl.style.display = 'block';
             } finally {
                 btn.disabled = false;
-                btn.textContent = '💾 저장';
+                btn.innerHTML = icon('save') + '저장';
             }
         }
 

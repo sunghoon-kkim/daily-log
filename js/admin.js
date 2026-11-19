@@ -128,7 +128,7 @@
                 <div class="team-report-row" style="margin-bottom:8px;">
                     <input type="text" class="category-input" value="${escapeHtml(row.value)}" maxlength="20"
                            placeholder="파트 이름" oninput="updatePartManagerRow(${i}, this.value)">
-                    <button type="button" class="admin-action-btn danger" onclick="removePartManagerRow(${i})" title="이 파트 삭제">✕</button>
+                    <button type="button" class="admin-action-btn danger" onclick="removePartManagerRow(${i})" title="이 파트 삭제">${icon('x', 'ui-icon-em')}</button>
                 </div>
             `).join('') || '<p style="color:var(--color-text-tertiary); font-size:13px;">➕ 파트 추가 버튼을 눌러 파트를 만들어주세요.</p>';
         }
@@ -617,11 +617,11 @@
                         <div class="admin-more-wrap">
                             <button type="button" class="admin-more-btn" title="관리 메뉴" onclick="toggleAdminMoreMenu(event, '${u.employeeId}')">⋮${u.passwordResetRequestedAt ? '🔴' : ''}</button>
                             <div class="admin-more-menu" id="adminMoreMenu-${u.employeeId}">
-                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminEditUserModal('${u.employeeId}')">✏️ 정보수정</button>
-                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminFeatureModal('${u.employeeId}')">🔧 기능 설정</button>
-                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminResetPassword('${u.employeeId}')">🔑 비밀번호 초기화${u.passwordResetRequestedAt ? ' 🔴요청됨' : ''}</button>
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminEditUserModal('${u.employeeId}')">정보수정</button>
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminFeatureModal('${u.employeeId}')">기능 설정</button>
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminResetPassword('${u.employeeId}')">비밀번호 초기화${u.passwordResetRequestedAt ? ' 🔴요청됨' : ''}</button>
                                 <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminToggleUserDisabled('${u.employeeId}', ${u.disabled ? 'false' : 'true'})">${u.disabled ? '✅ 활성화' : '🚫 비활성화'}</button>
-                                <button type="button" class="admin-menu-item danger" onclick="closeAllAdminMoreMenus(); adminDeleteUser('${u.employeeId}')">🗑️ 삭제</button>
+                                <button type="button" class="admin-menu-item danger" onclick="closeAllAdminMoreMenus(); adminDeleteUser('${u.employeeId}')">삭제</button>
                             </div>
                         </div>`}
                     </td>
@@ -750,8 +750,8 @@
                     <td>${escapeHtml(formatDateTimeKo(u.deletedAt))}</td>
                     <td>${u.daysRemaining}일 후</td>
                     <td class="admin-actions-cell">
-                        <button class="admin-action-btn" onclick="adminRestoreUser('${u.employeeId}')">♻️ 복구</button>
-                        <button class="admin-action-btn danger" onclick="adminPurgeUser('${u.employeeId}')">💀 즉시 삭제</button>
+                        <button class="admin-action-btn" onclick="adminRestoreUser('${u.employeeId}')">복구</button>
+                        <button class="admin-action-btn danger" onclick="adminPurgeUser('${u.employeeId}')">즉시 삭제</button>
                     </td>
                 </tr>
             `).join('');
@@ -775,8 +775,8 @@
                     <td>${escapeHtml(u.department)}</td>
                     <td>${escapeHtml(formatDateTimeKo(u.requestedAt))}</td>
                     <td class="admin-actions-cell">
-                        <button class="admin-action-btn" onclick="adminApproveUser('${u.employeeId}')">✅ 승인</button>
-                        <button class="admin-action-btn danger" onclick="adminDeleteUser('${u.employeeId}')">🗑️ 거절</button>
+                        <button class="admin-action-btn" onclick="adminApproveUser('${u.employeeId}')">승인</button>
+                        <button class="admin-action-btn danger" onclick="adminDeleteUser('${u.employeeId}')">거절</button>
                     </td>
                 </tr>
             `).join('');

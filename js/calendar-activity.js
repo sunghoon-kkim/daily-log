@@ -731,7 +731,7 @@
             removeBtn.className = 'category-image-remove';
             removeBtn.title = '이미지 삭제';
             removeBtn.setAttribute('aria-label', '이미지 삭제');
-            removeBtn.textContent = '✕';
+            removeBtn.innerHTML = icon('x', 'ui-icon-em');
             removeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (!checkEditPermission()) return;
@@ -1491,7 +1491,7 @@
                     <div class="rotation-row-head">
                         <span class="rotation-color-dot" style="background:${COLOR_PALETTE[i % COLOR_PALETTE.length]}"></span>
                         <input type="text" class="rotation-name-input" data-row="${i}" value="${escapeHtml(row.name)}" placeholder="설비명">
-                        <button type="button" class="rotation-remove-btn" onclick="removeRotationRow(${i})" aria-label="설비 삭제">✕</button>
+                        <button type="button" class="rotation-remove-btn" onclick="removeRotationRow(${i})" aria-label="설비 삭제">${icon('x', 'ui-icon-em')}</button>
                     </div>
                     <div class="rotation-week"><span class="rotation-week-label">1주차</span>${dayChips(i, 1, row.week1)}</div>
                     <div class="rotation-week"><span class="rotation-week-label">2주차</span>${dayChips(i, 2, row.week2)}</div>

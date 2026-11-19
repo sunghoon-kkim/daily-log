@@ -103,7 +103,7 @@
                 .concat(hasUncategorizedInventory() ? [chip(INVENTORY_UNCATEGORIZED, '미분류')] : []);
             chips.push('<button type="button" class="quick-preset-btn inv-category-add-btn" onclick="openInventoryCategoryModal(null)">+ 분류 추가</button>');
             if (list.includes(inventoryCategoryFilter)) {
-                chips.push(`<button type="button" class="inv-category-edit-btn" onclick="openInventoryCategoryModal('${escapeForOnclickArg(inventoryCategoryFilter)}')" aria-label="${escapeHtml(inventoryCategoryFilter)} 분류 이름 변경 또는 삭제">✏️ 분류 수정</button>`);
+                chips.push(`<button type="button" class="inv-category-edit-btn" onclick="openInventoryCategoryModal('${escapeForOnclickArg(inventoryCategoryFilter)}')" aria-label="${escapeHtml(inventoryCategoryFilter)} 분류 이름 변경 또는 삭제">분류 수정</button>`);
             }
             row.innerHTML = chips.join('');
         }
@@ -536,7 +536,7 @@
                             onkeydown="if (event.key === 'Enter') this.blur()"><span class="inv-log-qty-unit">${unit}</span>
                     </span>
                     <span class="inv-log-balance">(총 재고 : ${formatInventoryQty(balanceById[log.id] || 0)}${unit})</span>
-                    <button type="button" class="inv-log-delete" aria-label="이 기록 삭제" onclick="deleteInventoryLog('${itemArg}', '${logArg}')">🗑️</button>
+                    <button type="button" class="inv-log-delete" aria-label="이 기록 삭제" onclick="deleteInventoryLog('${itemArg}', '${logArg}')">${icon('trash-2', 'ui-icon-em')}</button>
                     ${log.note ? `<span class="inv-log-note">${escapeHtml(log.note)}</span>` : ''}
                 </div>`;
             }).join('');
@@ -752,7 +752,7 @@
                     <span class="inv-link-qty-label">1회</span>
                     <input type="number" class="inv-link-qty" min="0" step="any" inputmode="decimal" aria-label="1회 사용량" value="${link ? escapeHtml(String(link.qty)) : ''}">
                     <span class="inv-link-unit">${escapeHtml(unit || '')}</span>
-                    <button type="button" class="inv-link-remove" aria-label="이 연동 빼기" onclick="this.closest('.inv-link-row').remove()">✕</button>
+                    <button type="button" class="inv-link-remove" aria-label="이 연동 빼기" onclick="this.closest('.inv-link-row').remove()">${icon('x', 'ui-icon-em')}</button>
                 </div>`;
         }
 

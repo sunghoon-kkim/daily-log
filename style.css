@@ -3,20 +3,22 @@
    ============================================ */
 :root {
     /* 색상 */
-    --color-bg: #F8FAFC;
+    --color-bg: #F1F5F9;            /* 한 톤 눌러서 흰 카드가 떠 보이게 */
     --color-surface: #FFFFFF;
     --color-surface-subtle: #F8FAFC;
-    --color-surface-muted: #F1F5F9;
+    --color-surface-muted: #E9EEF4;    /* 배경(#F1F5F9) 위 hover도 보이도록 한 단계 더 진하게 */
+    --color-input-bg: #F8FAFC;         /* 카드 안 입력칸: 카드보다 한 톤 낮은 오프화이트 */
     --color-border: #E2E8F0;
     --color-border-strong: #CBD5E1;
     --color-text: #0F172A;
     --color-text-secondary: #475569;
     --color-text-tertiary: #64748B;
-    --color-primary: #4F46E5;
-    --color-primary-hover: #4338CA;
-    --color-primary-soft: #EEF2FF;
-    --color-primary-muted: #6366F1;
-    --color-focus-ring: rgba(79, 70, 229, 0.25);
+    /* 포인트: 채도를 낮춘 딥 슬레이트 인디고 */
+    --color-primary: #3B4998;
+    --color-primary-hover: #2E3A7A;
+    --color-primary-soft: #EEF0F8;
+    --color-primary-muted: #5A67B0;
+    --color-focus-ring: rgba(59, 73, 152, 0.22);
     /* 타이포그래피 */
     --font-sans: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
     --text-xs: 12px;
@@ -512,7 +514,7 @@ html {
             border-style: solid;
             border-color: var(--color-primary);
             background: var(--color-primary-soft);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
         }
 
         .org-slot-label {
@@ -878,14 +880,14 @@ html {
 
         .water-flow-rail-handle {
             position: absolute;
-            background: rgba(79, 70, 229, 0.35);
+            background: color-mix(in srgb, var(--color-primary) 35%, transparent);
             border-radius: 3px;
             cursor: grab;
             touch-action: none;
         }
 
         .water-flow-rail-handle:hover {
-            background: rgba(79, 70, 229, 0.55);
+            background: color-mix(in srgb, var(--color-primary) 55%, transparent);
         }
 
         .water-flow-rail-handle:active {
@@ -1482,7 +1484,7 @@ html {
         .day.drag-over {
             border-style: solid;
             border-color: var(--color-primary);
-            box-shadow: inset 0 0 0 3px rgba(79, 70, 229, 0.35);
+            box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--color-primary) 35%, transparent);
         }
         
         .day-plan-more {
@@ -1590,7 +1592,7 @@ html {
         
         .category-record.drag-over {
             border-color: var(--color-primary);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 20%, transparent);
         }
         
         .category-record-header {
@@ -3482,8 +3484,8 @@ html {
         }
 
         @keyframes askLogFlash {
-            0%, 40% { box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.55); }
-            100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+            0%, 40% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 55%, transparent); }
+            100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 0%, transparent); }
         }
 
         .ask-log-source-head {
@@ -4380,11 +4382,12 @@ html {
     --color-text: #E8E9EC;
     --color-text-secondary: #B6B9C1;
     --color-text-tertiary: #868A94;
-    --color-primary: #6366F1;
-    --color-primary-hover: #818CF8;
-    --color-primary-soft: rgba(99, 102, 241, 0.16);
-    --color-primary-muted: #A5B4FC;
-    --color-focus-ring: rgba(129, 140, 248, 0.45);
+    --color-primary: #5562B4;
+    --color-primary-hover: #6370C2;
+    --color-primary-soft: rgba(99, 112, 194, 0.16);
+    --color-primary-muted: #A8B1E3;
+    --color-focus-ring: rgba(120, 132, 210, 0.45);
+    --color-input-bg: #181A20;
     --tint-text-mix: 48%; /* 다크: 원색이 눈부시거나 짙은 색이 묻히지 않게 밝은 본문색 쪽으로 더 섞음 */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.35);
@@ -5908,7 +5911,7 @@ body {
     font-weight: 600;
     cursor: pointer;
 }
-.rotation-open-btn:hover { background: rgba(79, 70, 229, 0.08); }
+.rotation-open-btn:hover { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
 .rotation-modal-box { max-height: 90vh; overflow-y: auto; }
 .rotation-row {
     border: 1px solid var(--color-border);
@@ -5988,7 +5991,7 @@ body {
     padding: 5px 12px;
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-primary);
-    background: rgba(79, 70, 229, 0.1);
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
     color: var(--color-primary-hover);
     font-size: 12px;
     font-weight: 600;
@@ -6002,7 +6005,7 @@ body {
 }
 .dark-mode .event-group-filter { border-bottom-color: var(--d-border); }
 .dark-mode .event-group-filter-label { color: var(--d-text3); }
-.dark-mode .event-group-chip { color: var(--color-primary-muted); background: rgba(79, 70, 229, 0.18); }
+.dark-mode .event-group-chip { color: var(--color-primary-muted); background: color-mix(in srgb, var(--color-primary) 18%, transparent); }
 .dark-mode .event-group-chip.off { color: var(--d-text3); border-color: var(--d-border); background: transparent; }
 
 /* 교대 설비 가동/대기 미니 칩: 날짜 칸 맨 아래 오른쪽에 글자 한 칸 크기로만 표시 (가동=채운 초록, 대기=빈 테두리, 백워시=물색) */
@@ -7291,3 +7294,73 @@ input[type="radio"] { accent-color: var(--color-primary); }
     border-color: var(--color-border);
     color: var(--color-text-tertiary);
 }
+
+/* ==========================================================================
+   톤 밸런스 레이어: 표면 명암 3단(배경 < 카드 > 입력칸), 섹션 아이콘 배지, 폼 탭 최대 너비, 버튼 아이콘
+   ========================================================================== */
+
+/* 입력칸은 카드보다 한 톤 낮게, 포커스 때는 카드색으로 올라옴 */
+input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="file"]):not([type="hidden"]),
+textarea,
+select { background-color: var(--color-input-bg); }
+input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="file"]):not([type="hidden"]):focus,
+textarea:focus,
+select:focus { background-color: var(--color-surface); }
+.dark-mode input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="file"]):not([type="hidden"]):focus,
+.dark-mode textarea:focus,
+.dark-mode select:focus { background-color: var(--color-input-bg); }
+
+/* 섹션 제목 아이콘 배지: 28px 둥근 사각형 + 파스텔 틴트 + 1.5px 단색 아이콘 */
+.has-section-icon { display: flex; align-items: center; gap: 10px; }
+.section-icon {
+    --hue: var(--color-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--hue) 12%, var(--color-surface));
+    color: color-mix(in srgb, var(--hue) 78%, var(--color-text));
+}
+.section-icon .ui-icon { width: 16px; height: 16px; vertical-align: 0; }
+.hue-blue { --hue: #3B82F6; }
+.hue-teal { --hue: #14B8A6; }
+.hue-green { --hue: #22A06B; }
+.hue-violet { --hue: #8B5CF6; }
+.hue-amber { --hue: #E89A0C; }
+.hue-rose { --hue: #E5484D; }
+.dark-mode .section-icon {
+    background: color-mix(in srgb, var(--hue) 18%, var(--color-surface));
+    color: color-mix(in srgb, var(--hue) 55%, var(--color-text));
+}
+
+/* 폼 위주 탭: 흰 카드는 탭 줄과 같은 폭, 안쪽 내용만 1160px로 가운데 정렬 */
+#ai > *,
+#query > *,
+#category > *,
+#settings > * {
+    max-width: 1160px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* 버튼 안 아이콘: 글자 앞 6px 간격. 아이콘만 있는 버튼은 글자 크기에 맞춤 */
+button > .ui-icon,
+button > [data-icon] > .ui-icon { margin-right: 6px; }
+.theme-toggle-btn > .ui-icon,
+button > .ui-icon-em,
+.password-toggle-btn .ui-icon,
+.image-lightbox-close .ui-icon { margin-right: 0; }
+.ui-icon-em { width: 1.15em; height: 1.15em; vertical-align: -0.2em; }
+.password-toggle-btn .ui-icon,
+.image-lightbox-close .ui-icon { vertical-align: -0.2em; }
+
+/* 탭 내용 영역은 페이지 배경 톤으로 내려서, 그 안의 섹션 카드(흰색)가 한 단계 떠 보이게 함 */
+.tab-content,
+.dark-mode .tab-content { background: var(--color-bg); }
+/* 섹션 카드는 모두 흰 표면(카드)으로 통일. 예전 오프화이트(subtle) 카드는 회색 바탕 위에서 구분이 약했음 */
+.category-manager,
+.notes-container,
+.notes-split-pane { background: var(--color-surface); }

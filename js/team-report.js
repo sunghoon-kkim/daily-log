@@ -250,7 +250,7 @@
                             <textarea class="category-input team-report-row-content" rows="1" placeholder="내용을 입력하세요" oninput="updateTeamReportRowField('${section}','${row.id}','content',this.value)">${escapeHtml(row.content)}</textarea>
                             ${prevBtn}
                         </div>
-                        <button type="button" class="admin-action-btn danger" onclick="removeTeamReportRow('${section}','${row.id}')" title="이 항목 삭제">✕</button>
+                        <button type="button" class="admin-action-btn danger" onclick="removeTeamReportRow('${section}','${row.id}')" title="이 항목 삭제">${icon('x', 'ui-icon-em')}</button>
                     </div>
                 `;
             }).join('');
@@ -516,7 +516,7 @@
                             ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
                                 <span style="color:var(--color-text-tertiary); font-size:12px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</span>
-                                <button type="button" class="admin-action-btn danger" onclick="event.stopPropagation(); deleteMyTeamReport('${item.weekStart}')">🗑️ 삭제</button>
+                                <button type="button" class="admin-action-btn danger" onclick="event.stopPropagation(); deleteMyTeamReport('${item.weekStart}')">삭제</button>
                             </div>
                         </div>
                     ` : ''}

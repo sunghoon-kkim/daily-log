@@ -251,7 +251,7 @@
                             <input type="checkbox" ${acked ? 'checked' : ''} onchange="toggleMaintenanceAck('${escapeForOnclickArg(m.id)}')">
                             사전 인지 완료
                         </label>` : '<span></span>'}
-                        <button class="result-action-btn" onclick="openMaintenanceCompleteModal('${escapeForOnclickArg(m.id)}')">✅ 완료 처리</button>
+                        <button class="result-action-btn" onclick="openMaintenanceCompleteModal('${escapeForOnclickArg(m.id)}')">완료 처리</button>
                     </div>
                 </div>
             `;
@@ -260,7 +260,7 @@
             return `
                 <div class="maintenance-equipment-group" style="margin-bottom:24px;">
                     <div class="result-date maint-group-title">🔧 ${escapeHtml(equipmentName)}
-                        ${(equipmentName !== '(설비 미지정)' && !isFeatureDisabled('keywordSearch')) ? `<button class="result-action-btn" onclick="openEquipmentTimeline('${escapeForOnclickArg(equipmentName)}')" title="이 설비의 활동기록·정비 완료 이력을 시간순으로 보기">📜 설비 이력</button>` : ''}
+                        ${(equipmentName !== '(설비 미지정)' && !isFeatureDisabled('keywordSearch')) ? `<button class="result-action-btn" onclick="openEquipmentTimeline('${escapeForOnclickArg(equipmentName)}')" title="이 설비의 활동기록·정비 완료 이력을 시간순으로 보기">설비 이력</button>` : ''}
                     </div>
                     <div class="maint-card-grid">${cardsHtml}</div>
                 </div>
@@ -501,9 +501,9 @@
                     <div class="maint-completion-item">
                         <span class="maint-completion-date">${escapeHtml(c.date)}</span>
                         <span class="maint-completion-note">${escapeHtml(c.note || '')}</span>
-                        <button type="button" class="category-tag-delete" onclick="deleteMaintenanceCompletion('${m.id}', '${c.id}')" aria-label="이 완료 이력 삭제">✕</button>
+                        <button type="button" class="category-tag-delete" onclick="deleteMaintenanceCompletion('${m.id}', '${c.id}')" aria-label="이 완료 이력 삭제">${icon('x', 'ui-icon-em')}</button>
                     </div>`).join('');
-            listEl.innerHTML = itemsHtml + `<button type="button" class="result-action-btn" style="margin-top:8px;" onclick="openMaintenanceCompleteModal('${m.id}')">✅ 완료 기록 추가</button>`;
+            listEl.innerHTML = itemsHtml + `<button type="button" class="result-action-btn" style="margin-top:8px;" onclick="openMaintenanceCompleteModal('${m.id}')">완료 기록 추가</button>`;
         }
 
         function refreshMaintenanceCompleteHint() {

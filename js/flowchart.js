@@ -122,9 +122,9 @@
             container.innerHTML = waterFlowDiagrams.map(d => `
                 <div class="water-flow-diagram-tab${d.id === currentWaterFlowDiagramId ? ' active' : ''}" onclick="switchWaterFlowDiagram('${d.id}')">
                     <span>${escapeHtml(d.name)}</span>
-                    <button class="water-flow-diagram-tab-edit" onclick="event.stopPropagation(); openWaterFlowDiagramModal('${d.id}')" title="이름 변경/삭제" aria-label="이름 변경/삭제">✏️</button>
+                    <button class="water-flow-diagram-tab-edit" onclick="event.stopPropagation(); openWaterFlowDiagramModal('${d.id}')" title="이름 변경/삭제" aria-label="이름 변경/삭제">${icon('pencil', 'ui-icon-em')}</button>
                 </div>
-            `).join('') + '<button class="water-flow-diagram-add-btn" onclick="addWaterFlowDiagram()" title="흐름도 추가" aria-label="흐름도 추가">➕ 흐름도 추가</button>';
+            `).join('') + '<button class="water-flow-diagram-add-btn" onclick="addWaterFlowDiagram()" title="흐름도 추가" aria-label="흐름도 추가">흐름도 추가</button>';
         }
 
         function switchWaterFlowDiagram(diagramId) {
@@ -530,10 +530,10 @@
                          style="left:${b.x || 0}px; top:${b.y || 0}px; border-top-color:${color}"
                          onpointerdown="waterFlowBlockPointerDown(event, '${b.id}')"
                          onclick="toggleWaterFlowBlockExpand('${b.id}')">
-                        <button class="water-flow-block-connect-btn" onclick="event.stopPropagation(); startWaterFlowConnect('${b.id}')" title="다른 블록과 화살표로 연결" aria-label="다른 블록과 화살표로 연결">🔗</button>
-                        <button class="water-flow-block-duplicate-btn" onclick="event.stopPropagation(); duplicateWaterFlowBlock('${b.id}')" title="블록 복제" aria-label="블록 복제">📋</button>
-                        <button class="water-flow-block-delete-btn" onclick="event.stopPropagation(); deleteWaterFlowBlockDirect('${b.id}')" title="블록 삭제" aria-label="블록 삭제">🗑️</button>
-                        <button class="water-flow-block-edit-btn" onclick="event.stopPropagation(); openWaterFlowBlockModal('${b.id}')" title="블록 수정" aria-label="블록 수정">✏️</button>
+                        <button class="water-flow-block-connect-btn" onclick="event.stopPropagation(); startWaterFlowConnect('${b.id}')" title="다른 블록과 화살표로 연결" aria-label="다른 블록과 화살표로 연결">${icon('link', 'ui-icon-em')}</button>
+                        <button class="water-flow-block-duplicate-btn" onclick="event.stopPropagation(); duplicateWaterFlowBlock('${b.id}')" title="블록 복제" aria-label="블록 복제">${icon('copy', 'ui-icon-em')}</button>
+                        <button class="water-flow-block-delete-btn" onclick="event.stopPropagation(); deleteWaterFlowBlockDirect('${b.id}')" title="블록 삭제" aria-label="블록 삭제">${icon('trash-2', 'ui-icon-em')}</button>
+                        <button class="water-flow-block-edit-btn" onclick="event.stopPropagation(); openWaterFlowBlockModal('${b.id}')" title="블록 수정" aria-label="블록 수정">${icon('pencil', 'ui-icon-em')}</button>
                         <div class="water-flow-block-title">${escapeHtml(b.title)}</div>
                         ${expanded ? `<div class="water-flow-block-detail">${detailHtml || '<span class="water-flow-block-detail-empty">세부 내용이 없습니다</span>'}</div>` : ''}
                     </div>

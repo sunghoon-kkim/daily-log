@@ -13,7 +13,7 @@
             let html = '';
             const revisions = recordRevisions[dateStr + '|' + category];
             if (!isFeatureDisabled('recordRevisions') && Array.isArray(revisions) && revisions.length > 0) {
-                html += `<button class="category-collapse-btn" draggable="false" onclick="openRecordRevisionModal('${categoryArg}')" title="수정 이력 (${revisions.length})" aria-label="수정 이력 ${revisions.length}건">🕘</button>`;
+                html += `<button class="category-collapse-btn" draggable="false" onclick="openRecordRevisionModal('${categoryArg}')" title="수정 이력 (${revisions.length})" aria-label="수정 이력 ${revisions.length}건">${icon('history', 'ui-icon-em')}</button>`;
             }
             return html;
         }
