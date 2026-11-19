@@ -121,18 +121,24 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         
         // 탭 관리
         const TAB_LABELS = {
-            calendar: '📅 달력 & 활동기록',
-            category: '📊 카테고리 관리',
-            query: '🔍 검색 & 조회',
-            notes: '📝 할일 & 메모',
-            ai: '🤖 AI 도우미',
-            improvement: '💡 개선/절감 과제',
-            trend: '📈 설비 데이터 분석',
-            maintenance: '🔧 정비계획',
-            inventory: '📦 재고 관리',
-            waterFlow: '🔀 흐름도',
-            teamReport: '📋 팀 보고',
-            settings: '⚙️ 환경설정'
+            calendar: '달력 & 활동기록',
+            category: '카테고리 관리',
+            query: '검색 & 조회',
+            notes: '할일 & 메모',
+            ai: 'AI 도우미',
+            improvement: '개선/절감 과제',
+            trend: '설비 데이터 분석',
+            maintenance: '정비계획',
+            inventory: '재고 관리',
+            waterFlow: '흐름도',
+            teamReport: '팀 보고',
+            settings: '환경설정'
+        };
+        // 탭 앞의 단색 아이콘 (js/icons.js의 Lucide 아이콘 이름)
+        const TAB_ICONS = {
+            calendar: 'calendar-days', category: 'chart-pie', query: 'search', notes: 'notebook-pen',
+            ai: 'bot', improvement: 'lightbulb', trend: 'chart-line', maintenance: 'wrench',
+            inventory: 'package', waterFlow: 'workflow', teamReport: 'clipboard-list', settings: 'settings'
         };
         let tabOrder = ['calendar', 'category', 'query', 'notes', 'ai', 'improvement', 'trend', 'maintenance', 'inventory', 'waterFlow', 'teamReport', 'settings'];
         let activeTabId = 'calendar';
@@ -1575,7 +1581,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!el) return;
             
             clearTimeout(syncStatusHideTimeout);
-            el.textContent = text;
+            // 앞에 붙은 이모지(☁️·⚠️)는 떼고 글자만 보여줌. 상태 색은 CSS의 작은 점(::before)으로 표시
+            el.textContent = String(text).replace(/^(?:[\u2600-\u27BF\u{1F300}-\u{1FAFF}]\uFE0F?\s*)+/u, '');
             el.className = 'sync-status ' + (state || '');
             el.style.visibility = 'visible';
             el.style.opacity = '1';
@@ -1604,7 +1611,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             container.innerHTML = visibleTabOrder.map(tabId => {
                 const activeClass = tabId === activeTabId ? ' active' : '';
-                return `<div class="tab${activeClass}" data-tab-id="${tabId}" tabindex="0" role="button" aria-label="${escapeHtml(TAB_LABELS[tabId])} (화살표 키로 순서 변경, Enter로 이동)" onpointerdown="tabPointerDown(event, '${tabId}')" onkeydown="tabKeyDown(event, '${tabId}')">${TAB_LABELS[tabId]}</div>`;
+                return `<div class="tab${activeClass}" data-tab-id="${tabId}" tabindex="0" role="button" aria-label="${escapeHtml(TAB_LABELS[tabId])} (화살표 키로 순서 변경, Enter로 이동)" onpointerdown="tabPointerDown(event, '${tabId}')" onkeydown="tabKeyDown(event, '${tabId}')">${typeof icon === 'function' ? icon(TAB_ICONS[tabId]) : ''}<span>${TAB_LABELS[tabId]}</span></div>`;
             }).join('');
 
             container.querySelectorAll('.tab').forEach(tabEl => {
@@ -2834,7 +2841,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             if (editUnlocked && currentEmployeeId) {
                 if (userLabel) {
-                    userLabel.textContent = '👤 개인 정보 수정';
+                    userLabel.innerHTML = (typeof icon === 'function' ? icon('user') : '') + '개인 정보 수정';
                     userLabel.style.display = 'inline-block';
                 }
                 if (logoutBtn) logoutBtn.style.display = 'inline-block';

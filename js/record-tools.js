@@ -52,20 +52,20 @@
 
             const todayStr = formatDate(new Date());
             const chips = [];
-            const chip = (tone, icon, text, onclick) => chips.push(
-                `<button type="button" class="today-chip tone-${tone}" onclick="${onclick}"><span class="today-chip-icon" aria-hidden="true">${icon}</span>${text}</button>`
+            const chip = (tone, iconName, text, onclick) => chips.push(
+                `<button type="button" class="today-chip tone-${tone}" onclick="${onclick}"><span class="today-chip-icon" aria-hidden="true">${typeof icon === 'function' ? icon(iconName) : ''}</span>${text}</button>`
             );
 
             // 오늘 기록
             const todayWritten = hasAnyRecordContent(todayStr);
-            chip(todayWritten ? 'ok' : 'neutral', todayWritten ? '✅' : '✍️', todayWritten ? '오늘 기록 작성함' : '오늘 기록 쓰기', `jumpToDateRecord('${todayStr}')`);
+            chip(todayWritten ? 'ok' : 'neutral', todayWritten ? 'check' : 'pen-line', todayWritten ? '오늘 기록 작성함' : '오늘 기록 쓰기', `jumpToDateRecord('${todayStr}')`);
 
             // 직전 근무일 누락
             if (!isFeatureDisabled('missingRecordIndicator')) {
                 const prev = findPreviousWorkday(todayStr);
                 const first = getFirstRecordDate();
                 if (prev && first && prev >= first && !hasAnyRecordContent(prev)) {
-                    chip('alert', '⚠️', `${formatShortDateWithDay(prev)} 기록 누락`, `jumpToDateRecord('${prev}')`);
+                    chip('alert', 'triangle-alert', `${formatShortDateWithDay(prev)} 기록 누락`, `jumpToDateRecord('${prev}')`);
                 }
             }
 
@@ -75,21 +75,21 @@
             const todayAllEvents = events.filter(ev => todayStr >= ev.start && todayStr <= ev.end);
             const todayRotation = todayAllEvents.filter(ev => getEventGroup(ev) === ROTATION_EVENT_GROUP);
             if (todayRotation.length > 0) {
-                chip('warn', '🔁', `오늘 ${todayRotation.map(ev => escapeHtml(ev.title)).join(', ')}`, `jumpToDateRecord('${todayStr}')`);
+                chip('warn', 'repeat', `오늘 ${todayRotation.map(ev => escapeHtml(ev.title)).join(', ')}`, `jumpToDateRecord('${todayStr}')`);
             }
             if (isRotationStatusEnabled()) {
                 // 가동/대기 표시를 켠 경우에만: 오늘 가동 중인 설비 (백워시 줄과 겹치지 않게 가동만 짧게)
                 const statuses = getRotationStatusesForDate(collectRotationPairs(), todayStr);
                 const running = statuses.filter(st => !st.conflict).map(st => `${st.name} ${Object.keys(st.states).find(u => st.states[u] === 'run')}`);
-                if (running.length > 0) chip('neutral', '▶️', `오늘 가동: ${running.map(escapeHtml).join(', ')}`, `jumpToDateRecord('${todayStr}')`);
+                if (running.length > 0) chip('neutral', 'play', `오늘 가동: ${running.map(escapeHtml).join(', ')}`, `jumpToDateRecord('${todayStr}')`);
                 statuses.filter(st => st.conflict).forEach(st => {
-                    chip('alert', '⚠️', `${escapeHtml(st.name)} ${Object.keys(st.states).sort().map(escapeHtml).join('·')} 같은 날 백워시`, `jumpToDateRecord('${todayStr}')`);
+                    chip('alert', 'triangle-alert', `${escapeHtml(st.name)} ${Object.keys(st.states).sort().map(escapeHtml).join('·')} 같은 날 백워시`, `jumpToDateRecord('${todayStr}')`);
                 });
             }
             const todayEvents = todayAllEvents.filter(ev => getEventGroup(ev) !== ROTATION_EVENT_GROUP);
             if (todayEvents.length > 0) {
                 const names = todayEvents.slice(0, 2).map(ev => escapeHtml(ev.title)).join(', ');
-                chip('info', '📅', `오늘 일정 ${todayEvents.length}건: ${names}${todayEvents.length > 2 ? ' 외' : ''}`, `jumpToDateRecord('${todayStr}')`);
+                chip('info', 'calendar-days', `오늘 일정 ${todayEvents.length}건: ${names}${todayEvents.length > 2 ? ' 외' : ''}`, `jumpToDateRecord('${todayStr}')`);
             }
 
             // 급한 정비 (정비계획 탭을 쓰는 경우만)
@@ -105,7 +105,7 @@
                     const parts = [];
                     if (overdue) parts.push(`지연 ${overdue}`);
                     if (soon) parts.push(`7일 이내 ${soon}`);
-                    chip(overdue ? 'alert' : 'warn', '🔧', `정비 ${parts.join(' · ')}건`, `switchTab('maintenance')`);
+                    chip(overdue ? 'alert' : 'warn', 'wrench', `정비 ${parts.join(' · ')}건`, `switchTab('maintenance')`);
                 }
             }
 
@@ -117,12 +117,12 @@
                     if (inv.shortage) parts.push(`부족 ${inv.shortage}`);
                     if (inv.need) parts.push(`정비용 확보 필요 ${inv.need}`);
                     if (inv.soon) parts.push(`2주 내 소진 ${inv.soon}`);
-                    chip(inv.shortage || inv.need ? 'alert' : 'warn', '📦', `재고 ${parts.join(' · ')}품목`, `switchTab('inventory')`);
+                    chip(inv.shortage || inv.need ? 'alert' : 'warn', 'package', `재고 ${parts.join(' · ')}품목`, `switchTab('inventory')`);
                 }
             }
 
             const d = parseLocalDate(todayStr);
-            el.innerHTML = `<div class="today-summary-title">🌅 오늘 · ${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_NAMES[d.getDay()]})</div>
+            el.innerHTML = `<div class="today-summary-title">오늘 · ${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_NAMES[d.getDay()]})</div>
                 <div class="today-summary-chips">${chips.join('')}</div>`;
         }
 

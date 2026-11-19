@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>📅 일일 활동 기록 - 캘린더</title>
+    <title>일일 활동 기록 - 캘린더</title>
     
     <!-- 기본은 항상 라이트 모드. 브라우저/OS의 자동 다크 기능이 화면을 강제로 어둡게 바꾸지 않도록 알림
          (사용자가 앱의 다크모드 버튼을 누른 경우에만 style.css의 .dark-mode가 다크 색을 적용함) -->
@@ -45,9 +45,9 @@
                 <span class="live-clock-time" id="liveClockTime">-</span>
             </div>
             <span class="theme-toggle-btn" id="currentUserLabel" style="display:none; cursor:pointer;" onclick="openAccountModal()" title="개인 정보 수정" aria-label="개인 정보 수정"></span>
-            <button class="theme-toggle-btn" id="logoutBtn" onclick="logout()" style="display:none;">🔓 로그아웃</button>
-            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()">🌙 다크모드</button>
-            <span class="sync-status" id="syncStatus">☁️ 대기 중</span>
+            <button class="theme-toggle-btn" id="logoutBtn" onclick="logout()" style="display:none;"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>로그아웃</button>
+            <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()">다크모드</button>
+            <span class="sync-status" id="syncStatus">대기 중</span>
         </div>
         <div class="tabs-container" id="tabsContainer"></div>
         
@@ -58,7 +58,7 @@
             <div data-feature="activityRecord">
             <div class="today-summary" id="todaySummary" data-feature="todaySummary"></div>
             <div class="upcoming-widget-header">
-                <span class="upcoming-widget-title">📌 다가오는 일정</span>
+                <span class="upcoming-widget-title">다가오는 일정</span>
                 <button class="upcoming-toggle-btn" id="upcomingToggleBtn" onclick="toggleUpcomingWidget()">숨기기</button>
             </div>
             <div class="upcoming-widget" id="upcomingWidget"></div>
@@ -70,7 +70,7 @@
                             <span class="month-record-rate" id="monthRecordRate" data-feature="missingRecordIndicator" title="이번 달 근무일(주말·공휴일·연차/휴가 일정 제외) 중 활동기록을 작성한 날의 비율"></span>
                         </div>
                         <div class="header-buttons">
-                            <button class="add-event-btn" onclick="openEventModal(null, formatDate(currentDate))">➕ 일정 추가</button>
+                            <button class="add-event-btn" onclick="openEventModal(null, formatDate(currentDate))">일정 추가</button>
                             <div class="nav-buttons">
                                 <button class="nav-btn" onclick="previousMonth()" aria-label="이전 달">←</button>
                                 <button class="nav-btn" onclick="goToday()">오늘</button>
@@ -96,7 +96,7 @@
                 
                 <div class="record-box">
                     <div class="record-header">
-                        <h3>📝 활동 기록</h3>
+                        <h3>활동 기록</h3>
                         <div class="selected-date" id="selectedDate">날짜를 선택해주세요</div>
                     </div>
                     
@@ -119,7 +119,7 @@
             <div class="ai-status" data-empty-message-group="category" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 카테고리 관리 기능이 없습니다. 관리자에게 문의해주세요.</div>
 
             <div class="category-manager" data-feature="categoryManage">
-                <h3>⚙️ 카테고리 관리</h3>
+                <h3>카테고리 관리</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">새로운 카테고리를 추가/삭제하고, 각 카테고리의 색상을 지정할 수 있습니다. (색상은 활동기록 탭의 박스 색상에 적용됩니다)</p>
                 
                 <div class="category-controls">
@@ -131,7 +131,7 @@
                 <div class="categories-list" id="categoriesList"></div>
 
                 <div id="archivedCategoriesSection" style="display:none;">
-                    <h4 style="color: var(--color-text); margin: 25px 0 8px 0; font-size: 16px;">📦 보관된 카테고리</h4>
+                    <h4 style="color: var(--color-text); margin: 25px 0 8px 0; font-size: 16px;">보관된 카테고리</h4>
                     <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">입력 화면에서는 숨겨져 있지만 과거 기록은 그대로 남아 있어 검색·기간 조회·통계에서 계속 볼 수 있습니다.</p>
                     <div class="categories-list" id="archivedCategoriesList"></div>
                 </div>
@@ -149,7 +149,7 @@
             </div>
 
             <div class="query-container" id="keywordSearchSection" data-feature="keywordSearch" data-query-section="search">
-                <h3 style="margin-bottom: 10px;">🔎 통합 검색</h3>
+                <h3 style="margin-bottom: 10px;">통합 검색</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">전체 작성 내용에서 키워드로 검색합니다.</p>
 
                 <div class="search-row">
@@ -195,7 +195,7 @@
             </div>
 
             <div class="query-container" data-feature="periodQuery" data-query-section="period">
-                <h3 style="margin-bottom: 20px;">🔍 기간별 카테고리 조회</h3>
+                <h3 style="margin-bottom: 20px;">기간별 카테고리 조회</h3>
 
                 <div class="quick-preset-row" id="periodQueryPresetRow" style="margin-bottom:12px;">
                     <button type="button" class="quick-preset-btn" data-preset="오늘" onclick="applyPeriodQueryPreset('오늘')">오늘</button>
@@ -232,7 +232,7 @@
             </div>
 
             <div class="query-container" data-feature="keywordStats" data-query-section="stats">
-                <h3 style="margin-bottom: 10px;">📊 키워드 발생 통계</h3>
+                <h3 style="margin-bottom: 10px;">키워드 발생 통계</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">이상·고장 키워드가 월별로 며칠이나 기록됐는지 집계해 반복·재발 여부를 확인합니다. 쉼표로 최대 5개, 같은 뜻의 표현은 <b>|</b>로 묶으세요.</p>
                 <div class="search-row">
                     <input type="text" id="keywordStatsInput" class="search-input" placeholder="예: 누설|누수, 트립|정지, 알람" onkeydown="if(event.key==='Enter') renderKeywordStats()">
@@ -263,7 +263,7 @@
             <div class="notes-split-container" id="notesSplitContainer">
                 <div class="notes-split-pane" id="todoPane" data-feature="todoList">
                     <div class="notes-header">
-                        <h3>✅ 해야 할 일</h3>
+                        <h3>해야 할 일</h3>
                         <span class="notes-save-indicator" id="todoSaveIndicator">✓ 저장됨</span>
                     </div>
                     <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">할 일을 추가하고, 완료하면 체크 표시하세요.</p>
@@ -287,7 +287,7 @@
 
                 <div class="notes-split-pane" id="memoPane" data-feature="freeNotes">
                     <div class="notes-header">
-                        <h3>📝 메모장</h3>
+                        <h3>메모장</h3>
                         <span class="notes-save-indicator" id="notesSaveIndicator">✓ 저장됨</span>
                     </div>
                     <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">날짜와 상관없이 자유롭게 쓰는 메모장입니다. 날짜가 지나도 내용이 사라지지 않습니다.</p>
@@ -319,7 +319,7 @@
             <div class="ai-status error" id="aiApiKeyMissingMsg" style="display:none; margin-bottom:20px;">🔑 환경설정 탭에서 AI API 키를 입력해주세요.</div>
 
             <div class="ai-container" data-feature="askMyLog" style="margin-bottom: 25px;">
-                <h3 style="margin-bottom: 10px;">💬 내 기록에게 물어보기</h3>
+                <h3 style="margin-bottom: 10px;">내 기록에게 물어보기</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 16px;">활동기록·정비이력·일정·개선과제·메모에서 관련 내용을 찾아, <b>기록에 적힌 것만</b> 근거로 답합니다. 답의 [#번호]를 누르면 원본 기록을 확인할 수 있고, 기록에 없으면 "찾을 수 없습니다"라고 답합니다.</p>
                 <div class="ai-revise-row">
                     <input type="text" id="askLogInput" class="ai-revise-input" placeholder="수처리 필터 차기 교체일 등" onkeydown="if (event.key === 'Enter' && !event.isComposing) askMyLog()">
@@ -344,7 +344,7 @@
             </div>
 
             <div class="ai-container" data-feature="dailySummary">
-                <h3 style="margin-bottom: 10px;">📝 일일 업무 요약 (퇴근 전 보고용)</h3>
+                <h3 style="margin-bottom: 10px;">일일 업무 요약 (퇴근 전 보고용)</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">날짜를 선택하면 그날 작성한 활동기록·예정작업에서 한 일을 업무 1건당 1줄로 뽑아줍니다. 보고에 넣을 항목만 체크하면 오른쪽에 최종 보고문이 바로 만들어집니다.</p>
                 
                 <div class="query-controls">
@@ -391,7 +391,7 @@
             </div>
 
             <div class="ai-container" style="margin-top: 25px;" data-feature="weeklySummary">
-                <h3 style="margin-bottom: 10px;">🗓️ 이번주 업무 요약</h3>
+                <h3 style="margin-bottom: 10px;">이번주 업무 요약</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">이번 주(월~일) 작성한 활동기록·예정작업을 모아서, 카테고리별로 묶어 핵심만 10개 내외로 정리해줍니다.</p>
 
                 <button class="query-btn" onclick="generateWeeklySummary()" id="weeklySummaryBtn">✨ 이번주 업무 요약 생성</button>
@@ -413,7 +413,7 @@
             </div>
 
             <div class="ai-container" style="margin-top: 25px;" data-feature="monthlyFeedback">
-                <h3 style="margin-bottom: 10px;">🤖 AI 월별 피드백</h3>
+                <h3 style="margin-bottom: 10px;">AI 월별 피드백</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">기간을 선택하면 그 기간의 활동기록과 예정작업을 모아서, 아래 양식에 맞춰 AI가 핵심 내용 위주로 정리해줍니다.</p>
 
                 <div class="quick-preset-row" id="aiFeedbackPresetRow" style="margin-bottom:12px;">
@@ -481,7 +481,7 @@
             </div>
 
             <div class="ai-container" style="margin-top: 25px;" data-feature="monthlyFeedbackHistory">
-                <h3 style="margin-bottom: 10px;">🗂️ 월별 피드백 및 평가 이력</h3>
+                <h3 style="margin-bottom: 10px;">월별 피드백 및 평가 이력</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">매달 평가 등급과 자가/수신 피드백을 남겨두면, 위 [AI 월별 피드백]을 생성할 때 이 계정의 누적 이력을 함께 참고해서 톤앤매너를 이어가고 과거 개선 요구사항과 실제 수행 여부를 연결해줍니다. 계정별로 저장되며, 과거 달을 선택해 자유롭게 조회·수정할 수 있습니다.</p>
 
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap;">
@@ -549,7 +549,7 @@
             </div>
 
             <div class="ai-container" style="margin-top: 25px;" data-feature="goalSetting">
-                <h3 style="margin-bottom: 10px;">🎯 목표수립 (KPI / 핵심역량 / 성장계획 / 핵심가치 / 기타)</h3>
+                <h3 style="margin-bottom: 10px;">목표수립 (KPI / 핵심역량 / 성장계획 / 핵심가치 / 기타)</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">지난 활동을 요약하는 것이 아니라, 하반기에 이런 목표를 가지고 업무를 하겠다는 계획을 선언하는 문서예요. 항목별로 나누지 말고 전체 내용을 자유롭게 적으면, 회사 기본 가이드에 맞춰 체크한 항목마다 3개씩 초안을 만들어드려요. 생성된 항목은 서로 독립적으로 수정 요청할 수 있어요. (참고 기간의 활동기록은 현 수준 평가를 위한 근거 자료로만 함께 활용됩니다)</p>
                 
                 <div class="query-controls">
@@ -586,7 +586,7 @@
 
             <div class="query-container" data-feature="savingsProjects">
                 <div class="project-header-row">
-                    <h3>💡 개선/절감 과제 관리</h3>
+                    <h3>개선/절감 과제 관리</h3>
                     <button class="add-category-btn" onclick="openProjectModal(null)">➕ 새 과제 추가</button>
                 </div>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">에너지 절감, 비용 절감 등 진행 중인 개선 과제를 등록하고 월별로 진행 내용을 기록해두세요. 나중에 월별 피드백이나 종합평가 작성할 때 실제 근거로 바로 활용할 수 있어요.</p>
@@ -616,7 +616,7 @@
             <div class="ai-status error" id="trendApiKeyMissingMsg" style="display:none; margin-bottom:20px;">🔑 환경설정 탭에서 AI API 키를 입력해주세요.</div>
 
             <div class="query-container" data-feature="gaugePhotoReading" style="margin-bottom: 25px;">
-                <h3 style="margin-bottom: 10px;">📷 계기판 사진으로 기록하기</h3>
+                <h3 style="margin-bottom: 10px;">계기판 사진으로 기록하기</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 16px;">압력계·온도계·유량계·운전 패널을 찍으면 AI가 수치를 읽고, 설비명을 적어두면 그 설비의 과거 판독값과 비교해 <b>평소보다 높거나 낮은 값, 계속 오르거나 내리는 값</b>을 먼저 알려줍니다. <b>읽은 값은 사진과 대조해 확인·수정한 뒤에</b> 활동기록에 남기고, 같은 설비의 판독값을 모아 경향 분석으로 보낼 수 있습니다. 사진은 저장되지 않습니다.</p>
 
                 <div class="trend-input-row">
@@ -658,7 +658,7 @@
             </div>
 
             <div class="query-container" data-feature="trendAnalysis">
-                <h3 style="margin-bottom: 10px;">📈 설비 데이터 경향 분석</h3>
+                <h3 style="margin-bottom: 10px;">설비 데이터 경향 분석</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">터치모니터나 트렌드 화면에서 값을 복사해 붙여넣으면, 상승·하락 추세와 평소와 다른 지점을 정리해줍니다. 날짜와 수치가 함께 있으면 더 정확합니다.</p>
                 
                 <div class="trend-input-row">
@@ -708,7 +708,7 @@
 
             <div class="query-container" data-feature="maintenanceSchedule">
                 <div class="project-header-row">
-                    <h3>🔧 정비계획 관리</h3>
+                    <h3>정비계획 관리</h3>
                     <button class="add-category-btn" onclick="openMaintenanceModal(null)">➕ 새 일정 추가</button>
                 </div>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">설비별 정비/점검 일정을 등록해두세요. 설비 단위로 묶여서 표시되며, 주기를 적어두면 그 해의 예정월이 카드 안에 자동으로 계산되어 표시됩니다. 항목을 클릭하면 상세 내용을 보거나 수정할 수 있습니다.</p>
@@ -742,7 +742,7 @@
 
             <div class="query-container" data-feature="inventoryManage">
                 <div class="project-header-row">
-                    <h3>📦 재고 관리</h3>
+                    <h3>재고 관리</h3>
                     <button class="add-category-btn" onclick="openInventoryItemModal(null)">➕ 품목 추가</button>
                 </div>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 16px;">재고를 등록해서 관리해보세요.</p>
@@ -761,7 +761,7 @@
 
             <div class="query-container" data-feature="waterFlowDiagram">
                 <div class="project-header-row">
-                    <h3>🔀 흐름도</h3>
+                    <h3>흐름도</h3>
                     <div class="water-flow-toolbar">
                         <button class="category-prev-btn" onclick="undoWaterFlowChange()" title="되돌리기 (Ctrl+Z)">↩️ 되돌리기</button>
                         <button class="category-prev-btn" onclick="redoWaterFlowChange()" title="다시 실행 (Ctrl+Shift+Z)">↪️ 다시 실행</button>
@@ -792,7 +792,7 @@
             <div class="ai-status" data-empty-message-group="teamReport" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 팀 보고 기능이 없습니다. 관리자에게 문의해주세요.</div>
 
             <div class="ai-container" id="teamReportSubmitSection" data-feature="teamReport">
-                <h3 style="margin-bottom: 10px;">📋 팀 보고 (주간)</h3>
+                <h3 style="margin-bottom: 10px;">팀 보고 (주간)</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">제출된 내용은 아래에서 선택한 제출 대상(<strong id="teamReportTargetNameLabel">-</strong>)에게 보이며, 수정이 필요한 경우 수정 후 제출하기 버튼을 누르면 됩니다.</p>
 
                 <div style="margin-bottom:15px;">
@@ -811,13 +811,13 @@
                 </div>
 
                 <div class="team-report-section">
-                    <h4 style="margin-bottom:8px;">✅ 이번주 한 일</h4>
+                    <h4 style="margin-bottom:8px;">이번주 한 일</h4>
                     <div id="teamReportThisWeekRows"></div>
                     <button type="button" class="add-category-btn" onclick="addTeamReportRow('thisWeek')">➕ 항목 추가</button>
                 </div>
 
                 <div class="team-report-section" style="margin-top:22px;">
-                    <h4 style="margin-bottom:8px;">📌 다음주 할 일</h4>
+                    <h4 style="margin-bottom:8px;">다음주 할 일</h4>
                     <div id="teamReportNextWeekRows"></div>
                     <button type="button" class="add-category-btn" onclick="addTeamReportRow('nextWeek')">➕ 항목 추가</button>
                 </div>
@@ -829,7 +829,7 @@
             </div>
 
             <div class="category-manager" id="myTeamReportHistorySection" data-feature="teamReport" style="margin-top:25px;">
-                <h3>🗂️ 나의 제출 내역</h3>
+                <h3>나의 제출 내역</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">내가 언제, 누구에게, 무엇을 제출했는지 최신순으로 보여줍니다.</p>
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
                     <label style="font-weight:600; font-size:13px; color:var(--color-text-secondary);">월별 보기</label>
@@ -841,7 +841,7 @@
             </div>
 
             <div class="category-manager" id="teamReportInboxSection" data-feature="teamReport" style="margin-top:25px;">
-                <h3>📥 나에게 온 보고</h3>
+                <h3>나에게 온 보고</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">다른 팀원이 나를 제출 대상으로 지정해 제출한 주간 보고를 최신순으로 보여줍니다.</p>
                 <div id="teamReportPendingStatus" style="margin-bottom:12px;"></div>
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
@@ -857,7 +857,7 @@
         <!-- 탭 10: 환경설정 -->
         <div id="settings" class="tab-content">
             <div class="ai-container">
-                <h3 style="margin-bottom: 10px;">🔑 개인 AI API 키</h3>
+                <h3 style="margin-bottom: 10px;">개인 AI API 키</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 10px;">AI 도우미 기능을 쓰려면 본인의 Gemini API 키를 입력해 저장해야 합니다. (Google AI Studio에서 무료로 발급받을 수 있습니다)</p>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px; line-height: 1.7;">
                     <strong>발급 방법</strong><br>
@@ -875,20 +875,20 @@
             </div>
 
             <div class="category-manager" style="margin-top:25px;">
-                <h3>🗂️ 사용할 탭 선택</h3>
+                <h3>사용할 탭 선택</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">활성화(✅)된 탭만 위쪽 탭 목록에 표시됩니다. 자주 안 쓰는 기능은 꺼두면 화면이 더 깔끔해집니다. (환경설정 탭 자체는 항상 표시됩니다)</p>
                 <div class="category-selector" id="settingsTabToggleList"></div>
             </div>
 
             <div class="category-manager" style="margin-top:25px;" data-feature="recordImport">
-                <h3>⬆️ 과거 일지 가져오기</h3>
+                <h3>과거 일지 가져오기</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">엑셀로 쓰던 예전 일지(CSV)를 활동기록으로 옮깁니다. 날짜×카테고리 표 형식과 날짜·카테고리·내용 목록 형식을 모두 읽습니다.</p>
                 <button class="query-btn" onclick="openRecordImportPicker()">⬆️ CSV 파일 선택</button>
                 <input type="file" id="recordImportFileInput" accept=".csv,text/csv" style="display:none;" onchange="handleRecordImportFile(this)">
             </div>
 
             <div class="category-manager" style="margin-top:25px;">
-                <h3>🗃️ 자동 백업</h3>
+                <h3>자동 백업</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">저장할 때마다 그 직전 상태가 자동으로 백업됩니다. 여러 사람이 함께 쓰는 시트라 전체 최근 30건만 보관되어 목록이 얼마 없거나 비어있을 수 있습니다. 실수로 기록을 지우고 저장했다면 여기서 되돌릴 수 있습니다.</p>
                 <button class="query-btn" onclick="loadMyBackups()">🔄 내 백업 목록 보기</button>
                 <div class="ai-status" id="backupListStatus"></div>
@@ -910,7 +910,7 @@
 
             <div id="adminSubPanel-parts" class="admin-subpanel">
                 <div class="category-manager">
-                    <h3>🧩 파트 관리</h3>
+                    <h3>파트 관리</h3>
                     <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">향남공무팀 산하 파트를 자유롭게 추가·삭제·이름 변경할 수 있습니다. 이름을 바꾸면 그 파트가 소속이었던 인원의 소속도 함께 바뀝니다. 파트를 삭제하면 그 파트였던 인원은 조직도의 "미배정 인원"으로 남고, 나중에 다시 배정해주면 됩니다.</p>
                     <div class="ai-status" id="partManagerStatus"></div>
                     <div id="partManagerList" style="margin-bottom:12px;"></div>
@@ -921,7 +921,7 @@
                 </div>
 
                 <div class="category-manager" style="margin-top:25px;">
-                    <h3>🗂️ 조직도 (드래그해서 역할·파트 배정)</h3>
+                    <h3>조직도 (드래그해서 역할·파트 배정)</h3>
                     <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">카드를 원하는 자리로 드래그하면 그 사람의 팀 보고 역할과 소속(파트)이 함께 바뀝니다. 팀장/파트장 자리에 이미 누가 있는 상태로 다른 사람을 놓으면 확인 후 기존 사람은 그 파트의 팀원으로 내려갑니다. 향남공무팀 파트(설비/장비/GMP)에 속하지 않는 인원은 "미배정 인원"에 모여 있습니다.</p>
                     <div class="ai-status" id="orgChartStatus"></div>
                     <div id="orgChartContainer"></div>
@@ -930,7 +930,7 @@
 
             <div id="adminSubPanel-accounts" class="admin-subpanel" style="display:none;">
                 <div class="category-manager">
-                    <h3>🛠️ 관리자 - 계정 관리</h3>
+                    <h3>관리자 - 계정 관리</h3>
                     <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">가입된 모든 계정을 조회하고, 불필요한 계정을 휴지통으로 옮기거나(삭제) 비밀번호를 초기화·비활성화할 수 있습니다. 표 머리글을 누르면 그 기준으로 정렬됩니다 (관리자 계정은 정렬과 무관하게 항상 맨 위에 고정).</p>
 
                     <div class="query-controls" style="margin-bottom:15px; flex-wrap:wrap;">
@@ -980,7 +980,7 @@
                 </div>
 
                 <div class="category-manager" style="margin-top:25px;">
-                    <h3>🗑️ 휴지통</h3>
+                    <h3>휴지통</h3>
                     <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">삭제한 계정이 여기 보관됩니다. 보관기한(7일) 안에는 언제든 복구할 수 있고, 지나면 목록을 새로고침할 때 자동으로 완전히 삭제됩니다.</p>
                     <div class="admin-table-scroll">
                         <table class="admin-user-table" id="adminTrashTable">
@@ -1009,7 +1009,7 @@
     <!-- 사번별 로그인 모달 -->
     <div class="modal-overlay" id="loginModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3 id="loginModalTitle">🔐 로그인</h3>
+            <h3 id="loginModalTitle">로그인</h3>
             <p id="loginModalDesc" style="color:var(--color-text-secondary); font-size:13px; margin-bottom:15px;">사번과 비밀번호를 입력해주세요. 계정이 없으시면 아래 회원가입을 먼저 진행해주세요.</p>
 
             <div class="modal-field">
@@ -1066,7 +1066,7 @@
     <!-- 회원가입 모달 -->
     <div class="modal-overlay" id="signupModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>📝 회원가입</h3>
+            <h3>회원가입</h3>
 
             <div class="modal-field">
                 <label>사번</label>
@@ -1107,7 +1107,7 @@
     <!-- 계정 정보 / 수정 모달 -->
     <div class="modal-overlay" id="accountModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>👤 계정 정보</h3>
+            <h3>계정 정보</h3>
 
             <div class="modal-field">
                 <label>사번 (변경은 관리자에게 문의해주세요)</label>
@@ -1149,7 +1149,7 @@
     <!-- 관리자 전용: 다른 계정의 이름/소속 수정 -->
     <div class="modal-overlay" id="adminEditUserModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>✏️ 계정 정보 수정</h3>
+            <h3>계정 정보 수정</h3>
 
             <div class="modal-field">
                 <label>사번</label>
@@ -1182,7 +1182,7 @@
     <!-- 관리자 전용: 계정별로 AI 요약 탭의 세부 기능 켜고 끄기 -->
     <div class="modal-overlay" id="adminFeatureModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>🔧 사용 가능한 기능 설정</h3>
+            <h3>사용 가능한 기능 설정</h3>
             <p style="color:var(--color-text-secondary); font-size:13px; margin-bottom:15px;">체크를 해제하면 이 계정에서는 해당 탭에서 그 기능이 보이지 않습니다.</p>
 
             <div id="adminFeatureChecklist" class="admin-feature-checklist-groups"></div>
@@ -1199,7 +1199,7 @@
     <!-- 관리자 전용: 계정의 개인 API 키 확인 -->
     <div class="modal-overlay" id="adminApiKeyViewModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>🔑 개인 API 키 확인</h3>
+            <h3>개인 API 키 확인</h3>
 
             <div class="modal-field">
                 <label>사번</label>
@@ -1218,7 +1218,7 @@
 
     <div class="modal-overlay" id="projectModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3 id="projectModalTitle">💡 개선/절감 과제 추가</h3>
+            <h3 id="projectModalTitle">개선/절감 과제 추가</h3>
             
             <div class="modal-field">
                 <label>과제명</label>
@@ -1277,7 +1277,7 @@
     </div>
     <div class="modal-overlay" id="inventoryItemModal" role="dialog" aria-modal="true" aria-labelledby="inventoryItemModalTitle">
         <div class="modal-box">
-            <h3 id="inventoryItemModalTitle">📦 품목 추가</h3>
+            <h3 id="inventoryItemModalTitle">품목 추가</h3>
 
             <div class="modal-field">
                 <label for="inventoryNameInput">품목명</label>
@@ -1349,7 +1349,7 @@
     <div class="modal-overlay" id="inventoryHistoryModal" role="dialog" aria-modal="true" aria-labelledby="inventoryHistoryTitle">
         <div class="modal-box">
             <div class="inv-history-head">
-                <h3 id="inventoryHistoryTitle">📋 입출고 기록</h3>
+                <h3 id="inventoryHistoryTitle">입출고 기록</h3>
                 <span id="inventoryHistoryCurrent" class="inv-history-current"></span>
             </div>
             <div class="quick-preset-row" id="inventoryHistoryFilterRow" style="margin-bottom:12px;">
@@ -1403,7 +1403,7 @@
     </div>
     <div class="modal-overlay" id="maintenanceModal" role="dialog" aria-modal="true">
         <div class="modal-box modal-box-wide">
-            <h3 id="maintenanceModalTitle">🔧 정비계획 추가</h3>
+            <h3 id="maintenanceModalTitle">정비계획 추가</h3>
 
             <div class="modal-field-row">
                 <div class="modal-field">
@@ -1463,7 +1463,7 @@
     </div>
     <div class="modal-overlay" id="maintCompleteModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>✅ 정비 완료 처리</h3>
+            <h3>정비 완료 처리</h3>
             <div class="maint-complete-target" id="maintCompleteTarget"></div>
 
             <div class="modal-field">
@@ -1492,7 +1492,7 @@
     </div>
     <div class="modal-overlay" id="recordRevisionModal" role="dialog" aria-modal="true">
         <div class="modal-box modal-box-wide">
-            <h3 id="recordRevisionModalTitle">🕘 수정 이력</h3>
+            <h3 id="recordRevisionModalTitle">수정 이력</h3>
             <p class="search-help-text" style="margin:0 0 10px 0;">내용을 고치기 직전 상태가 편집할 때마다(10분 단위) 최근 5개까지 보관됩니다.</p>
             <div class="record-revision-list" id="recordRevisionList"></div>
             <div class="modal-buttons">
@@ -1502,7 +1502,7 @@
     </div>
     <div class="modal-overlay" id="recordImportModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>⬆️ 과거 일지 가져오기</h3>
+            <h3>과거 일지 가져오기</h3>
             <div class="record-import-summary" id="recordImportSummary"></div>
             <div class="modal-field" id="recordImportPolicyField">
                 <label>이미 내용이 있는 칸은</label>
@@ -1519,7 +1519,7 @@
     </div>
     <div class="modal-overlay" id="waterFlowBlockModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3 id="waterFlowBlockModalTitle">🔀 블록 추가</h3>
+            <h3 id="waterFlowBlockModalTitle">블록 추가</h3>
 
             <div class="modal-field">
                 <label>블록 제목</label>
@@ -1552,7 +1552,7 @@
     </div>
     <div class="modal-overlay" id="waterFlowDiagramModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>🔀 흐름도 이름 변경</h3>
+            <h3>흐름도 이름 변경</h3>
 
             <div class="modal-field">
                 <label>흐름도 이름</label>
@@ -1568,7 +1568,7 @@
     </div>
     <div class="modal-overlay" id="waterFlowImportModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>📥 흐름도 붙여넣기</h3>
+            <h3>흐름도 붙여넣기</h3>
 
             <div class="modal-field">
                 <label>흐름도 JSON (여러 개면 [ ... ] 목록 그대로)</label>
@@ -1584,7 +1584,7 @@
     </div>
     <div class="modal-overlay" id="categoryRenameModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>✏️ 카테고리 이름 변경</h3>
+            <h3>카테고리 이름 변경</h3>
 
             <div class="modal-field">
                 <label>카테고리 이름</label>
@@ -1599,7 +1599,7 @@
     </div>
     <div class="modal-overlay" id="freeNotesPageModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>📝 메모장 설정</h3>
+            <h3>메모장 설정</h3>
 
             <div class="modal-field">
                 <label>메모장 이름</label>
@@ -1622,7 +1622,7 @@
     </div>
     <div class="modal-overlay" id="waterFlowConnectionModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>🔀 연결선 편집</h3>
+            <h3>연결선 편집</h3>
 
             <div class="modal-field">
                 <label>선 종류</label>
@@ -1656,7 +1656,7 @@
     </div>
     <div class="modal-overlay" id="eventModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3 id="modalTitle">📌 일정 추가</h3>
+            <h3 id="modalTitle">일정 추가</h3>
 
             <div class="modal-field">
                 <label>내용</label>
@@ -1721,7 +1721,7 @@
     <!-- [달력] 교대 운전 일정(소프트너 백워시 등) 일괄 등록 -->
     <div class="modal-overlay" id="rotationModal" role="dialog" aria-modal="true">
         <div class="modal-box rotation-modal-box">
-            <h3>🔁 교대 운전 일정 등록</h3>
+            <h3>교대 운전 일정 등록</h3>
 
             <div class="modal-field">
                 <label>작업 이름 (일정 제목 뒤에 붙음)</label>
@@ -1754,7 +1754,7 @@
     <!-- [팀 보고] 내 제출 내역 삭제 확인 -->
     <div class="modal-overlay" id="deleteTeamReportModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>🗑️ 제출 내역 삭제</h3>
+            <h3>제출 내역 삭제</h3>
             <p id="deleteTeamReportModalMsg" style="color:var(--color-text-secondary); font-size:14px; margin-bottom:10px;"></p>
             <div class="modal-buttons">
                 <button class="modal-btn modal-delete-btn" onclick="confirmDeleteMyTeamReport()">🗑️ 삭제</button>
@@ -1768,7 +1768,7 @@
          confirmModal(message, callback)로 열고, "확인"을 누르면 callback이 실행됨 -->
     <div class="modal-overlay" id="confirmActionModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3 id="confirmActionTitle">⚠️ 확인</h3>
+            <h3 id="confirmActionTitle">확인</h3>
             <p id="confirmActionMessage" style="color:var(--color-text-secondary); font-size:14px; margin-bottom:10px; white-space:pre-line;"></p>
             <div class="modal-buttons">
                 <button class="modal-btn modal-delete-btn" id="confirmActionConfirmBtn" onclick="confirmActionModalConfirm()">확인</button>
@@ -1781,7 +1781,7 @@
     <!-- 캘린더 상단의 연/월 표시를 눌렀을 때 뜨는, 먼 과거/미래 달로 한 번에 이동하는 모달 -->
     <div class="modal-overlay" id="monthJumpModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>📅 연/월 이동</h3>
+            <h3>연/월 이동</h3>
             <div class="modal-field">
                 <label>연도</label>
                 <select id="monthJumpYearSelect" class="category-input"></select>
@@ -1813,7 +1813,7 @@
     <!-- 비밀번호를 잊었을 때, 로그인 정보 없이 사번만으로 관리자에게 재설정을 요청하는 모달 -->
     <div class="modal-overlay" id="passwordResetRequestModal" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <h3>🔑 비밀번호 재설정 요청</h3>
+            <h3>비밀번호 재설정 요청</h3>
             <p style="color:var(--color-text-secondary); font-size:13px; margin-bottom:15px;">사번을 입력하면 관리자에게 재설정 요청이 표시됩니다. 관리자가 확인 후 비밀번호를 초기화해드립니다.</p>
             <div class="modal-field">
                 <label>사번</label>
@@ -1840,6 +1840,7 @@
          유틸리티를 담고 있어 반드시 가장 먼저 로드되어야 하고, 그 뒤 순서는 서로 의존하지
          않아 자유로움 - sw.js의 CORE_ASSETS 캐시 목록도 이 순서와 맞춰뒀음 -->
     <script src="js/main.js"></script>
+    <script src="js/icons.js"></script>
     <script src="js/category-manage.js"></script>
     <script src="js/search.js"></script>
     <script src="js/calendar-activity.js"></script>

@@ -167,6 +167,6 @@
             const btn = document.getElementById('themeToggleBtn');
             if (!btn) return;
             const isDark = document.documentElement.classList.contains('dark-mode');
-            btn.textContent = isDark ? '☀️ 라이트모드' : '🌙 다크모드';
+            btn.innerHTML = (typeof icon === 'function' ? icon(isDark ? 'sun' : 'moon') : '') + (isDark ? '라이트모드' : '다크모드');
         }
         

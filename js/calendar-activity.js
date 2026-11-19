@@ -76,7 +76,7 @@
                 
                 const visibleEvents = dayEvents.slice(0, 5);
                 for (const ev of visibleEvents) {
-                    planHtml += `<div class="day-plan-item" style="background:${ev.color}" title="${escapeHtml(ev.title)}" onpointerdown="event.stopPropagation(); eventPillPointerDown(event, '${ev.id}')" onclick="event.stopPropagation(); openEventModal('${ev.id}')">${escapeHtml(ev.title)}</div>`;
+                    planHtml += `<div class="day-plan-item" style="--ev:${ev.color}" title="${escapeHtml(ev.title)}" onpointerdown="event.stopPropagation(); eventPillPointerDown(event, '${ev.id}')" onclick="event.stopPropagation(); openEventModal('${ev.id}')">${escapeHtml(ev.title)}</div>`;
                 }
                 
                 if (dayEvents.length > 5) {
@@ -109,7 +109,7 @@
             if (rateEl) {
                 if (showMissing && workdayCount > 0) {
                     const missing = workdayCount - writtenCount;
-                    rateEl.textContent = `✍️ 작성률 ${writtenCount}/${workdayCount}일 (${Math.round(writtenCount / workdayCount * 100)}%)${missing > 0 ? ` · 누락 ${missing}일` : ''}`;
+                    rateEl.textContent = `작성률 ${writtenCount}/${workdayCount}일 (${Math.round(writtenCount / workdayCount * 100)}%)${missing > 0 ? ` · 누락 ${missing}일` : ''}`;
                     rateEl.classList.toggle('has-missing', missing > 0);
                 } else {
                     rateEl.textContent = '';
@@ -181,7 +181,7 @@
             });
             const groups = getAllEventGroups().filter(g => counts[g]);
             if (groups.length === 0) { el.innerHTML = ''; return; }
-            let html = '<span class="event-group-filter-label">👁️ 일정 분류</span>' + groups.map(g => {
+            let html = '<span class="event-group-filter-label">일정 분류</span>' + groups.map(g => {
                 const hidden = hiddenEventGroups.includes(g);
                 return `<button type="button" class="event-group-chip${hidden ? ' off' : ''}" aria-pressed="${!hidden}" title="${hidden ? '달력에 보이기' : '달력에서 숨기기'} (${counts[g]}건)" onclick="toggleEventGroupVisibility('${escapeForOnclickArg(g)}')">${hidden ? '☐' : '✔'} ${escapeHtml(g)}</button>`;
             }).join('');
@@ -394,7 +394,7 @@
                 const rect = eventDragState.originEl.getBoundingClientRect();
                 const ghost = eventDragState.originEl.cloneNode(true);
                 ghost.className = 'day-plan-item day-plan-item-ghost';
-                ghost.style.background = eventDragState.originEl.style.background;
+                ghost.style.setProperty('--ev', eventDragState.originEl.style.getPropertyValue('--ev'));
                 ghost.style.width = rect.width + 'px';
                 document.body.appendChild(ghost);
                 eventDragState.ghostEl = ghost;
@@ -521,7 +521,7 @@
                 // 접힌 카드는 색상 막대만 표시, 클릭하면 다시 펼쳐짐 (툴팁으로 제목/D-day 확인 가능)
                 if (isUpcomingCardCollapsed(ev, todayStr)) {
                     return `
-                        <div class="upcoming-card-mini" style="background:${ev.color}" onclick="toggleUpcomingCardCollapse('${ev.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleUpcomingCardCollapse('${ev.id}')}" role="button" tabindex="0" title="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo})" aria-label="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo}) 펼치기"></div>
+                        <div class="upcoming-card-mini" style="--ev:${ev.color}" onclick="toggleUpcomingCardCollapse('${ev.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleUpcomingCardCollapse('${ev.id}')}" role="button" tabindex="0" title="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo})" aria-label="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo}) 펼치기"></div>
                     `;
                 }
 
@@ -530,10 +530,10 @@
                     : `${formatDateLabelShort(ev.start)} ~ ${formatDateLabelShort(ev.end)}`;
 
                 return `
-                    <div class="upcoming-card" style="border-left-color:${ev.color}" onclick="jumpToUpcomingDate('${ev.start}','${ev.end}')">
+                    <div class="upcoming-card" style="--ev:${ev.color}" onclick="jumpToUpcomingDate('${ev.start}','${ev.end}')">
                         <button class="upcoming-card-collapse-btn" onclick="event.stopPropagation(); toggleUpcomingCardCollapse('${ev.id}')" title="작게 접기" aria-label="작게 접기">−</button>
                         ${ev.repeatGroupId ? '<div class="upcoming-card-repeat-badge">(반복)</div>' : ''}
-                        <span class="upcoming-card-dday" style="background:${ev.color}">${ddayInfo}</span>
+                        <span class="upcoming-card-dday">${ddayInfo}</span>
                         <div class="upcoming-card-title" title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>
                         <div class="upcoming-card-date">${dateLabel}</div>
                     </div>
@@ -809,12 +809,12 @@
                 html += `<div class="rot-day-status${dayRotation.some(st => st.conflict) ? ' rot-conflict' : ''}">🔁 ${dayRotation.map(st => escapeHtml(describeRotationStatus(st))).join('<br>')}</div>`;
             }
             if (dayEvents.length > 0) {
-                html += '<div class="day-events-preview"><h4>📌 이 날의 일정</h4>';
+                html += '<div class="day-events-preview"><h4>이 날의 일정</h4>';
                 for (const ev of dayEvents) {
                     html += `
-                        <div class="preview-event-item" style="background:${ev.color}" onclick="openEventModal('${ev.id}')">
-                            <span>${escapeHtml(ev.title)}</span>
-                            <span class="edit-hint">수정 ✏️</span>
+                        <div class="preview-event-item" style="--ev:${ev.color}" onclick="openEventModal('${ev.id}')">
+                            <span class="preview-event-title">${escapeHtml(ev.title)}</span>
+                            <span class="edit-hint" aria-label="수정">${typeof icon === 'function' ? icon('pencil') : '수정'}</span>
                         </div>
                     `;
                 }
@@ -852,10 +852,10 @@
                 const savedHeight = dateHeight || categoryBoxHeights[category];
                 const heightStyle = savedHeight ? `height:${savedHeight}px;` : '';
                 expandedHtml += `
-                    <div class="category-record" data-category="${categoryHtml}" style="border-left-color:${color};${heightStyle}">
+                    <div class="category-record" data-category="${categoryHtml}" style="--cat:${color};${heightStyle}">
                         <div class="category-record-header" draggable="true">
                             <span class="category-drag-handle" title="드래그해서 순서 변경">⠿</span>
-                            <div class="category-name" style="color:${color}">${categoryHtml}</div>
+                            <div class="category-name">${categoryHtml}</div>
                             <div class="category-header-actions">
                                 <button class="category-collapse-btn" draggable="false" onclick="toggleCategoryCollapse('${categoryArg}')" title="접기/펼치기">▾</button>
                                 ${typeof buildRecordToolButtons === 'function' ? buildRecordToolButtons(selectedDate, category, categoryArg) : ''}
