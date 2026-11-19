@@ -12,12 +12,13 @@ test('daily summary uses custom text, supports clearing, and preserves legacy de
     const {c} = fixture();
     c.resolveApiKey = () => 'test-key';
     c.callGeminiAndRespond = (key, contents, prompt) => prompt;
-    const request = {employeeId: '2600643', logText: '배관 보수', itemCount: 1};
+    const request = {employeeId: '2600643', logText: '배관 보수'};
     assert.match(c.handleDailySummary(request), /1\. 냉동기, 보일러, 수처리 일상점검/);
     assert.match(c.handleDailySummary({...request, employeeId: '1234567', fixedFirstItem: '1. 설비 순회점검'}), /1\. 설비 순회점검/);
     const cleared = c.handleDailySummary({...request, fixedFirstItem: ''});
     assert.doesNotMatch(cleared, /첫 번째 항목으로 고정/);
-    assert.match(cleared, /총 1개/);
+    assert.match(cleared, /업무 1건당 항목 1개/);
+    assert.doesNotMatch(cleared, /총 \d+개/);
     assert.doesNotMatch(c.handleDailySummary({...request, employeeId: '1234567'}), /첫 번째 항목으로 고정/);
 });
 

@@ -188,7 +188,6 @@
                         date: dateStr,
                         dateLabel: dateLabel,
                         logText: logText,
-                        itemCount: document.getElementById('dailySummaryItemCount').value,
                         fixedFirstItem: dailySummaryFixedFirstItem,
                         userApiKey: personalAiApiKey, ...getAuthFields()
                     })
@@ -198,9 +197,9 @@
 
                 if (data.status === 'success' && data.summary) {
                     stopDailySummaryProgress(true);
-                    lastGeneratedDailySummaryText = data.summary;
-                    document.getElementById('dailySummaryResultTextarea').value = data.summary;
-                    resultBlock.style.display = 'block';
+                    dailySummaryItems = parseDailySummaryItems(data.summary).map(text => ({ text, checked: true }));
+                    resultBlock.style.display = '';
+                    renderDailySummaryItems();
                     statusEl.textContent = '✅ 오늘 업무 요약이 생성되었습니다';
                     statusEl.className = 'ai-status success';
                 } else {
@@ -219,6 +218,55 @@
             }
         }
         
+        // AI가 준 번호 목록을 업무 1건씩 나눔. 번호·글머리표를 떼고 빈 줄은 버림
+        let dailySummaryItems = []; // [{ text, checked }]
+
+        function parseDailySummaryItems(summaryText) {
+            return String(summaryText || '').split(/\r?\n/)
+                .map(line => line.replace(/^\s*(?:\d+\s*[.)]|[-*•·])\s*/, '').trim())
+                .filter(Boolean);
+        }
+
+        // 왼쪽 체크 목록 그리기 + 오른쪽 보고문 다시 만들기
+        function renderDailySummaryItems() {
+            const list = document.getElementById('dailySummaryItemList');
+            if (!list) return;
+            list.innerHTML = dailySummaryItems.map((item, i) => `
+                <li class="daily-summary-item${item.checked ? '' : ' is-unchecked'}">
+                    <label>
+                        <input type="checkbox" ${item.checked ? 'checked' : ''} onchange="toggleDailySummaryItem(${i}, this.checked)">
+                        <span>${escapeHtml(item.text)}</span>
+                    </label>
+                </li>`).join('');
+            rebuildDailySummaryReport();
+        }
+
+        function rebuildDailySummaryReport() {
+            const checked = dailySummaryItems.filter(item => item.checked);
+            const text = checked.map((item, i) => `${i + 1}. ${item.text}`).join('\n');
+            document.getElementById('dailySummaryResultTextarea').value = text;
+            lastGeneratedDailySummaryText = text; // 체크로 만든 내용은 "직접 수정"으로 보지 않음
+            const countEl = document.getElementById('dailySummaryCheckedCount');
+            if (countEl) countEl.textContent = `${checked.length}/${dailySummaryItems.length}`;
+            const toggleBtn = document.getElementById('dailySummaryToggleAllBtn');
+            if (toggleBtn) toggleBtn.textContent = checked.length === dailySummaryItems.length ? '전체 해제' : '전체 선택';
+        }
+
+        function toggleDailySummaryItem(index, checked) {
+            const item = dailySummaryItems[index];
+            if (!item) return;
+            item.checked = checked;
+            const li = document.querySelectorAll('#dailySummaryItemList .daily-summary-item')[index];
+            if (li) li.classList.toggle('is-unchecked', !checked);
+            rebuildDailySummaryReport();
+        }
+
+        function toggleAllDailySummaryItems() {
+            const allChecked = dailySummaryItems.every(item => item.checked);
+            dailySummaryItems.forEach(item => { item.checked = !allChecked; });
+            renderDailySummaryItems();
+        }
+
         function copyDailySummaryResult() {
             const textarea = document.getElementById('dailySummaryResultTextarea');
             textarea.select();

@@ -56,12 +56,13 @@
         // 항목 하나의 연중 예정월 목록을 HTML로 변환 (예: [3,6,9,12] → "3월, 6월, 9월, 12월").
         // 확인하는 용도의 탭이므로 이미 지난 달은 흐리게, 아직 남은 달은 진하게, 이번 달은
         // 눈에 띄는 색 배지로 표시해서 지금 뭘 챙겨야 하는지 한눈에 보이게 함
-        function renderOccurrenceMonthsHtml(months) {
+        function renderOccurrenceMonthsHtml(months, doneMonths) {
             if (!months || months.length === 0) return '<span class="month-chip month-undated">📌 미정</span>';
             const now = new Date();
             const nowIndex = now.getFullYear() * 12 + now.getMonth();
             return months.map(mo => {
                 const idx = maintenanceViewYear * 12 + (mo - 1);
+                if (doneMonths && doneMonths.includes(mo)) return `<span class="month-chip month-done" title="이 달에 완료 기록이 있습니다">✓ ${mo}월</span>`;
                 if (idx === nowIndex) return `<span class="month-chip month-current">${mo}월 · 이번 달</span>`;
                 if (idx < nowIndex) return `<span class="month-chip month-past">${mo}월</span>`;
                 return `<span class="month-chip month-future">${mo}월</span>`;
@@ -149,49 +150,71 @@
             renderMaintenanceSchedule();
         }
 
+        // 보고 있는 연도 안의 완료일 목록(오름차순). 예전 데이터(완료 이력 없이 lastDone만 있는 경우)도 인정함
+        function getMaintenanceCompletionDatesInYear(m, year) {
+            const prefix = year + '-';
+            const dates = getMaintenanceCompletions(m).map(c => c && c.date).filter(d => typeof d === 'string' && d.startsWith(prefix));
+            if (dates.length === 0 && typeof m.lastDone === 'string' && m.lastDone.startsWith(prefix)) dates.push(m.lastDone);
+            return dates.sort();
+        }
+
+        // 카드에는 핵심 정보(항목명, 급한 정도·상태 배지, 예정월, 차기 점검, 최근 완료, 필요 재고)만 간결하게 보여주고,
+        // SOP·메모 같은 상세 내용은 카드를 눌러 여는 수정 창에서 확인함. 설비 그룹 안에서 한 줄에 4장씩(화면이 좁으면 줄어듦) 배치
         function renderMaintenanceEquipmentGroup(equipmentName, items) {
             const cardsHtml = items.map(m => {
                 const urgency = m._urgency;
                 const urgencyClass = ['overdue', 'urgent', 'notice'].includes(urgency.level) ? ` maint-${urgency.level}` : '';
+                const doneDates = m._doneDates || [];
+                const doneMonths = doneDates.map(d => parseInt(d.slice(5, 7), 10));
+                const titleText = m.item ? escapeHtml(m.item) : '점검';
+                const tooltip = escapeHtml([m.item || '점검', m.sop ? 'SOP: ' + m.sop : ''].filter(Boolean).join('\n'));
+                const cardAttrs = `class="project-card maint-card${urgencyClass}" data-maint-id="${escapeHtml(m.id)}" onclick="openMaintenanceModal('${escapeForOnclickArg(m.id)}')"`;
+                const monthsHtml = `<div class="maint-card-months">${renderOccurrenceMonthsHtml(m._occurrenceMonths, doneMonths)}</div>`;
 
                 if (maintenanceViewMode === 'simple') {
                     return `
-                <div class="project-card${urgencyClass}" onclick="openMaintenanceModal('${m.id}')">
-                    <div class="project-card-top">
-                        <div class="project-card-title">${m.item ? escapeHtml(m.item) : '점검'}</div>
-                    </div>
-                    <div class="project-card-row"><b>예정월:</b> ${renderOccurrenceMonthsHtml(m._occurrenceMonths)}</div>
+                <div ${cardAttrs}>
+                    <div class="maint-card-title" title="${tooltip}">${titleText}</div>
+                    ${monthsHtml}
                 </div>
             `;
                 }
 
                 const badgeLabel = maintenanceUrgencyBadge(urgency);
+                const lastDoneInYear = doneDates.length ? doneDates[doneDates.length - 1] : '';
+                const badges = [
+                    badgeLabel ? `<span class="project-badge urgency-${urgency.level}">${badgeLabel}</span>` : '',
+                    lastDoneInYear ? `<span class="project-badge status-완료" title="${escapeHtml(lastDoneInYear)} 완료">✅ 완료 ${escapeHtml(lastDoneInYear.slice(5).replace('-', '/'))}</span>` : '',
+                    // "예정"은 기본 상태라 배지를 생략하고, 완료 배지가 이미 있으면 "완료" 상태 배지는 중복이라 생략
+                    (m.status && m.status !== '예정' && !(m.status === '완료' && lastDoneInYear)) ? `<span class="project-badge status-${maintenanceStatusClass(m.status)}">${escapeHtml(m.status)}</span>` : ''
+                ].filter(Boolean).join('');
                 const acked = m.ackFor && m.ackFor === m.nextDue;
                 const showAck = ['overdue', 'urgent', 'notice'].includes(urgency.level);
+                const cycleUnknown = m.cycle && !parseCycleIntervalMonths(m.cycle);
+                const dueParts = [];
+                if (isValidNextDue(m.nextDue)) {
+                    const ddayText = (urgency.daysUntil !== null && m.status !== '완료' && !badgeLabel) ? ` (${formatDday(urgency.daysUntil)})` : '';
+                    dueParts.push(`<b>차기</b> ${escapeHtml(m.nextDue)}${m.nextDue.length === 7 ? ' (날짜 미지정)' : ''}${ddayText}`);
+                }
+                if (m.cycle) dueParts.push(cycleUnknown
+                    ? `<span class="maint-cycle-warning" title="주기 표현을 자동으로 인식하지 못해, 등록된 차기 점검월만 표시돼요. (&quot;3개월&quot;, &quot;격월&quot;, &quot;분기&quot;, &quot;반기&quot;, &quot;매년&quot; 등으로 적으면 반복월이 자동 계산됩니다)">⚠️ ${escapeHtml(m.cycle)} (주기 인식 불가)</span>`
+                    : `${escapeHtml(m.cycle)} 주기`);
 
                 return `
-                <div class="project-card${urgencyClass}" onclick="openMaintenanceModal('${m.id}')">
-                    <div class="project-card-top">
-                        <div class="project-card-title">${m.item ? escapeHtml(m.item) : '점검'}</div>
-                        <div style="display:flex; gap:6px; align-items:center;">
-                            ${badgeLabel ? `<span class="project-badge urgency-${urgency.level}">${badgeLabel}</span>` : ''}
-                            <span class="project-badge status-${maintenanceStatusClass(m.status)}">${m.status}</span>
-                        </div>
-                    </div>
-                    <div class="project-card-row"><b>예정월:</b> ${renderOccurrenceMonthsHtml(m._occurrenceMonths)}</div>
-                    ${isValidNextDue(m.nextDue) ? `<div class="project-card-row"><b>차기 점검:</b> ${escapeHtml(m.nextDue)}${m.nextDue.length === 7 ? ' (날짜 미지정)' : ''}${urgency.daysUntil !== null && m.status !== '완료' ? ` · ${formatDday(urgency.daysUntil)}` : ''}</div>` : ''}
-                    ${m.cycle ? `<div class="project-card-row"><b>주기:</b> ${escapeHtml(m.cycle)}</div>` : ''}
-                    ${(m.cycle && !parseCycleIntervalMonths(m.cycle)) ? `<div class="project-card-row maint-cycle-warning">⚠️ 주기 표현을 자동으로 인식하지 못해, 등록된 차기 점검월만 표시돼요. ("3개월", "격월", "분기", "반기", "매년" 등으로 적으면 반복월이 자동 계산됩니다)</div>` : ''}
-                    ${m.sop ? `<div class="project-card-row"><b>SOP:</b> ${escapeHtml(m.sop)}</div>` : ''}
-                    ${typeof renderMaintenanceInventoryRow === 'function' ? renderMaintenanceInventoryRow(m) : ''}
+                <div ${cardAttrs}>
+                    <div class="maint-card-title" title="${tooltip}">${titleText}</div>
+                    ${badges ? `<div class="maint-card-badges">${badges}</div>` : ''}
+                    ${monthsHtml}
+                    ${dueParts.length ? `<div class="project-card-row">${dueParts.join(' · ')}</div>` : ''}
                     ${renderMaintenanceLastDoneRow(m)}
-                    ${showAck ? `
-                    <label class="maint-ack-row" onclick="event.stopPropagation()">
-                        <input type="checkbox" ${acked ? 'checked' : ''} onchange="toggleMaintenanceAck('${m.id}')">
-                        사전 인지 완료 (기안, 재고 확보 등)
-                    </label>` : ''}
-                    <div class="maint-card-actions" onclick="event.stopPropagation()">
-                        <button class="result-action-btn" onclick="openMaintenanceCompleteModal('${m.id}')">✅ 완료 처리</button>
+                    ${typeof renderMaintenanceInventoryRow === 'function' ? renderMaintenanceInventoryRow(m) : ''}
+                    <div class="maint-card-foot" onclick="event.stopPropagation()">
+                        ${showAck ? `
+                        <label class="maint-ack-row" title="기안, 재고 확보 등 사전 준비를 마쳤으면 체크">
+                            <input type="checkbox" ${acked ? 'checked' : ''} onchange="toggleMaintenanceAck('${escapeForOnclickArg(m.id)}')">
+                            사전 인지 완료
+                        </label>` : '<span></span>'}
+                        <button class="result-action-btn" onclick="openMaintenanceCompleteModal('${escapeForOnclickArg(m.id)}')">✅ 완료 처리</button>
                     </div>
                 </div>
             `;
@@ -202,7 +225,7 @@
                     <div class="result-date maint-group-title">🔧 ${escapeHtml(equipmentName)}
                         ${(equipmentName !== '(설비 미지정)' && !isFeatureDisabled('keywordSearch')) ? `<button class="result-action-btn" onclick="openEquipmentTimeline('${escapeForOnclickArg(equipmentName)}')" title="이 설비의 활동기록·정비 완료 이력을 시간순으로 보기">📜 설비 이력</button>` : ''}
                     </div>
-                    ${cardsHtml}
+                    <div class="maint-card-grid">${cardsHtml}</div>
                 </div>
             `;
         }
@@ -230,14 +253,17 @@
 
             const visibleItems = [];
             for (const m of maintenanceSchedule) {
-                if (maintenanceStatusFilter !== '전체' && m.status !== maintenanceStatusFilter) continue;
+                // 주기가 있는 항목은 완료 처리하면 바로 다음 주기("예정")로 넘어가므로, 상태만 보면 "완료" 목록에서
+                // 빠져 버림. 보고 있는 연도에 완료 기록이 있으면 "완료" 필터에도 나오게 함
+                const doneDates = getMaintenanceCompletionDatesInYear(m, maintenanceViewYear);
+                if (maintenanceStatusFilter === '완료') {
+                    if (m.status !== '완료' && doneDates.length === 0) continue;
+                } else if (maintenanceStatusFilter !== '전체' && m.status !== maintenanceStatusFilter) continue;
                 const isUndated = !isValidNextDue(m.nextDue);
-                if (isUndated) {
-                    if (isCurrentYear) visibleItems.push(Object.assign({}, m, { _occurrenceMonths: [], _urgency: getMaintenanceUrgency(m) }));
-                    continue;
-                }
-                const months = getMaintenanceOccurrenceMonths(m, maintenanceViewYear);
-                if (months.length > 0) visibleItems.push(Object.assign({}, m, { _occurrenceMonths: months, _urgency: getMaintenanceUrgency(m) }));
+                const months = isUndated ? [] : getMaintenanceOccurrenceMonths(m, maintenanceViewYear);
+                // 예정월이 없는 해라도 그 해에 완료한 기록이 있으면 표시 (완료 후 차기 일정이 다음 해 이후로 넘어간 경우)
+                const visible = isUndated ? (isCurrentYear || doneDates.length > 0) : (months.length > 0 || doneDates.length > 0);
+                if (visible) visibleItems.push(Object.assign({}, m, { _occurrenceMonths: months, _doneDates: doneDates, _urgency: getMaintenanceUrgency(m) }));
             }
 
             if (visibleItems.length === 0) {
@@ -408,9 +434,9 @@
             const completions = getMaintenanceCompletions(m);
             if (completions.length > 0) {
                 const latest = completions[completions.length - 1];
-                return `<div class="project-card-row"><b>이전 완료:</b> ${escapeHtml(latest.date)} <span class="maint-completion-count">(누적 ${completions.length}회)</span></div>`;
+                return `<div class="project-card-row"><b>이전 완료</b> ${escapeHtml(latest.date)} <span class="maint-completion-count">(누적 ${completions.length}회)</span></div>`;
             }
-            return m.lastDone ? `<div class="project-card-row"><b>이전 완료:</b> ${escapeHtml(m.lastDone)}</div>` : '';
+            return m.lastDone ? `<div class="project-card-row"><b>이전 완료</b> ${escapeHtml(m.lastDone)}</div>` : '';
         }
 
         // "YYYY-MM-DD" 완료일 + 주기(개월) → 다음 예정월 "YYYY-MM". 주기를 알아들을 수 없으면 null
@@ -551,6 +577,7 @@
             }
 
             renderMaintenanceSchedule();
+            highlightMaintenanceCard(m.id);
             renderCalendar();
             if (selectedDate === date) renderRecordForm();
             if (typeof renderInventory === 'function') renderInventory(); // 재고 카드의 차기 일정
@@ -558,6 +585,17 @@
             // 재고가 모자라 출고를 건너뛴 품목이 있으면 놓치지 않게 경고 색으로 보여줌
             const inventorySkipped = inventoryMsg.includes('출고 안 함');
             showAppToast(inventoryMsg ? `${baseMsg} · ${inventoryMsg}` : baseMsg, inventorySkipped ? 'error' : 'success');
+        }
+
+        // 완료 처리 후 급한 순서 정렬로 카드 위치가 바뀌어도 놓치지 않도록, 그 카드로 스크롤하고 잠깐 강조함
+        function highlightMaintenanceCard(itemId) {
+            const card = Array.from(document.querySelectorAll('#maintenanceList .maint-card')).find(el => el.dataset.maintId === itemId);
+            if (!card) return;
+            const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            card.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+            card.classList.remove('maint-just-done');
+            void card.offsetWidth;
+            card.classList.add('maint-just-done');
         }
 
         function deleteMaintenanceCompletion(itemId, completionId) {

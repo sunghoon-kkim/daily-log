@@ -3,9 +3,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 그래서 관리자 여부는 로그인/불러오기 응답에 실려오는 isAdmin 플래그(아래 전역 변수)로만
         // 판단하고, 실제 관리자 API 권한 검증은 여전히 서버(Code.gs의 verifyAdmin)가 함
 
+        // 빨 → 주 → 노 → 초 → 파 → 남 → 보 순서. 일정 추가 시 기본 색상이 이 순서대로 순환함
         const COLOR_PALETTE = [
             '#ff6b6b', '#ff9f43', '#feca57', '#1dd1a1',
-            '#54a0ff', '#5f27cd', '#ee5a6f'
+            '#54a0ff', '#5f27cd', '#a55eea'
         ];
         
         // 대한민국 공휴일 (대체공휴일·임시공휴일 포함)

@@ -1244,9 +1244,33 @@
             }
         }
 
+        // 사용자가 팔레트·직접 선택·빠른 선택 버튼으로 색을 고르면 true. 이후에는 날짜를 바꿔도 자동 색상으로 덮어쓰지 않음
+        let eventColorPickedManually = false;
+
         function pickColor(color) {
             selectedColor = color;
+            eventColorPickedManually = true;
             syncColorSwatchSelection(color);
+        }
+
+        // 새 일정의 기본 색상: 그 날짜에 걸친 일정이 있으면 그중 가장 나중에 등록된 일정의 색 다음 순서,
+        // 없으면 전체에서 가장 나중에 등록된 일정의 색 다음 순서 (빨→주→노→초→파→남→보→빨…).
+        // 팔레트에 없는 색(직접 고른 색)으로 등록된 일정은 순서를 알 수 없어 건너뜀
+        function getAutoEventColor(dateStr) {
+            const inPalette = events.filter(ev => ev && COLOR_PALETTE.includes(ev.color));
+            const sameDay = inPalette.filter(ev => ev.start <= dateStr && dateStr <= (ev.end || ev.start));
+            const base = (sameDay.length ? sameDay : inPalette).pop();
+            if (!base) return COLOR_PALETTE[0];
+            return COLOR_PALETTE[(COLOR_PALETTE.indexOf(base.color) + 1) % COLOR_PALETTE.length];
+        }
+
+        // 일정 추가 창에서 시작일을 바꾸면, 사용자가 직접 색을 고르지 않은 경우에만 그 날짜 기준으로 다시 계산
+        function onEventStartDateChange() {
+            if (editingEventId || eventColorPickedManually) return;
+            const dateStr = document.getElementById('eventStartInput').value;
+            if (!dateStr) return;
+            selectedColor = getAutoEventColor(dateStr);
+            syncColorSwatchSelection(selectedColor);
         }
 
         // 빠른 선택 버튼(당직/연차/휴가) 클릭 시 내용/색상을 자동으로 채워서,
@@ -1296,13 +1320,14 @@
                 document.getElementById('eventEndInput').value = dateStr;
                 // 비워두면 저장할 때 제목으로 분류를 추정함 (당직·연차 → 근무 등)
                 document.getElementById('eventGroupInput').value = '';
-                selectedColor = COLOR_PALETTE[0];
+                selectedColor = getAutoEventColor(dateStr);
                 deleteBtn.style.display = 'none';
                 document.getElementById('eventRepeatIntervalInput').value = '0';
                 document.getElementById('eventRepeatCountInput').value = '4';
                 repeatSection.style.display = '';
             }
 
+            eventColorPickedManually = false;
             renderEventGroupOptions();
             syncColorSwatchSelection(selectedColor);
             syncQuickPresetSelection(eventId ? document.getElementById('eventTitleInput').value : '');

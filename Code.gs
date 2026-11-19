@@ -3253,27 +3253,20 @@ function handleRevise(data) {
 const DAILY_SUMMARY_FIXED_ITEM_EMPLOYEE_ID = "2600643";
 const DAILY_SUMMARY_FIXED_ITEM_TEXT = "냉동기, 보일러, 수처리 일상점검";
 
-const DAILY_SUMMARY_DEFAULT_ITEM_COUNT = 5;
-const DAILY_SUMMARY_MIN_ITEM_COUNT = 1;
-const DAILY_SUMMARY_MAX_ITEM_COUNT = 10;
-
-function normalizeDailySummaryItemCount(rawValue) {
-  const n = parseInt(rawValue, 10);
-  if (!Number.isFinite(n)) return DAILY_SUMMARY_DEFAULT_ITEM_COUNT;
-  return Math.min(DAILY_SUMMARY_MAX_ITEM_COUNT, Math.max(DAILY_SUMMARY_MIN_ITEM_COUNT, n));
-}
-
-function buildDailySummarySystemPrompt(fixedFirstItem, itemCount) {
+// 화면에서 항목마다 체크박스로 골라 보고문을 만들기 때문에, 항목 개수를 맞추려고 묶지 않고 업무 1건당 1줄로 뽑음
+function buildDailySummarySystemPrompt(fixedFirstItem) {
   const fixedItemRule = fixedFirstItem
-    ? "- 반드시 '1. " + fixedFirstItem + "'를 첫 번째 항목으로 고정해서 넣으세요. 이 고정 항목도 전체 항목 개수에 포함합니다. 그 다음 번호부터 그날 실제로 기록된 활동들을 이어서 쓰세요.\n"
+    ? "- 반드시 '1. " + fixedFirstItem + "'를 첫 번째 항목으로 고정해서 넣으세요. 그 다음 번호부터 그날 실제로 기록된 업무들을 이어서 쓰세요. 고정 항목과 같은 업무가 기록에 있으면 다시 쓰지 마세요.\n"
     : "- 그날 실제로 기록된 활동들만 번호를 매겨 쓰세요 (다른 사람 업무인 '" + DAILY_SUMMARY_FIXED_ITEM_TEXT + "' 같은 항목을 지어내서 넣지 마세요).\n";
 
   return (
     "당신은 퇴근 전 팀에 공유하는 '오늘 한 일' 목록을 정리해주는 도우미입니다. " +
     "사용자가 작성한 [오늘 작성한 활동 기록]만을 근거로 번호를 매긴 짧은 목록을 작성하세요.\n\n" +
     fixedItemRule +
-    "- 전체 항목은 총 " + itemCount + "개로 정리하세요. 기록된 활동이 " + itemCount + "개보다 많으면 비슷하거나 관련된 내용끼리 묶어서 " + itemCount + "개 이내로 압축하고, 기록된 활동이 " + itemCount + "개보다 적으면 있는 내용만 쓰고 없는 내용을 지어내서 채우지 마세요.\n" +
-    "- 각 항목은 짧은 명사형 구문으로 간결히 쓰세요.\n" +
+    "- 업무 1건당 항목 1개로 쓰세요. 서로 다른 업무 여러 개를 한 항목에 쉼표·'및'·'/' 등으로 묶지 말고 각각 별도 번호로 나누세요. 항목 개수에 제한은 없습니다.\n" +
+    "- 같은 업무가 기록에 여러 번 나오면(예: 시작과 마무리) 한 항목으로만 쓰고, 다른 항목과 내용이 겹치지 않게 하세요.\n" +
+    "- 기록에 없는 내용을 지어내지 마세요.\n" +
+    "- 각 항목은 한 줄의 짧은 명사형 구문으로 간결히 쓰세요. 한 항목 안에서 줄을 바꾸지 마세요.\n" +
     "- 마크다운 서식을 쓰지 말고 순수 텍스트 번호 매기기만 사용하세요."
   );
 }
@@ -3287,7 +3280,6 @@ function handleDailySummary(data) {
   const fixedFirstItem = typeof data.fixedFirstItem === "string"
     ? data.fixedFirstItem.replace(/\s+/g, " ").trim().replace(/^1[.)]\s*/, "").slice(0, 300)
     : (normalizeEmployeeId(data.employeeId) === DAILY_SUMMARY_FIXED_ITEM_EMPLOYEE_ID ? DAILY_SUMMARY_FIXED_ITEM_TEXT : "");
-  const itemCount = normalizeDailySummaryItemCount(data.itemCount);
 
   if (!logText) {
     return jsonResponse({ status: "error", message: "이 날짜에 작성된 활동기록이 없습니다." });
@@ -3296,7 +3288,7 @@ function handleDailySummary(data) {
   const userPrompt = `[날짜] ${dateLabel}\n\n[오늘 작성한 활동 기록]\n${logText}`;
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
 
-  return callGeminiAndRespond(apiKey, contents, buildDailySummarySystemPrompt(fixedFirstItem, itemCount), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
+  return callGeminiAndRespond(apiKey, contents, buildDailySummarySystemPrompt(fixedFirstItem), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
 }
 
 // ===== 이번주 업무 요약 =====
