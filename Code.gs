@@ -3288,7 +3288,8 @@ function handleDailySummary(data) {
   const userPrompt = `[날짜] ${dateLabel}\n\n[오늘 작성한 활동 기록]\n${logText}`;
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
 
-  return callGeminiAndRespond(apiKey, contents, buildDailySummarySystemPrompt(fixedFirstItem), { thinkingLevel: GEMINI_FAST_THINKING_LEVEL });
+  // 오늘 업무 요약은 속도가 최우선이라 추론을 최소("minimal")로 줄임. 모델이 거부하면 callGeminiRawText가 "low"로 자동 대체함
+  return callGeminiAndRespond(apiKey, contents, buildDailySummarySystemPrompt(fixedFirstItem), { thinkingLevel: GEMINI_MINIMAL_THINKING_LEVEL });
 }
 
 // ===== 이번주 업무 요약 =====
