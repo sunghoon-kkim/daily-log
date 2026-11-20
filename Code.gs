@@ -33,6 +33,9 @@ const BACKUP_MAX_PER_USER = 30;
 const BACKUP_MAX_TOTAL_ROWS = 3000;
 const LAST_LOGIN_REFRESH_MS = 12 * 60 * 60 * 1000; // 마지막 로그인 시각은 이 간격이 지났을 때만 다시 씀
 const GEMINI_MODEL = "gemini-3.6-flash";    // 안정적인 기본 Flash 모델 (gemini-2.5-flash는 신규 사용자에게 더 이상 제공되지 않아 변경함)
+// 월별 피드백(생성·수정 요청)만 무료 등급 중 가장 최신·고성능인 Gemini 4 Hydrogen을 씀(기본 추론 high).
+// 무료 한도 초과 등으로 실패하면 GEMINI_MODEL로 자동 대체함
+const GEMINI_FEEDBACK_MODEL = "gemini-4-hydrogen";
 
 // 사번은 현재 회사 기준 숫자 7자리. 프론트엔드(index.html)의 EMPLOYEE_ID_PATTERN과 동일하게 유지할 것
 const EMPLOYEE_ID_PATTERN = /^\d{7}$/;
@@ -3076,8 +3079,9 @@ function callGeminiRawText(apiKey, contents, systemPrompt, callOptions) {
     payload.generationConfig = { thinkingConfig: { thinkingLevel: callOptions.thinkingLevel } };
   }
 
+  const model = (callOptions && callOptions.model) || GEMINI_MODEL;
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-    GEMINI_MODEL + ":generateContent";
+    model + ":generateContent";
 
   const options = {
     method: "post",
@@ -3150,9 +3154,16 @@ function callGeminiAndRespond(apiKey, contents, systemPrompt, callOptions) {
   }
 }
 
-function callGeminiSplitAndRespond(apiKey, contents, systemPrompt) {
+function callGeminiSplitAndRespond(apiKey, contents, systemPrompt, callOptions) {
   try {
-    const raw = callGeminiRawText(apiKey, contents, systemPrompt);
+    let raw;
+    try {
+      raw = callGeminiRawText(apiKey, contents, systemPrompt, callOptions);
+    } catch (primaryErr) {
+      // 지정한 모델(월별 피드백용 상위 모델)이 실패하면 기본 모델로 한 번 더 시도함
+      if (!(callOptions && callOptions.model)) throw primaryErr;
+      raw = callGeminiRawText(apiKey, contents, systemPrompt);
+    }
     const parsed = parseGoodImproveJSON(raw);
     return jsonResponse({ status: "success", good: parsed.good, improve: parsed.improve, raw: raw });
   } catch (error) {
@@ -3225,7 +3236,7 @@ function handleSummarize(data) {
   const userPrompt = `[기간] ${periodLabel}\n\n[양식]\n${template}\n\n[일일 기록 원본]\n${logText}${historyBlock}${checkBlock}`;
   const contents = [{ role: "user", parts: [{ text: userPrompt }] }];
 
-  return callGeminiSplitAndRespond(apiKey, contents, buildSystemPrompt());
+  return callGeminiSplitAndRespond(apiKey, contents, buildSystemPrompt(), { model: GEMINI_FEEDBACK_MODEL });
 }
 
 function handleRevise(data) {
@@ -3245,7 +3256,7 @@ function handleRevise(data) {
   }));
   contents.push({ role: "user", parts: [{ text: instruction }] });
 
-  return callGeminiSplitAndRespond(apiKey, contents, buildSystemPrompt());
+  return callGeminiSplitAndRespond(apiKey, contents, buildSystemPrompt(), { model: GEMINI_FEEDBACK_MODEL });
 }
 
 // ===== 일일 업무 요약 =====
