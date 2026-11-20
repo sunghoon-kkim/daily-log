@@ -72,10 +72,7 @@
             if (currentBtn) currentBtn.classList.toggle('selected', teamReportCurrentWeekStart === thisMonday);
         }
 
-        // skipAutoLoad: fillTeamReportWithDailySummary처럼 호출하는 쪽에서 직접 loadTeamReportForWeek를
-        // 호출해 결과를 이어붙일 때, 여기서도 같은 주를 또 불러오면 두 요청이 경쟁해서 방금 채운
-        // 내용이 뒤늦게 도착한 서버 응답으로 덮어써질 수 있음 - 그런 경우 자동 로드를 건너뜀
-        async function initTeamReportTab(skipAutoLoad) {
+        async function initTeamReportTab() {
             if (!teamReportCurrentWeekStart) {
                 teamReportCurrentWeekStart = formatDate(getMondayOfWeek(new Date()));
             }
@@ -91,7 +88,7 @@
             if (!isTeamLeadRole) {
                 renderTeamReportWeekLabel();
                 await loadTeamReportMemberList();
-                if (!skipAutoLoad) loadTeamReportForWeek(teamReportCurrentWeekStart);
+                loadTeamReportForWeek(teamReportCurrentWeekStart);
                 loadMyTeamReportHistory();
             }
             loadTeamReportInbox();
@@ -254,22 +251,6 @@
                     </div>
                 `;
             }).join('');
-        }
-
-        // "AI 일일 업무 요약"에서 만든 요약을 [팀 보고] 탭의 "이번주 한 일"에 새 항목으로 추가해줌
-        // (제출은 아직 안 함, 사용자가 확인/수정 후 직접 제출 버튼을 눌러야 함)
-        async function fillTeamReportWithDailySummary() {
-            const dateStr = document.getElementById('dailySummaryDate').value;
-            const summaryText = document.getElementById('dailySummaryResultTextarea').value.trim();
-            if (!dateStr || !summaryText) return;
-
-            const weekStart = formatDate(getMondayOfWeek(new Date(dateStr + 'T00:00:00')));
-            switchTab('teamReport', { skipTeamReportLoad: true });
-            await loadTeamReportMemberList();
-            await loadTeamReportForWeek(weekStart);
-
-            createTeamReportRow('thisWeek', { category: categories[0] || '', date: dateStr, content: summaryText });
-            renderTeamReportRows('thisWeek');
         }
 
         // 지금 보고 있는 주의 바로 전 주 데이터를 받아와 캐시해둠. (1) 내용이 비어있는 줄에 뜨는

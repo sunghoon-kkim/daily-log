@@ -1846,7 +1846,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
 
             if (tabName === 'teamReport' && typeof initTeamReportTab === 'function') {
-                initTeamReportTab(options.skipTeamReportLoad);
+                initTeamReportTab();
             }
         }
 

@@ -7336,8 +7336,7 @@ select:focus { background-color: var(--color-surface); }
     color: color-mix(in srgb, var(--hue) 55%, var(--color-text));
 }
 
-/* 폼 위주 탭: 흰 카드는 탭 줄과 같은 폭, 안쪽 내용만 1160px로 가운데 정렬 */
-#ai > *,
+/* 폼 위주 탭: 흰 카드는 탭 줄과 같은 폭, 안쪽 내용만 1160px로 가운데 정렬 (AI 도우미는 다른 탭처럼 전체 폭 사용) */
 #query > *,
 #category > *,
 #settings > * {
