@@ -112,8 +112,8 @@
         let stopDailySummaryLoading = null;
         const DAILY_SUMMARY_LOADING_STEPS = [
             { at: 0, text: '오늘 업무를 정리하는 중입니다' },
-            { at: 8, text: '항목을 다듬는 중입니다' },
-            { at: 20, text: '거의 다 됐습니다' }
+            { at: 2, text: '항목을 다듬는 중입니다' },
+            { at: 4, text: '거의 다 됐습니다' }
         ];
 
         function startDailySummaryProgress() {
