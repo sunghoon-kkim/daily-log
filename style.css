@@ -2279,13 +2279,66 @@ html {
             overflow-wrap: anywhere;
         }
 
-        /* 환경설정 > 사용할 탭 선택: 탭 이름이 길어져도 박스 안에서 줄바꿈되지 않게 함 */
-        #settingsTabToggleList {
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        /* 환경설정 > 사용할 탭 선택: 탭 한 줄 + 그 아래 들여쓴 세부 항목 체크박스 */
+        .settings-tab-toggle-list {
+            border-top: 1px solid var(--color-border);
         }
 
-        #settingsTabToggleList .category-select-btn {
-            white-space: nowrap;
+        .settings-tab-group {
+            padding: var(--space-3) 0;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .settings-tab-toggle,
+        .settings-feature-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            cursor: pointer;
+        }
+
+        .settings-tab-toggle {
+            font-size: var(--text-base);
+            font-weight: 600;
+            color: var(--color-text);
+        }
+
+        .settings-tab-toggle .ui-icon {
+            width: 16px;
+            height: 16px;
+            color: var(--color-text-tertiary);
+        }
+
+        .settings-tab-toggle input,
+        .settings-feature-toggle input {
+            width: 16px;
+            height: 16px;
+            margin: 0;
+            accent-color: var(--color-primary);
+            cursor: pointer;
+        }
+
+        /* 들여쓰기 = 탭 체크박스(16px) + 간격(8px)만큼, 항목이 탭 이름 글자 시작선에 맞춰 섬 */
+        .settings-feature-toggles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2) var(--space-5);
+            margin-top: var(--space-2);
+            padding-left: calc(16px + var(--space-2));
+        }
+
+        .settings-feature-toggle {
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
+        }
+
+        .settings-tab-group.is-off .settings-tab-toggle > span,
+        .settings-tab-group.is-off .settings-feature-toggle {
+            color: var(--color-text-tertiary);
+        }
+
+        .settings-tab-group.is-off .settings-feature-toggle {
+            cursor: not-allowed;
         }
         
         .category-select-btn.selected {
@@ -7351,7 +7404,6 @@ select:focus { background-color: var(--color-surface); }
 
 /* 폼 위주 탭: 흰 카드는 탭 줄과 같은 폭, 안쪽 내용만 1160px로 가운데 정렬 (AI 도우미는 다른 탭처럼 전체 폭 사용) */
 #query > *,
-#category > *,
 #settings > * {
     max-width: 1160px;
     margin-left: auto;

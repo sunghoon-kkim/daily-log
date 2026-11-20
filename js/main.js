@@ -122,7 +122,6 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 탭 관리
         const TAB_LABELS = {
             calendar: '달력 & 활동기록',
-            category: '카테고리 관리',
             query: '검색 & 조회',
             notes: '할일 & 메모',
             ai: 'AI 도우미',
@@ -136,14 +135,18 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         };
         // 탭 앞의 단색 아이콘 (js/icons.js의 Lucide 아이콘 이름)
         const TAB_ICONS = {
-            calendar: 'calendar-days', category: 'chart-pie', query: 'search', notes: 'notebook-pen',
+            calendar: 'calendar-days', query: 'search', notes: 'notebook-pen',
             ai: 'bot', improvement: 'lightbulb', trend: 'chart-line', maintenance: 'wrench',
             inventory: 'package', waterFlow: 'workflow', teamReport: 'clipboard-list', settings: 'settings'
         };
-        let tabOrder = ['calendar', 'category', 'query', 'notes', 'ai', 'improvement', 'trend', 'maintenance', 'inventory', 'waterFlow', 'teamReport', 'settings'];
+        // 카테고리 관리는 탭이 아니라 환경설정 맨 위 섹션으로 옮김(저장된 탭 순서에 남은 'category'는 reconcileTabOrder가 걸러냄)
+        let tabOrder = ['calendar', 'query', 'notes', 'ai', 'improvement', 'trend', 'maintenance', 'inventory', 'waterFlow', 'teamReport', 'settings'];
         let activeTabId = 'calendar';
         // 환경설정에서 꺼둔(비활성화한) 탭 id 목록. 'settings'는 절대 여기 들어가지 않음(항상 표시)
         let disabledTabIds = [];
+        // 환경설정 > 사용할 탭 선택에서 본인이 숨긴 탭 안 세부 항목 키 목록(FEATURE_GROUPS 키).
+        // 관리자 제한(disabledFeatures)과 따로 저장해서, 다시 켜면 그대로 돌아오고 관리자 설정을 건드리지 않음
+        let hiddenFeatures = [];
         // 개인이 환경설정에 입력해 저장한 본인 Gemini API 키. 공용 키는 없어서 AI 기능은 전부 이 키가 있어야만 동작함
         let personalAiApiKey = '';
 
@@ -374,6 +377,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             loadCollapsedUpcomingCards();
             loadTabOrder();
             loadDisabledTabIds();
+            loadHiddenFeatures();
             loadPersonalAiApiKey();
             loadDisabledFeatures();
             loadRecordHistoryToolsState();
@@ -609,6 +613,16 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             disabledTabIds = stored ? safeJsonParse(stored, [], 'disabledTabIds').filter(id => id !== 'settings') : [];
         }
 
+        function loadHiddenFeatures() {
+            const stored = localStorage.getItem('hiddenFeatures');
+            hiddenFeatures = stored ? safeJsonParse(stored, [], 'hiddenFeatures').filter(key => typeof key === 'string') : [];
+        }
+
+        function saveHiddenFeaturesToStorage() {
+            safeSetItem('hiddenFeatures', JSON.stringify(hiddenFeatures));
+            queueSync();
+        }
+
         function loadPersonalAiApiKey() {
             personalAiApiKey = localStorage.getItem('personalAiApiKey') || '';
         }
@@ -695,8 +709,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         // 관리자가 계정별로 꺼둔 기능이거나, 코드 레벨에서 강제로 꺼둔(FORCE_DISABLED_FEATURES) 기능이면 true
-        function isFeatureDisabled(key) {
+        function isFeatureAdminDisabled(key) {
             return disabledFeatures.includes(key) || FORCE_DISABLED_FEATURES.includes(key);
+        }
+
+        // 위 관리자 제한에 더해, 본인이 환경설정에서 숨긴 항목까지 포함해 화면에서 안 보여야 하면 true
+        function isFeatureDisabled(key) {
+            return isFeatureAdminDisabled(key) || hiddenFeatures.includes(key);
         }
 
         // 관리자가 꺼둔 세부 기능 블록들을 화면에서 숨기고, 탭별로 전부 꺼져있으면 안내 문구를 보여줌
@@ -715,7 +734,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             // 메모장 탭: 할일/메모 둘 다 보일 때만 사이 구분선을 표시
             const notesDivider = document.getElementById('notesSplitDivider');
             if (notesDivider) {
-                const bothVisible = !disabledFeatures.includes('todoList') && !disabledFeatures.includes('freeNotes');
+                const bothVisible = !isFeatureDisabled('todoList') && !isFeatureDisabled('freeNotes');
                 notesDivider.style.display = bothVisible ? '' : 'none';
             }
 
@@ -841,6 +860,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 collapsedUpcomingCardIds: Array.from(collapsedUpcomingCardIds),
                 tabOrder,
                 disabledTabIds,
+                hiddenFeatures,
                 aiApiKey: personalAiApiKey,
                 disabledFeatures,
                 freeNotesPages,
@@ -880,6 +900,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             safeSetItem('collapsedUpcomingCardIds', JSON.stringify(Array.from(collapsedUpcomingCardIds)));
             safeSetItem('tabOrder', JSON.stringify(tabOrder));
             safeSetItem('disabledTabIds', JSON.stringify(disabledTabIds));
+            safeSetItem('hiddenFeatures', JSON.stringify(hiddenFeatures));
             safeSetItem('personalAiApiKey', personalAiApiKey);
             safeSetItem('disabledFeatures', JSON.stringify(disabledFeatures));
             syncActiveFreeNotesPageData();
@@ -1008,6 +1029,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     collapsedUpcomingCardIds = new Set(Array.isArray(data.collapsedUpcomingCardIds) ? data.collapsedUpcomingCardIds : []);
                     tabOrder = (data.tabOrder && data.tabOrder.length) ? reconcileTabOrder(data.tabOrder) : reconcileTabOrder([]);
                     disabledTabIds = Array.isArray(data.disabledTabIds) ? data.disabledTabIds.filter(id => id !== 'settings') : [];
+                    hiddenFeatures = Array.isArray(data.hiddenFeatures) ? data.hiddenFeatures.filter(key => typeof key === 'string') : [];
                     personalAiApiKey = (typeof data.aiApiKey === 'string') ? data.aiApiKey : '';
                     disabledFeatures = Array.isArray(data.disabledFeatures) ? data.disabledFeatures : [];
                     currentUserTeamReportRole = computeEffectiveTeamReportRole(data);
@@ -1593,13 +1615,20 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 처음부터 없었던 것처럼 탭 목록에서 통째로 사라지게 함
         function getAdminFullyRestrictedTabIds() {
             return FEATURE_GROUPS
+                .filter(group => Object.keys(group.features).every(key => isFeatureAdminDisabled(key)))
+                .map(group => group.key);
+        }
+
+        // 관리자 제한 + 본인이 숨긴 세부 항목 때문에 보여줄 내용이 하나도 없는 탭 (빈 탭이 남지 않게 탭째 숨김)
+        function getFullyHiddenTabIds() {
+            return FEATURE_GROUPS
                 .filter(group => Object.keys(group.features).every(key => isFeatureDisabled(key)))
                 .map(group => group.key);
         }
 
         function renderTabs() {
             const container = document.getElementById('tabsContainer');
-            const adminHiddenTabIds = getAdminFullyRestrictedTabIds();
+            const adminHiddenTabIds = getFullyHiddenTabIds();
             // 환경설정 탭은 잠겨서 없앨 수 없게 항상 표시하고, 나머지는 사용자가 꺼둔 탭 + 관리자가 전부 제한한 탭만 숨김
             const visibleTabOrder = tabOrder.filter(tabId => tabId === 'settings' || (!disabledTabIds.includes(tabId) && !adminHiddenTabIds.includes(tabId)));
             if (!visibleTabOrder.includes(activeTabId)) {
@@ -2805,7 +2834,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'activityRecords', 'calendarEvents', 'activityCategories',
             'categoryColors', 'categoryDefaultCollapsed', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
-            'tabOrder', 'disabledTabIds', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate', 'dailySummaryFixedFirstItem',
+            'tabOrder', 'disabledTabIds', 'hiddenFeatures', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate', 'dailySummaryFixedFirstItem',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'inventoryItems', 'inventoryCategories', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment',
             'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory',

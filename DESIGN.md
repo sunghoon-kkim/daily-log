@@ -136,6 +136,7 @@
 - **입력칸**: 흰 바탕, 1px 테두리, 8px 모서리. 포커스 때 인디고 테두리와 3px `--color-focus-ring`. 체크박스·라디오는 `accent-color: var(--color-primary)`.
 - **카드·섹션** (`.query-container`, `.ai-container`, `.project-card`): 흰 바탕, 1px 테두리, 8px 모서리, 그림자 없음.
 - **모달**: 배경 막 `rgba(15,23,42,.45)`, 상자 32px 안쪽 여백(모바일 24px), `--shadow-overlay`.
+- **설정 체크 목록** (`.settings-tab-group`, 환경설정 > 사용할 탭 선택): 탭 한 줄(16px 체크박스 + 16px 아이콘 + 14px 600 글자) 아래에 세부 항목 체크박스를 체크박스+간격만큼 들여 13px 보조 글자로 나열. 줄 사이는 1px `--color-border` 구분선, 카드·배경 채움 없음. 탭을 끄면 항목은 3차 글자색으로 비활성.
 - **포커스**: 버튼·탭은 `outline: 2px solid var(--color-primary); outline-offset: 2px`. 포커스 표시를 지우지 않는다.
 
 ## 반응형

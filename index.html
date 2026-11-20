@@ -114,30 +114,6 @@
             </div>
         </div>
 
-        <!-- 탭 2 -->
-        <div id="category" class="tab-content">
-            <div class="ai-status" data-empty-message-group="category" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 카테고리 관리 기능이 없습니다. 관리자에게 문의해주세요.</div>
-
-            <div class="category-manager" data-feature="categoryManage">
-                <h3>카테고리 관리</h3>
-                <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">새로운 카테고리를 추가/삭제하고, 각 카테고리의 색상을 지정할 수 있습니다. (색상은 활동기록 탭의 박스 색상에 적용됩니다)</p>
-                
-                <div class="category-controls">
-                    <input type="text" id="newCategoryInput" class="category-input" placeholder="새로운 카테고리 이름을 입력하세요 (예: 수처리)">
-                    <button class="add-category-btn" onclick="addCategory()"><span data-icon="plus"></span>추가</button>
-                </div>
-                
-                <h4 style="color: var(--color-text); margin: 25px 0 15px 0; font-size: 16px;">등록된 카테고리</h4>
-                <div class="categories-list" id="categoriesList"></div>
-
-                <div id="archivedCategoriesSection" style="display:none;">
-                    <h4 style="color: var(--color-text); margin: 25px 0 8px 0; font-size: 16px;">보관된 카테고리</h4>
-                    <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">입력 화면에서는 숨겨져 있지만 과거 기록은 그대로 남아 있어 검색·기간 조회·통계에서 계속 볼 수 있습니다.</p>
-                    <div class="categories-list" id="archivedCategoriesList"></div>
-                </div>
-            </div>
-        </div>
-        
         <!-- 탭 3 -->
         <div id="query" class="tab-content">
             <div class="ai-status" data-empty-message-group="query" style="display:none; margin-bottom:20px;">이 계정에서 사용 가능한 조회 기능이 없습니다. 관리자에게 문의해주세요.</div>
@@ -857,7 +833,26 @@
 
         <!-- 탭 10: 환경설정 -->
         <div id="settings" class="tab-content">
-            <div class="ai-container">
+            <div class="category-manager" data-feature="categoryManage">
+                <h3>카테고리 관리</h3>
+                <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">새로운 카테고리를 추가/삭제하고, 각 카테고리의 색상을 지정할 수 있습니다. (색상은 활동기록 탭의 박스 색상에 적용됩니다)</p>
+                
+                <div class="category-controls">
+                    <input type="text" id="newCategoryInput" class="category-input" placeholder="새로운 카테고리 이름을 입력하세요 (예: 수처리)">
+                    <button class="add-category-btn" onclick="addCategory()"><span data-icon="plus"></span>추가</button>
+                </div>
+                
+                <h4 style="color: var(--color-text); margin: 25px 0 15px 0; font-size: 16px;">등록된 카테고리</h4>
+                <div class="categories-list" id="categoriesList"></div>
+
+                <div id="archivedCategoriesSection" style="display:none;">
+                    <h4 style="color: var(--color-text); margin: 25px 0 8px 0; font-size: 16px;">보관된 카테고리</h4>
+                    <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">입력 화면에서는 숨겨져 있지만 과거 기록은 그대로 남아 있어 검색·기간 조회·통계에서 계속 볼 수 있습니다.</p>
+                    <div class="categories-list" id="archivedCategoriesList"></div>
+                </div>
+            </div>
+
+            <div class="ai-container" style="margin-top:25px;">
                 <h3 style="margin-bottom: 10px;">개인 AI API 키</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 10px;">AI 도우미 기능을 쓰려면 본인의 Gemini API 키를 입력해 저장해야 합니다. (Google AI Studio에서 무료로 발급받을 수 있습니다)</p>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px; line-height: 1.7;">
@@ -877,8 +872,8 @@
 
             <div class="category-manager" style="margin-top:25px;">
                 <h3>사용할 탭 선택</h3>
-                <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">활성화(✅)된 탭만 위쪽 탭 목록에 표시됩니다. 자주 안 쓰는 기능은 꺼두면 화면이 더 깔끔해집니다. (환경설정 탭 자체는 항상 표시됩니다)</p>
-                <div class="category-selector" id="settingsTabToggleList"></div>
+                <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">체크한 탭과 항목만 화면에 표시됩니다. 탭 안의 항목도 따로 끌 수 있어서, 자주 안 쓰는 기능을 숨기면 화면이 더 깔끔해집니다. (환경설정 탭은 항상 표시됩니다)</p>
+                <div class="settings-tab-toggle-list" id="settingsTabToggleList"></div>
             </div>
 
             <div class="category-manager" style="margin-top:25px;" data-feature="recordImport">

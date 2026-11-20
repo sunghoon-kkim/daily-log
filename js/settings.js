@@ -12,15 +12,54 @@
                 // 관리자가 전부 제한한 탭은 어차피 못 쓰니 이 목록에도 아예 안 보여줌
                 listEl.innerHTML = tabOrder
                     .filter(id => id !== 'settings' && !adminHiddenTabIds.includes(id))
-                    .map(id => {
-                        const enabled = !disabledTabIds.includes(id);
-                        return `<button type="button" class="category-select-btn${enabled ? ' selected' : ''}" onclick="toggleTabDisabled('${id}')">${enabled ? '✅' : '⬜'} ${TAB_LABELS[id]}</button>`;
-                    }).join('');
+                    .map(renderSettingsTabToggleGroup).join('');
             }
         }
 
+        // 기능 라벨 앞의 컬러 이모지를 떼고 글자만 씀 (FEATURE_GROUPS 라벨은 관리자 화면과 같이 써서 이모지가 붙어 있음)
+        function stripFeatureLabelEmoji(label) {
+            return String(label || '').replace(/^[^\p{L}\p{N}(]+/u, '').trim();
+        }
+
+        // 관리자 화면 라벨이 탭 이름과 똑같아 헷갈리는 항목은 여기서만 이름을 바꿔 보여줌
+        const SETTINGS_FEATURE_LABEL_OVERRIDES = { activityRecord: '달력·활동기록 본문' };
+
+        // 이 탭에서 본인이 따로 켜고 끌 수 있는 세부 항목 키. 관리자·코드가 막은 항목과,
+        // 환경설정 화면 안에만 있는 항목(과거 일지 가져오기 등)은 제외
+        function getUserToggleableFeatureKeys(tabId) {
+            const group = FEATURE_GROUPS.find(g => g.key === tabId);
+            if (!group) return [];
+            return Object.keys(group.features).filter(key => {
+                if (isFeatureAdminDisabled(key)) return false;
+                const els = document.querySelectorAll(`[data-feature="${key}"]`);
+                return Array.from(els).some(el => !el.closest('#settings'));
+            });
+        }
+
+        function renderSettingsTabToggleGroup(tabId) {
+            const tabEnabled = !disabledTabIds.includes(tabId);
+            const group = FEATURE_GROUPS.find(g => g.key === tabId);
+            const featureKeys = getUserToggleableFeatureKeys(tabId);
+            // 항목이 하나뿐인 탭은 탭 체크박스와 같은 뜻이라 따로 보여주지 않음
+            const featureHtml = featureKeys.length > 1 ? `
+                <div class="settings-feature-toggles" role="group" aria-label="${escapeHtml(TAB_LABELS[tabId])} 안에서 보여줄 항목">
+                    ${featureKeys.map(key => `
+                        <label class="settings-feature-toggle">
+                            <input type="checkbox" ${hiddenFeatures.includes(key) ? '' : 'checked'} ${tabEnabled ? '' : 'disabled'} onchange="toggleFeatureHidden('${key}')">
+                            <span>${escapeHtml(SETTINGS_FEATURE_LABEL_OVERRIDES[key] || stripFeatureLabelEmoji(group.features[key]))}</span>
+                        </label>`).join('')}
+                </div>` : '';
+            return `
+                <div class="settings-tab-group${tabEnabled ? '' : ' is-off'}">
+                    <label class="settings-tab-toggle">
+                        <input type="checkbox" ${tabEnabled ? 'checked' : ''} onchange="toggleTabDisabled('${tabId}')">
+                        ${typeof icon === 'function' ? icon(TAB_ICONS[tabId]) : ''}<span>${escapeHtml(TAB_LABELS[tabId])}</span>
+                    </label>${featureHtml}
+                </div>`;
+        }
+
         function toggleTabDisabled(tabId) {
-            if (!checkEditPermission()) return;
+            if (!checkEditPermission()) { renderSettingsTab(); return; }
             if (tabId === 'settings' || !TAB_LABELS[tabId]) return;
 
             if (disabledTabIds.includes(tabId)) {
@@ -32,6 +71,25 @@
             saveDisabledTabIdsToStorage();
             renderTabs();
             renderSettingsTab();
+        }
+
+        // 탭 안의 세부 항목 하나를 본인 화면에서 숨기거나 다시 보이게 함 (관리자 제한과는 별개)
+        function toggleFeatureHidden(key) {
+            if (!checkEditPermission()) { renderSettingsTab(); return; }
+            if (!FEATURE_LABELS[key]) return;
+
+            if (hiddenFeatures.includes(key)) {
+                hiddenFeatures = hiddenFeatures.filter(k => k !== key);
+            } else {
+                hiddenFeatures.push(key);
+            }
+
+            saveHiddenFeaturesToStorage();
+            applyFeatureRestrictions();
+            renderTabs();
+            renderSettingsTab();
+            // 오늘 요약 카드·작성 누락 표시·교대 표시처럼 그리는 시점에 항목 설정을 보는 화면은 다시 그림
+            if (typeof renderCalendar === 'function') renderCalendar();
         }
 
         function saveSettingsApiKey() {
