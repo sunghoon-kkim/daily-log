@@ -100,9 +100,15 @@
                 const sec = Math.floor((Date.now() - startedAt) / 1000);
                 let text = steps[0].text;
                 steps.forEach(step => { if (sec >= step.at) text = step.text; });
-                if (msgEl && msgEl.textContent !== text) msgEl.textContent = text;
+                if (msgEl && msgEl.textContent !== text) {
+                    const isFirst = !msgEl.dataset.motionStarted;
+                    msgEl.textContent = text;
+                    msgEl.dataset.motionStarted = '1';
+                    if (!isFirst) playMotion(msgEl, 'motion-fade-in');
+                }
                 if (elapsedEl) elapsedEl.textContent = `경과 ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
             };
+            if (msgEl) delete msgEl.dataset.motionStarted;
             render();
             const timer = setInterval(render, 1000);
             return () => clearInterval(timer);

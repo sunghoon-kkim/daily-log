@@ -45,6 +45,23 @@
             if (recordBox) recordBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
+        // 오늘 요약 숫자: 앱을 처음 열었을 때와 값이 바뀌었을 때만 올라가는 효과를 줌
+        // (기록을 고칠 때마다 다시 그려지므로, 같은 값이면 움직이지 않게 직전 값을 기억)
+        let lastTodaySummaryCounts = {};
+        const countSpan = (key, n) => `<span class="today-chip-count" data-count-key="${key}" data-count="${n}">${n}</span>`;
+
+        function playTodaySummaryCounts(el) {
+            const nextCounts = {};
+            el.querySelectorAll('[data-count-key]').forEach(span => {
+                const key = span.dataset.countKey;
+                const to = Number(span.dataset.count) || 0;
+                nextCounts[key] = to;
+                const prev = lastTodaySummaryCounts[key];
+                if (prev !== to) animateCount(span, typeof prev === 'number' ? prev : 0, to);
+            });
+            lastTodaySummaryCounts = nextCounts;
+        }
+
         function renderTodaySummary() {
             const el = document.getElementById('todaySummary');
             if (!el) return;
@@ -53,7 +70,7 @@
             const todayStr = formatDate(new Date());
             const chips = [];
             const chip = (tone, iconName, text, onclick) => chips.push(
-                `<button type="button" class="today-chip tone-${tone}" onclick="${onclick}"><span class="today-chip-icon" aria-hidden="true">${typeof icon === 'function' ? icon(iconName) : ''}</span>${text}</button>`
+                `<button type="button" class="today-chip tone-${tone}" onclick="${onclick}"><span class="today-chip-icon" aria-hidden="true">${typeof icon === 'function' ? icon(iconName) : ''}</span><span class="today-chip-text">${text}</span></button>`
             );
 
             // 오늘 기록
@@ -89,7 +106,7 @@
             const todayEvents = todayAllEvents.filter(ev => getEventGroup(ev) !== ROTATION_EVENT_GROUP);
             if (todayEvents.length > 0) {
                 const names = todayEvents.slice(0, 2).map(ev => escapeHtml(ev.title)).join(', ');
-                chip('info', 'calendar-days', `오늘 일정 ${todayEvents.length}건: ${names}${todayEvents.length > 2 ? ' 외' : ''}`, `jumpToDateRecord('${todayStr}')`);
+                chip('info', 'calendar-days', `오늘 일정 ${countSpan('events', todayEvents.length)}건: ${names}${todayEvents.length > 2 ? ' 외' : ''}`, `jumpToDateRecord('${todayStr}')`);
             }
 
             // 급한 정비 (정비계획 탭을 쓰는 경우만)
@@ -103,8 +120,8 @@
                 });
                 if (overdue + soon > 0) {
                     const parts = [];
-                    if (overdue) parts.push(`지연 ${overdue}`);
-                    if (soon) parts.push(`7일 이내 ${soon}`);
+                    if (overdue) parts.push(`지연 ${countSpan('maintOverdue', overdue)}`);
+                    if (soon) parts.push(`7일 이내 ${countSpan('maintSoon', soon)}`);
                     chip(overdue ? 'alert' : 'warn', 'wrench', `정비 ${parts.join(' · ')}건`, `switchTab('maintenance')`);
                 }
             }
@@ -114,9 +131,9 @@
                 const inv = getInventoryAlertCounts();
                 if (inv.shortage + inv.need + inv.soon > 0) {
                     const parts = [];
-                    if (inv.shortage) parts.push(`부족 ${inv.shortage}`);
-                    if (inv.need) parts.push(`정비용 확보 필요 ${inv.need}`);
-                    if (inv.soon) parts.push(`2주 내 소진 ${inv.soon}`);
+                    if (inv.shortage) parts.push(`부족 ${countSpan('invShortage', inv.shortage)}`);
+                    if (inv.need) parts.push(`정비용 확보 필요 ${countSpan('invNeed', inv.need)}`);
+                    if (inv.soon) parts.push(`2주 내 소진 ${countSpan('invSoon', inv.soon)}`);
                     chip(inv.shortage || inv.need ? 'alert' : 'warn', 'package', `재고 ${parts.join(' · ')}품목`, `switchTab('inventory')`);
                 }
             }
@@ -124,6 +141,7 @@
             const d = parseLocalDate(todayStr);
             el.innerHTML = `<div class="today-summary-title">오늘 · ${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_NAMES[d.getDay()]})</div>
                 <div class="today-summary-chips">${chips.join('')}</div>`;
+            playTodaySummaryCounts(el);
         }
 
         // ===== 수정 이력 & 되돌리기 =====

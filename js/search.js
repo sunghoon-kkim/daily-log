@@ -547,7 +547,9 @@
                 if (!targetEl) return;
                 target = targetEl.dataset.querySection;
             }
+            const wasHidden = targetEl.classList.contains('query-section-hidden');
             sections.forEach(el => el.classList.toggle('query-section-hidden', el !== targetEl));
+            if (name && wasHidden) playMotion(targetEl, 'motion-fade-in');
             document.querySelectorAll('#querySectionSwitcher .quick-preset-btn').forEach(btn => {
                 const selected = btn.dataset.section === target;
                 btn.classList.toggle('selected', selected);

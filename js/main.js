@@ -1596,6 +1596,43 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
         }
         
+        // ===== 움직임(모션) 공통 도우미 =====
+        // 기기에서 '동작 줄이기'를 켠 사람에게는 모든 효과를 건너뛰고 결과만 바로 보여줌
+        function prefersReducedMotion() {
+            return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        }
+
+        // 같은 애니메이션 클래스를 다시 붙여도 처음부터 재생되게 함 (끝나면 클래스를 떼서 transform이 남지 않게)
+        function playMotion(el, className) {
+            if (!el || prefersReducedMotion()) return;
+            el.classList.remove(className);
+            void el.offsetWidth;
+            el.classList.add(className);
+            // 안쪽 다른 애니메이션(동기화 깜빡임 등)이 끝난 신호에 반응하지 않도록 이 레이어의 motion* 애니메이션만 봄
+            const onEnd = e => {
+                if (!/^motion/.test(e.animationName)) return;
+                el.classList.remove(className);
+                el.removeEventListener('animationend', onEnd);
+            };
+            el.addEventListener('animationend', onEnd);
+        }
+
+        // 숫자를 from에서 to까지 짧게 올려 보여줌 (매직 UI의 Number Ticker 같은 효과, 라이브러리 없이 구현)
+        function animateCount(el, from, to, duration) {
+            if (!el) return;
+            if (prefersReducedMotion() || from === to) { el.textContent = String(to); return; }
+            const ms = duration || 600;
+            const start = performance.now();
+            const step = now => {
+                const t = Math.min(1, (now - start) / ms);
+                const eased = 1 - Math.pow(1 - t, 3);
+                el.textContent = String(Math.round(from + (to - from) * eased));
+                if (t < 1) requestAnimationFrame(step);
+            };
+            el.textContent = String(from);
+            requestAnimationFrame(step);
+        }
+
         let syncStatusHideTimeout = null;
         
         function showSyncStatus(text, state) {
@@ -1605,7 +1642,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             clearTimeout(syncStatusHideTimeout);
             // 앞에 붙은 이모지(☁️·⚠️)는 떼고 글자만 보여줌. 상태 색은 CSS의 작은 점(::before)으로 표시
             el.textContent = String(text).replace(/^(?:[\u2600-\u27BF\u{1F300}-\u{1FAFF}]\uFE0F?\s*)+/u, '');
+            const wasOk = el.classList.contains('ok');
             el.className = 'sync-status ' + (state || '');
+            // 저장 중 → 동기화됨으로 바뀌는 순간만 짧게 강조 (계속 '동기화됨'일 땐 조용히)
+            if (state === 'ok' && !wasOk) playMotion(el, 'motion-sync-done');
             el.style.visibility = 'visible';
             el.style.opacity = '1';
         }
@@ -1847,9 +1887,17 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         
         function switchTab(tabName, options) {
             options = options || {};
+            // 탭 목록에서 오른쪽 탭으로 가면 새 화면이 오른쪽에서, 왼쪽 탭으로 가면 왼쪽에서 흐려졌다 들어옴
+            const prevTabId = activeTabId;
+            const prevIndex = tabOrder.indexOf(prevTabId);
+            const nextIndex = tabOrder.indexOf(tabName);
             activeTabId = tabName;
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.getElementById(tabName).classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active', 'motion-tab-from-right', 'motion-tab-from-left'));
+            const nextTabEl = document.getElementById(tabName);
+            nextTabEl.classList.add('active');
+            if (prevTabId !== tabName && prevIndex !== -1 && nextIndex !== -1) {
+                playMotion(nextTabEl, nextIndex > prevIndex ? 'motion-tab-from-right' : 'motion-tab-from-left');
+            }
             document.querySelectorAll('.tab').forEach(el => {
                 el.classList.toggle('active', el.dataset.tabId === tabName);
             });

@@ -521,7 +521,7 @@
                 // 접힌 카드는 색상 막대만 표시, 클릭하면 다시 펼쳐짐 (툴팁으로 제목/D-day 확인 가능)
                 if (isUpcomingCardCollapsed(ev, todayStr)) {
                     return `
-                        <div class="upcoming-card-mini" style="--ev:${ev.color}" onclick="toggleUpcomingCardCollapse('${ev.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleUpcomingCardCollapse('${ev.id}')}" role="button" tabindex="0" title="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo})" aria-label="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo}) 펼치기"></div>
+                        <div class="upcoming-card-mini" data-ev-id="${escapeHtml(String(ev.id))}" style="--ev:${ev.color}" onclick="toggleUpcomingCardCollapse('${ev.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleUpcomingCardCollapse('${ev.id}')}" role="button" tabindex="0" title="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo})" aria-label="${escapeHtml(ev.title)}${repeatLabel} (${ddayInfo}) 펼치기"></div>
                     `;
                 }
 
@@ -530,7 +530,7 @@
                     : `${formatDateLabelShort(ev.start)} ~ ${formatDateLabelShort(ev.end)}`;
 
                 return `
-                    <div class="upcoming-card" style="--ev:${ev.color}" onclick="jumpToUpcomingDate('${ev.start}','${ev.end}')">
+                    <div class="upcoming-card" data-ev-id="${escapeHtml(String(ev.id))}" style="--ev:${ev.color}" onclick="jumpToUpcomingDate('${ev.start}','${ev.end}')">
                         <button class="upcoming-card-collapse-btn" onclick="event.stopPropagation(); toggleUpcomingCardCollapse('${ev.id}')" title="작게 접기" aria-label="작게 접기">−</button>
                         ${ev.repeatGroupId ? '<div class="upcoming-card-repeat-badge">(반복)</div>' : ''}
                         <span class="upcoming-card-dday">${ddayInfo}</span>
@@ -558,6 +558,9 @@
             else collapsedUpcomingCardIds.add(eventId);
             saveCollapsedUpcomingCardsToStorage();
             renderUpcomingWidget();
+            // 접고 펼친 그 카드만 살짝 나타나게 해서 무엇이 바뀌었는지 보여줌
+            const changed = Array.from(document.querySelectorAll('#upcomingWidget [data-ev-id]')).find(el => el.dataset.evId === String(eventId));
+            playMotion(changed, 'motion-pop-in');
         }
         
         function toggleUpcomingWidget() {

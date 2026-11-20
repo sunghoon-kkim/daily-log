@@ -7428,3 +7428,36 @@ button > .ui-icon-em,
 .category-manager,
 .notes-container,
 .notes-split-pane { background: var(--color-surface); }
+
+/* ===== 움직임(모션) 레이어 =====
+   업무 화면이라 짧고(180~220ms) 작게(24px 이하) 움직이고, 사용자 동작에 반응할 때만 재생.
+   끝나면 클래스를 떼서 transform이 남지 않음. 동작 줄이기 설정이면 전부 끔 */
+@keyframes motionTabFromRight { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes motionTabFromLeft { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+@keyframes motionFadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+@keyframes motionPopIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes motionSyncDone {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success) 45%, transparent); }
+    100% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-success) 0%, transparent); }
+}
+
+/* 탭 바깥 테두리·배경은 그대로 두고 안쪽 내용만 밀려 들어옴 */
+.tab-content.motion-tab-from-right > * { animation: motionTabFromRight 220ms var(--ease); }
+.tab-content.motion-tab-from-left > * { animation: motionTabFromLeft 220ms var(--ease); }
+.tab-content.motion-tab-from-right,
+.tab-content.motion-tab-from-left { overflow-x: clip; }
+
+.motion-fade-in { animation: motionFadeIn var(--duration) var(--ease); }
+.motion-pop-in { animation: motionPopIn var(--duration) var(--ease); }
+.sync-status.motion-sync-done { animation: motionSyncDone 600ms var(--ease); }
+
+/* 오늘 요약 숫자: 올라가는 동안 글자 폭이 흔들리지 않게 고정폭 숫자 */
+.today-chip-count { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+    .tab-content.motion-tab-from-right > *,
+    .tab-content.motion-tab-from-left > *,
+    .motion-fade-in,
+    .motion-pop-in,
+    .sync-status.motion-sync-done { animation: none; }
+}
