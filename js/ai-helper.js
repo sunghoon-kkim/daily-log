@@ -91,43 +91,39 @@
             status.className = 'ai-status success';
         }
 
-        // 일일 업무 요약 로딩 중 보여줄 가짜 진행률 - 실제 API는 진행률을 안 주므로,
-        // 남은 구간을 매번 조금씩 채워가며 90%에서 멈춰있다가 응답이 오면 100%로 채움
-        let dailySummaryProgressTimer = null;
-        const DAILY_SUMMARY_LOADING_MESSAGES = ['오늘 업무를 정리하는 중입니다', '항목을 다듬는 중입니다', '거의 다 됐습니다'];
-
-        function startDailySummaryProgress() {
-            const msgEl = document.getElementById('dailySummaryLoadingMsg');
-            const percentEl = document.getElementById('dailySummaryLoadingPercent');
-            const barEl = document.getElementById('dailySummaryLoadingBar');
-            let percent = 0;
-            let msgIndex = 0;
-            if (msgEl) msgEl.textContent = DAILY_SUMMARY_LOADING_MESSAGES[0];
-            if (percentEl) percentEl.textContent = '0%';
-            if (barEl) barEl.style.width = '0%';
-
-            dailySummaryProgressTimer = setInterval(() => {
-                percent = Math.min(99, percent + 1);
-                if (percentEl) percentEl.textContent = Math.round(percent) + '%';
-                if (barEl) barEl.style.width = percent + '%';
-
-                const nextMsgIndex = percent > 65 ? 2 : (percent > 25 ? 1 : 0);
-                if (nextMsgIndex !== msgIndex) {
-                    msgIndex = nextMsgIndex;
-                    if (msgEl) msgEl.textContent = DAILY_SUMMARY_LOADING_MESSAGES[msgIndex];
-                }
-            }, 350);
+        // AI 응답은 진행률을 알려주지 않으므로, 가짜 진행률 대신 지금 AI가 하는 작업을 단계 문구로 보여줌.
+        // steps: [{ at: 시작 초, text }] - 마지막 문구는 응답이 올 때까지 유지. elapsedEl이 있으면 경과 시간(m:ss)도 표시.
+        // 반환값은 멈추는 함수
+        function startStagedLoading(msgEl, steps, elapsedEl) {
+            const startedAt = Date.now();
+            const render = () => {
+                const sec = Math.floor((Date.now() - startedAt) / 1000);
+                let text = steps[0].text;
+                steps.forEach(step => { if (sec >= step.at) text = step.text; });
+                if (msgEl && msgEl.textContent !== text) msgEl.textContent = text;
+                if (elapsedEl) elapsedEl.textContent = `경과 ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+            };
+            render();
+            const timer = setInterval(render, 1000);
+            return () => clearInterval(timer);
         }
 
-        function stopDailySummaryProgress(success) {
-            clearInterval(dailySummaryProgressTimer);
-            dailySummaryProgressTimer = null;
-            const percentEl = document.getElementById('dailySummaryLoadingPercent');
-            const barEl = document.getElementById('dailySummaryLoadingBar');
-            if (success) {
-                if (percentEl) percentEl.textContent = '100%';
-                if (barEl) barEl.style.width = '100%';
-            }
+        // 일일 업무 요약 로딩 문구
+        let stopDailySummaryLoading = null;
+        const DAILY_SUMMARY_LOADING_STEPS = [
+            { at: 0, text: '오늘 업무를 정리하는 중입니다' },
+            { at: 8, text: '항목을 다듬는 중입니다' },
+            { at: 20, text: '거의 다 됐습니다' }
+        ];
+
+        function startDailySummaryProgress() {
+            stopDailySummaryProgress();
+            stopDailySummaryLoading = startStagedLoading(document.getElementById('dailySummaryLoadingMsg'), DAILY_SUMMARY_LOADING_STEPS);
+        }
+
+        function stopDailySummaryProgress() {
+            if (stopDailySummaryLoading) stopDailySummaryLoading();
+            stopDailySummaryLoading = null;
         }
 
         // 결과를 직접 손으로 고친 뒤 "생성"을 다시 누르면 확인 없이 사라졌었음. 마지막으로
@@ -420,6 +416,22 @@
             doGenerateAISummary();
         }
 
+        // 월별 피드백은 상위 모델이 깊게 추론해서 1~2분 걸릴 수 있음. 왜 오래 걸리는지와 지금 하는 작업을 보여줌
+        let stopAiFeedbackLoading = null;
+
+        function startAiFeedbackLoading(steps, note) {
+            stopAiFeedbackLoadingMsg();
+            const noteEl = document.getElementById('aiLoadingNote');
+            if (noteEl) noteEl.textContent = note;
+            stopAiFeedbackLoading = startStagedLoading(
+                document.getElementById('aiLoadingMsg'), steps, document.getElementById('aiLoadingElapsed'));
+        }
+
+        function stopAiFeedbackLoadingMsg() {
+            if (stopAiFeedbackLoading) stopAiFeedbackLoading();
+            stopAiFeedbackLoading = null;
+        }
+
         async function doGenerateAISummary() {
             const startStr = document.getElementById('aiStartDate').value;
             const endStr = document.getElementById('aiEndDate').value;
@@ -461,7 +473,14 @@
             resultBlock.style.display = 'none';
 
             const periodLabel = `${startStr} ~ ${endStr}`;
-            
+            startAiFeedbackLoading([
+                { at: 0, text: `${periodLabel} 일일 기록을 읽는 중입니다` },
+                { at: 10, text: '지난달 개선/보완할 점을 이번 달에 수행했는지 확인하는 중입니다' },
+                { at: 25, text: '목표 → 핵심 결과 → 실행 과정 → 성과 순서로 정리하는 중입니다' },
+                { at: 45, text: '부족했던 점과 개선 계획을 정리하는 중입니다' },
+                { at: 65, text: '기록에 없는 내용이 들어갔는지 마지막으로 검토하는 중입니다' }
+            ], '한 달치 기록을 꼼꼼히 분석하느라 1~2분 정도 걸릴 수 있어요. 창을 닫지 말고 기다려 주세요.');
+
             try {
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
@@ -511,6 +530,7 @@
                 btn.disabled = false;
                 reviseBtn.disabled = false;
                 loading.style.display = 'none';
+                stopAiFeedbackLoadingMsg();
             }
         }
 
@@ -539,7 +559,10 @@
             loading.style.display = 'block';
             statusEl.textContent = '';
             statusEl.className = 'ai-status';
-            
+            startAiFeedbackLoading(
+                [{ at: 0, text: '요청하신 내용을 반영해 다시 작성하는 중입니다' }],
+                '앞선 내용을 다시 검토하느라 1분 정도 걸릴 수 있어요. 창을 닫지 말고 기다려 주세요.');
+
             try {
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
@@ -574,6 +597,7 @@
                 reviseBtn.disabled = false;
                 generateBtn.disabled = false;
                 loading.style.display = 'none';
+                stopAiFeedbackLoadingMsg();
             }
         }
 

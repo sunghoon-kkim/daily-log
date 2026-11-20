@@ -363,9 +363,8 @@
                     <div class="ai-status" id="dailySummarySettingsStatus" role="status"></div>
                 </div>
 
-                <div class="ai-loading" id="dailySummaryLoading">
-                    🤖 <span id="dailySummaryLoadingMsg">오늘 업무를 정리하는 중입니다</span>... <span id="dailySummaryLoadingPercent">0%</span>
-                    <div class="ai-loading-bar-track"><div class="ai-loading-bar-fill" id="dailySummaryLoadingBar"></div></div>
+                <div class="ai-loading" id="dailySummaryLoading" role="status" aria-live="polite">
+                    <span id="dailySummaryLoadingMsg">오늘 업무를 정리하는 중입니다</span>...
                 </div>
                 
                 <div class="ai-result-block daily-summary-split" id="dailySummaryResultBlock" style="display:none;">
@@ -442,7 +441,10 @@
                 </div>
                 
                 <button class="ai-generate-btn" id="aiGenerateBtn" onclick="generateAISummary()"><span data-icon="sparkles"></span>AI 월별 피드백 생성하기</button>
-                <div class="ai-loading" id="aiLoading">🤖 AI가 정리하는 중입니다...</div>
+                <div class="ai-loading" id="aiLoading" role="status" aria-live="polite">
+                    <span id="aiLoadingMsg">AI가 정리하는 중입니다</span>... <span class="ai-loading-elapsed" id="aiLoadingElapsed"></span>
+                    <div class="ai-loading-note" id="aiLoadingNote"></div>
+                </div>
                 
                 <div class="ai-result-block" id="aiResultBlock" style="display:none;">
                     <div class="ai-split-columns">
