@@ -47,7 +47,7 @@
     /* 모서리 */
     --radius-sm: 4px;
     --radius-md: 6px;
-    --radius-lg: 8px;
+    --radius-lg: 12px;
     /* 그림자: 떠 있는 레이어(모달·메뉴)만 overlay, 나머지는 거의 없음 */
     --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
     --shadow-md: 0 2px 8px rgba(15, 23, 42, 0.06);
@@ -67,6 +67,8 @@
     --duration-slow: 260ms;
     --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
     --stagger-step: 25ms;
+    /* 흔한 hover 전환(레이아웃 속성은 제외해 버벅임 방지). 개별 속성이 필요하면 직접 나열 */
+    --transition-ui: background-color var(--duration) var(--ease), color var(--duration) var(--ease), border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease), opacity var(--duration) var(--ease), transform var(--duration) var(--ease);
     /* 소프트 틴트(일정·배지): 데이터 색을 배경 14% / 테두리 25%로 옅게, 글자는 본문색과 섞어 톤다운 */
     --tint-bg: 14%;
     --tint-border: 25%;
@@ -83,6 +85,16 @@
     --layout-max: 1500px;   /* 표준 폭(기본값). 환경설정에서 와이드를 고르면 아래 html[data-layout="wide"]로 1920px */
     --layout-gutter: 32px;
     --measure: 80ch;   /* 설명 문단 최대 줄 길이 */
+}
+
+/* 동작 줄이기 설정: 움직임 길이 토큰을 0으로 만들어 토큰을 쓰는 전환·지연을 한 번에 끈다 */
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --duration-fast: 0ms;
+        --duration: 0ms;
+        --duration-slow: 0ms;
+        --stagger-step: 0ms;
+    }
 }
 
 html {
@@ -168,7 +180,7 @@ html {
             border-radius: var(--radius-lg);
             background: var(--color-surface-muted);
             color: var(--color-text-secondary);
-            transition: opacity 0.4s;
+            transition: opacity var(--duration-slow) var(--ease);
         }
         
         .sync-status.ok {
@@ -211,7 +223,7 @@ html {
             font-size: 15px;
             color: var(--color-text-secondary);
             border-bottom: 3px solid transparent;
-            transition: background 0.3s, color 0.3s;
+            transition: background var(--duration-slow) var(--ease), color var(--duration-slow) var(--ease);
             user-select: none;
             position: relative;
             touch-action: none; /* 드래그하는 동안 화면이 같이 스크롤되지 않도록 함(터치 기기 포함) */
@@ -393,7 +405,7 @@ html {
             z-index: 3000;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.2s, transform 0.2s;
+            transition: opacity var(--duration) var(--ease), transform var(--duration) var(--ease);
             max-width: min(90vw, 420px);
             text-align: center;
         }
@@ -513,7 +525,7 @@ html {
             border-radius: var(--radius-lg);
             padding: 10px;
             min-height: 56px;
-            transition: all 0.15s;
+            transition: var(--transition-ui);
             background: var(--color-surface);
         }
 
@@ -580,7 +592,7 @@ html {
             -webkit-user-select: none;
             touch-action: none; /* 카드 위에서 드래그하는 동안 화면이 같이 스크롤되지 않도록 함(터치 기기 포함) */
             min-width: 84px;
-            transition: transform 0.1s, box-shadow 0.1s;
+            transition: transform var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
         }
 
         .org-card:hover {
@@ -710,7 +722,7 @@ html {
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
         
         .upcoming-toggle-btn:hover {
@@ -738,7 +750,7 @@ html {
             box-shadow: var(--shadow-sm);
             border-left: 5px solid var(--color-primary);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
             position: relative;
         }
         
@@ -805,7 +817,7 @@ html {
             min-height: 84px;
             border-radius: var(--radius-lg);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
             box-shadow: var(--shadow-sm);
         }
         
@@ -905,7 +917,7 @@ html {
         .water-flow-rail-handle {
             position: absolute;
             background: color-mix(in srgb, var(--color-primary) 35%, transparent);
-            border-radius: 3px;
+            border-radius: var(--radius-sm);
             cursor: grab;
             touch-action: none;
         }
@@ -1104,7 +1116,7 @@ html {
             cursor: grab;
             user-select: none;
             touch-action: none;
-            transition: box-shadow 0.2s;
+            transition: box-shadow var(--duration) var(--ease);
         }
 
         .water-flow-block:hover {
@@ -1261,7 +1273,7 @@ html {
             border-radius: var(--radius-sm);
             cursor: pointer;
             font-size: 14px;
-            transition: background 0.3s;
+            transition: background var(--duration-slow) var(--ease);
             white-space: nowrap;
         }
         
@@ -1278,7 +1290,7 @@ html {
             cursor: pointer;
             font-size: 14px;
             font-weight: 700;
-            transition: all 0.3s;
+            transition: var(--transition-ui);
             white-space: nowrap;
         }
         
@@ -1337,7 +1349,7 @@ html {
             border: 1px solid var(--color-border);
             border-radius: var(--radius-lg);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
             background: var(--color-surface);
             position: relative;
             padding: 6px;
@@ -1476,7 +1488,7 @@ html {
         .day-plan-item {
             color: white;
             padding: 2px 6px;
-            border-radius: 3px;
+            border-radius: var(--radius-sm);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1515,7 +1527,7 @@ html {
             background: var(--color-surface-muted);
             color: var(--color-text-secondary);
             padding: 2px 6px;
-            border-radius: 3px;
+            border-radius: var(--radius-sm);
             font-weight: 600;
             font-size: 10px;
             cursor: pointer;
@@ -1607,7 +1619,7 @@ html {
             resize: vertical;
             overflow: auto;
             min-height: 100px;
-            transition: box-shadow 0.2s, border-color 0.2s;
+            transition: box-shadow var(--duration) var(--ease), border-color var(--duration) var(--ease);
         }
         
         .category-record.dragging {
@@ -1664,7 +1676,7 @@ html {
             padding: 3px 8px;
             border-radius: var(--radius-lg);
             white-space: nowrap;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
         
         .category-prev-btn:hover {
@@ -1681,7 +1693,7 @@ html {
             cursor: pointer;
             padding: 2px 6px;
             border-radius: var(--radius-sm);
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
         
         .category-collapse-btn:hover {
@@ -1725,7 +1737,7 @@ html {
             cursor: pointer;
             overflow: hidden;
             text-align: left;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
 
         .collapsed-category-chip:hover {
@@ -1759,7 +1771,7 @@ html {
             resize: none;
             min-height: 60px;
             overflow: hidden;
-            transition: border-color 0.3s;
+            transition: border-color var(--duration-slow) var(--ease);
         }
         
         .category-record textarea:focus {
@@ -1843,7 +1855,7 @@ html {
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition-ui);
         }
         
         .save-btn {
@@ -1930,7 +1942,7 @@ html {
             border-radius: var(--radius-lg);
             cursor: pointer;
             font-weight: 600;
-            transition: all 0.3s;
+            transition: var(--transition-ui);
         }
         
         .add-category-btn:hover {
@@ -1955,7 +1967,7 @@ html {
             padding: 16px 18px;
             margin-bottom: 14px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
         
         .project-card:hover {
@@ -2148,7 +2160,7 @@ html {
             font-weight: 600;
             white-space: nowrap;
             flex-shrink: 0;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
 
         .category-default-collapse-toggle:hover {
@@ -2215,7 +2227,7 @@ html {
         .todo-drag-handle:focus-visible {
             outline: 2px solid var(--color-primary);
             outline-offset: 1px;
-            border-radius: 3px;
+            border-radius: var(--radius-sm);
         }
 
         .category-tag-drag-handle:active {
@@ -2483,7 +2495,7 @@ html {
 
         .result-item.clickable {
             cursor: pointer;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
         
         .result-item.clickable:hover {
@@ -2551,7 +2563,7 @@ html {
             border-radius: var(--radius-lg);
             cursor: pointer;
             white-space: nowrap;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
         
         .result-action-btn:hover {
@@ -2716,7 +2728,7 @@ html {
             width: 4px;
             border-radius: var(--radius-sm);
             background: #d0d0e0;
-            transition: background 0.2s;
+            transition: background var(--duration) var(--ease);
         }
         
         .notes-split-divider:hover::after,
@@ -2979,7 +2991,7 @@ html {
             color: #1dd1a1;
             font-weight: 600;
             opacity: 0;
-            transition: opacity 0.3s;
+            transition: opacity var(--duration-slow) var(--ease);
         }
         
         .notes-save-indicator.show {
@@ -3100,7 +3112,7 @@ html {
 
         .notes-tool-highlight-swatch {
             padding: 0 3px;
-            border-radius: 3px;
+            border-radius: var(--radius-sm);
             color: var(--color-text);
         }
 
@@ -3181,7 +3193,7 @@ html {
             font-size: 16px;
             font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition-ui);
         }
         
         .ai-generate-btn:hover:not(:disabled) {
@@ -3220,7 +3232,7 @@ html {
             width: 100%;
             max-width: 280px;
             height: 6px;
-            border-radius: 3px;
+            border-radius: var(--radius-sm);
             background: var(--color-primary-soft);
             margin: 8px auto 0;
             overflow: hidden;
@@ -3230,8 +3242,8 @@ html {
             height: 100%;
             width: 0%;
             background: var(--color-primary);
-            border-radius: 3px;
-            transition: width 0.25s ease-out;
+            border-radius: var(--radius-sm);
+            transition: width var(--duration) var(--ease);
         }
         
         .ai-copy-btn {
@@ -3287,7 +3299,7 @@ html {
             color: var(--color-text-secondary);
             cursor: pointer;
             user-select: none;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
 
         .goal-area-check-item:has(input:checked) {
@@ -3361,7 +3373,7 @@ html {
             font-weight: 700;
             font-size: 13px;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition-ui);
         }
         
         .goal-generate-btn:hover:not(:disabled) {
@@ -3476,7 +3488,7 @@ html {
             font-size: 13px;
             cursor: pointer;
             white-space: nowrap;
-            transition: all 0.3s;
+            transition: var(--transition-ui);
         }
         
         .ai-revise-btn:hover:not(:disabled) {
@@ -4033,7 +4045,7 @@ html {
             border-radius: 50%;
             cursor: pointer;
             border: 3px solid transparent;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
         
         .color-swatch.selected {
@@ -4062,7 +4074,7 @@ html {
             border: 3px solid transparent;
             cursor: pointer;
             background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
-            transition: all 0.2s;
+            transition: var(--transition-ui);
             overflow: hidden;
         }
 
@@ -4097,7 +4109,7 @@ html {
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: var(--transition-ui);
         }
 
         .quick-preset-btn:hover {
@@ -4126,7 +4138,7 @@ html {
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition-ui);
         }
         
         .modal-save-btn {
@@ -5073,7 +5085,7 @@ html {
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: var(--transition-ui);
     margin-right: 8px;
 }
 
@@ -6126,7 +6138,7 @@ body {
 .dark-mode .rot-day-status { background: rgba(31, 157, 107, 0.14); color: var(--d-text2); }
 .dark-mode .rot-day-status.rot-conflict { background: rgba(224, 138, 0, 0.16); color: var(--d-text2); }
 @media (max-width: 768px) {
-    .rot-chip, .rot-warn { width: 12px; height: 12px; font-size: 8px; line-height: 12px; border-radius: 3px; }
+    .rot-chip, .rot-warn { width: 12px; height: 12px; font-size: 8px; line-height: 12px; border-radius: var(--radius-sm); }
     .rot-idle { line-height: 9px; }
     .rot-chip-sep { width: 2px; }
     .rot-warn { border-radius: 50%; }
@@ -6250,7 +6262,7 @@ body {
     height: 100%;
     border-radius: var(--radius-md) 0 0 var(--radius-md);
     background: #4a8fb8;
-    transition: width 0.3s ease;
+    transition: width var(--duration-slow) var(--ease);
 }
 .inv-level-soon .inv-gauge-fill { background: #d4a017; }
 .inv-level-low .inv-gauge-fill,

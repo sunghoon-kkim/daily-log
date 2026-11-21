@@ -6,7 +6,7 @@
 ## 원칙
 1. **색은 하나만 강조한다.** 포인트 컬러는 채도를 낮춘 딥 슬레이트 인디고 한 가지 (쨍한 보라빛 인디고는 쓰지 않는다). 나머지는 쿨그레이(라이트)·뉴트럴 차콜(다크) 단계로 위계를 만든다.
 2. **면은 테두리로 나눈다.** 그림자나 배경색 대신 1px `--color-border` 테두리로 카드와 입력칸을 구분한다.
-3. **그라데이션·짙은 그림자·큰 라운드는 쓰지 않는다.** 모서리는 최대 8px, 그림자는 떠 있는 레이어(모달·메뉴·드래그 중인 항목)에만 쓴다.
+3. **그라데이션·짙은 그림자·큰 라운드는 쓰지 않는다.** 모서리는 최대 12px, 그림자는 떠 있는 레이어(모달·메뉴·드래그 중인 항목)에만 쓴다.
 4. **데이터 색은 색조만 쓰고 덩어리로 칠하지 않는다.** 일정 색상(빨주노초파남보)·카테고리 색은 정보이므로 색조는 유지하되, 원색 배경 대신 아래 '소프트 틴트'나 작은 색 점으로 표시한다. 긴급도·상태 색도 같은 원칙.
 5. **움직임은 반응할 때만 쓴다.** hover/focus 때 색·테두리가 120~180ms로 바뀌는 정도. hover 때 위로 뜨는(translateY) 효과는 쓰지 않는다.
 
@@ -73,7 +73,7 @@
 |---|---|---|
 | `--radius-sm` | 4px | 작은 칩, 체크 표시 |
 | `--radius-md` | 6px | 버튼, 상태 칩, 배지 |
-| `--radius-lg` | 8px | 카드, 입력칸, 모달, 탭 묶음 (최대값) |
+| `--radius-lg` | 12px | 카드, 입력칸, 모달, 탭 묶음 (최대값) |
 | 원형 | 50% | 색상 견본·점 등 원래 동그란 것만 |
 
 - 테두리는 `1px solid var(--color-border)`. 2px 이상은 선택 상태(활성 탭 밑줄, 선택한 날짜)에만 쓴다. 카드 왼쪽 굵은 상태선은 쓰지 않는다.
@@ -136,18 +136,19 @@
 - **주 버튼** (`.query-btn`, `.save-btn`, `.add-category-btn`, `.add-event-btn`, `.modal-save-btn` 등): 인디고 채움, 흰 글자, 6px, 600. hover 때 `--color-primary-hover`. 한 화면 영역에 하나만 둔다.
 - **보조 버튼** (`.ai-copy-btn`, `.quick-preset-btn`, `.category-prev-btn`, `.nav-btn`, `.result-action-btn`, `.modal-cancel-btn`): 흰 바탕 + 1px 테두리 + 보조 글자색. hover 때 `--color-surface-muted` 배경과 `--color-border-strong` 테두리.
 - **선택 상태** (`.quick-preset-btn.selected`, 활성 탭): `--color-primary-soft` 배경 + 인디고 글자. 탭은 배경 없이 2px 인디고 밑줄.
-- **입력칸**: 흰 바탕, 1px 테두리, 8px 모서리. 포커스 때 인디고 테두리와 3px `--color-focus-ring`. 체크박스·라디오는 `accent-color: var(--color-primary)`.
-- **카드·섹션** (`.query-container`, `.ai-container`, `.project-card`): 흰 바탕, 1px 테두리, 8px 모서리, 그림자 없음.
+- **입력칸**: 흰 바탕, 1px 테두리, 12px 모서리(`--radius-lg`). 포커스 때 인디고 테두리와 3px `--color-focus-ring`. 체크박스·라디오는 `accent-color: var(--color-primary)`.
+- **카드·섹션** (`.query-container`, `.ai-container`, `.project-card`): 흰 바탕, 1px 테두리, 12px 모서리, 그림자 없음.
 - **모달**: 배경 막 `rgba(15,23,42,.45)`, 상자 32px 안쪽 여백(모바일 24px), `--shadow-overlay`.
 - **설정 체크 목록** (`.settings-tab-group`, 환경설정 > 사용할 탭 선택): 탭 한 줄(16px 체크박스 + 16px 아이콘 + 14px 600 글자) 아래에 세부 항목 체크박스를 체크박스+간격만큼 들여 13px 보조 글자로 나열. 줄 사이는 1px `--color-border` 구분선, 카드·배경 채움 없음. 탭을 끄면 항목은 3차 글자색으로 비활성.
 - **포커스**: 버튼·탭은 `outline: 2px solid var(--color-primary); outline-offset: 2px`. 포커스 표시를 지우지 않는다.
 
 ## 움직임 (style.css 맨 아래 "움직임(모션) 레이어", 공통 함수는 js/main.js `playMotion`·`animateCount`)
+- 전환은 `transition: all`을 쓰지 않는다. 흔한 hover는 `var(--transition-ui)`(색·테두리·그림자·투명도·transform만), 그 밖에는 필요한 속성만 `var(--duration*) var(--ease)`로 직접 쓴다. 시간·곡선 숫자를 하드코딩하지 않는다.
 - 사용자 동작에 반응할 때만, 짧게(180~220ms, `--duration`·`--ease`) 작게(이동 24px 이하) 움직인다. 저절로 반복되는 장식 효과는 쓰지 않는다.
 - **탭 전환**: 탭 목록에서 오른쪽 탭으로 가면 내용이 오른쪽에서, 왼쪽 탭이면 왼쪽에서 흐려졌다 들어온다 (`motion-tab-from-right/left`, 220ms·24px). 탭 테두리·배경은 움직이지 않는다.
 - **숫자**: 오늘 요약 카드 숫자는 처음 열 때와 값이 바뀔 때만 0.6초 동안 올라간다 (`animateCount`). 같은 값으로 다시 그릴 때는 움직이지 않는다.
 - **상태 문구·화면 전환**: AI 로딩 문구 교체, 검색 & 조회 화면 전환은 `motion-fade-in`. 다가오는 일정 카드를 접거나 펼치면 그 카드만 `motion-pop-in`. 동기화 상태가 '동기화됨'으로 바뀌는 순간만 초록 링이 한 번 퍼진다.
-- `prefers-reduced-motion: reduce`이면 모든 효과를 끄고 결과만 바로 보여준다.
+- `prefers-reduced-motion: reduce`이면 모든 효과를 끄고 결과만 바로 보여준다. `:root`에서 `--duration-fast`·`--duration`·`--duration-slow`·`--stagger-step`을 0ms로 바꾸므로, 토큰을 쓴 전환은 따로 끄지 않아도 꺼진다. 키프레임 애니메이션은 별도로 `animation: none`을 둔다.
 
 ## 일관성 규칙 (style.css 맨 아래 "일관성 레이어")
 - **인디고 글자**(링크·강조 글자)는 `--color-primary-text`. 라이트는 `#3B4998`, 다크는 `#A8B1E3`(어두운 바탕 대비 8:1). 인디고로 **채운** 버튼의 글자는 항상 흰색.
@@ -199,7 +200,7 @@
 
 ## 새 UI를 만들 때 확인할 것
 - [ ] 색·여백·모서리·그림자를 토큰으로 썼는가 (인라인 `style=""`도 마찬가지)
-- [ ] 그라데이션, 8px 넘는 모서리, 짙은 그림자, 원색 배경, 굵은 왼쪽 색 막대를 쓰지 않았는가
+- [ ] 그라데이션, 12px 넘는 모서리, 짙은 그림자, 원색 배경, 굵은 왼쪽 색 막대를 쓰지 않았는가
 - [ ] 탭·제목·버튼에 컬러 이모지 대신 `icon()`을 썼는가 (또는 아이콘 없이 글자만)
 - [ ] 주 버튼이 한 영역에 하나인가
 - [ ] 라이트·다크 모두에서 보이는가 (다크는 토큰이 알아서 바뀌므로 하드코딩만 피하면 된다)
