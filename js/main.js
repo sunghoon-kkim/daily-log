@@ -147,6 +147,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 환경설정 > 사용할 탭 선택에서 본인이 숨긴 탭 안 세부 항목 키 목록(FEATURE_GROUPS 키).
         // 관리자 제한(disabledFeatures)과 따로 저장해서, 다시 켜면 그대로 돌아오고 관리자 설정을 건드리지 않음
         let hiddenFeatures = [];
+        // 환경설정 > 화면 너비. 'standard'(1500px, 기본) 또는 'wide'(1920px). 계정 설정이라 서버 프로필에 동기화됨
+        let layoutWidth = 'standard';
         // 개인이 환경설정에 입력해 저장한 본인 Gemini API 키. 공용 키는 없어서 AI 기능은 전부 이 키가 있어야만 동작함
         let personalAiApiKey = '';
 
@@ -378,6 +380,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             loadTabOrder();
             loadDisabledTabIds();
             loadHiddenFeatures();
+            loadLayoutWidth();
+            applyLayoutWidth();
             loadPersonalAiApiKey();
             loadDisabledFeatures();
             loadRecordHistoryToolsState();
@@ -611,6 +615,17 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         function loadDisabledTabIds() {
             const stored = localStorage.getItem('disabledTabIds');
             disabledTabIds = stored ? safeJsonParse(stored, [], 'disabledTabIds').filter(id => id !== 'settings') : [];
+        }
+
+        function loadLayoutWidth() {
+            layoutWidth = localStorage.getItem('layoutWidth') === 'wide' ? 'wide' : 'standard';
+        }
+
+        // 로그인한 일반 계정만 자기 설정을 적용함. 로그인 전·관리자 화면은 항상 표준 폭
+        function applyLayoutWidth() {
+            const wide = layoutWidth === 'wide' && !!currentEmployeeId && !isAdmin;
+            if (wide) document.documentElement.setAttribute('data-layout', 'wide');
+            else document.documentElement.removeAttribute('data-layout');
         }
 
         function loadHiddenFeatures() {
@@ -861,6 +876,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 tabOrder,
                 disabledTabIds,
                 hiddenFeatures,
+                layoutWidth,
                 aiApiKey: personalAiApiKey,
                 disabledFeatures,
                 freeNotesPages,
@@ -904,6 +920,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             safeSetItem('tabOrder', JSON.stringify(tabOrder));
             safeSetItem('disabledTabIds', JSON.stringify(disabledTabIds));
             safeSetItem('hiddenFeatures', JSON.stringify(hiddenFeatures));
+            safeSetItem('layoutWidth', layoutWidth);
             safeSetItem('personalAiApiKey', personalAiApiKey);
             safeSetItem('disabledFeatures', JSON.stringify(disabledFeatures));
             syncActiveFreeNotesPageData();
@@ -1033,6 +1050,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     tabOrder = (data.tabOrder && data.tabOrder.length) ? reconcileTabOrder(data.tabOrder) : reconcileTabOrder([]);
                     disabledTabIds = Array.isArray(data.disabledTabIds) ? data.disabledTabIds.filter(id => id !== 'settings') : [];
                     hiddenFeatures = Array.isArray(data.hiddenFeatures) ? data.hiddenFeatures.filter(key => typeof key === 'string') : [];
+                    layoutWidth = data.layoutWidth === 'wide' ? 'wide' : 'standard';
+                    applyLayoutWidth();
                     personalAiApiKey = (typeof data.aiApiKey === 'string') ? data.aiApiKey : '';
                     disabledFeatures = Array.isArray(data.disabledFeatures) ? data.disabledFeatures : [];
                     currentUserTeamReportRole = computeEffectiveTeamReportRole(data);
@@ -2892,7 +2911,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'activityRecords', 'calendarEvents', 'activityCategories',
             'categoryColors', 'categoryDefaultCollapsed', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
-            'tabOrder', 'disabledTabIds', 'hiddenFeatures', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate', 'dailySummaryFixedFirstItem',
+            'tabOrder', 'disabledTabIds', 'hiddenFeatures', 'layoutWidth', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate', 'dailySummaryFixedFirstItem',
             // categoryImages(사진 링크)·monthlyFeedbacks(월별 평가)는 빠져 있어서 로그아웃 뒤에도 남았음(보안 감사 지적)
             'categoryImages', 'monthlyFeedbacks', 'waterFlowBlocks', 'waterFlowConnections', 'cacheOwnerId',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'inventoryItems', 'inventoryCategories', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',

@@ -63,7 +63,7 @@
     --leading-relaxed: 1.7;
     --tracking-ko: -0.005em;
     /* 레이아웃: 상단 바·탭 줄·본문·관리자 화면 모두 이 폭과 좌우 여백을 씀 */
-    --layout-max: 1920px;
+    --layout-max: 1500px;   /* 표준 폭(기본값). 환경설정에서 와이드를 고르면 아래 html[data-layout="wide"]로 1920px */
     --layout-gutter: 32px;
     --measure: 80ch;   /* 설명 문단 최대 줄 길이 */
 }
@@ -7579,4 +7579,51 @@ button > .icon-trailing > .ui-icon { margin-right: 0; margin-left: 6px; }
     :root { --layout-gutter: var(--space-3); }
     body { padding-left: calc(var(--layout-gutter) + env(safe-area-inset-left)); padding-right: calc(var(--layout-gutter) + env(safe-area-inset-right)); }
     body.admin-mode #adminPanel { padding: var(--space-4); }
+}
+
+/* 화면 너비: 사용자가 환경설정에서 '와이드 폭'을 고른 경우에만 넓힘 (로그인 전·관리자 화면은 항상 표준 폭) */
+html[data-layout="wide"] { --layout-max: 1920px; }
+
+/* 환경설정 > 화면 너비: 두 가지 중 하나를 고르는 라디오 카드 */
+.layout-width-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-3);
+    max-width: 720px;
+}
+.layout-width-option {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    cursor: pointer;
+    transition: border-color var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease);
+}
+.layout-width-option:hover { border-color: var(--color-border-strong); }
+.layout-width-option:has(input:checked) {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+}
+.layout-width-option:has(input:focus-visible) { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.layout-width-option input {
+    margin: 2px 0 0;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-primary);
+    flex: 0 0 auto;
+}
+.layout-width-option-title {
+    display: block;
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--color-text);
+}
+.layout-width-option-desc {
+    display: block;
+    margin-top: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
 }

@@ -872,6 +872,21 @@
             </div>
 
             <div class="category-manager" style="margin-top:25px;">
+                <h3>화면 너비</h3>
+                <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">큰 모니터에서 화면을 얼마나 넓게 쓸지 고릅니다. 고르면 바로 바뀌고, 이 계정에 저장되어 다른 PC에서 로그인해도 그대로 적용됩니다.</p>
+                <div class="layout-width-options" role="radiogroup" aria-label="화면 너비">
+                    <label class="layout-width-option">
+                        <input type="radio" name="layoutWidth" value="standard" onchange="setLayoutWidth(this.value)">
+                        <span><span class="layout-width-option-title">표준 폭 · 1500px (기본)</span><span class="layout-width-option-desc">큰 모니터에서도 한눈에 들어오는 폭</span></span>
+                    </label>
+                    <label class="layout-width-option">
+                        <input type="radio" name="layoutWidth" value="wide" onchange="setLayoutWidth(this.value)">
+                        <span><span class="layout-width-option-title">와이드 폭 · 1920px</span><span class="layout-width-option-desc">좌우 여백을 줄이고 넓게 쓰는 폭</span></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="category-manager" style="margin-top:25px;">
                 <h3>사용할 탭 선택</h3>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">체크한 탭과 항목만 화면에 표시됩니다. 탭 안의 항목도 따로 끌 수 있어서, 자주 안 쓰는 기능을 숨기면 화면이 더 깔끔해집니다. (환경설정 탭은 항상 표시됩니다)</p>
                 <div class="settings-tab-toggle-list" id="settingsTabToggleList"></div>

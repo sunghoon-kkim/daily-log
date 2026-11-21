@@ -5,6 +5,10 @@
                 keyInput.value = personalAiApiKey;
             }
 
+            document.querySelectorAll('input[name="layoutWidth"]').forEach(input => {
+                input.checked = input.value === layoutWidth;
+            });
+
             const listEl = document.getElementById('settingsTabToggleList');
             if (listEl) {
                 const adminHiddenTabIds = getAdminFullyRestrictedTabIds();
@@ -56,6 +60,16 @@
                         ${typeof icon === 'function' ? icon(TAB_ICONS[tabId]) : ''}<span>${escapeHtml(TAB_LABELS[tabId])}</span>
                     </label>${featureHtml}
                 </div>`;
+        }
+
+        // 환경설정 > 화면 너비: 고르는 즉시 화면 폭을 바꾸고 이 계정 설정으로 저장(서버 동기화)
+        function setLayoutWidth(value) {
+            if (!checkEditPermission()) { renderSettingsTab(); return; }
+            layoutWidth = value === 'wide' ? 'wide' : 'standard';
+            safeSetItem('layoutWidth', layoutWidth);
+            queueSync();
+            applyLayoutWidth();
+            renderSettingsTab();
         }
 
         function toggleTabDisabled(tabId) {
