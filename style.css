@@ -7519,7 +7519,7 @@ body { padding-left: var(--layout-gutter); padding-right: var(--layout-gutter); 
     background-image: linear-gradient(to top, var(--color-border-strong) 1px, transparent 1px);
     border: none;
     border-radius: 0;
-    padding: var(--space-2) var(--space-2) 0;
+    padding: var(--space-2) 0 0;
 }
 .tab,
 .dark-mode .tab {
