@@ -115,8 +115,8 @@
             applyPersonalApiKeyGate();
 
             statusEl.textContent = personalAiApiKey
-                ? '✅ 개인 API 키가 저장되었습니다. 지금부터 AI 도우미 기능을 사용할 수 있습니다.'
-                : '☁️ 빈 값으로 저장했습니다. AI 도우미 기능은 키를 입력해야 사용할 수 있습니다.';
+                ? '개인 API 키가 저장되었습니다. 지금부터 AI 도우미 기능을 사용할 수 있습니다.'
+                : '빈 값으로 저장했습니다. AI 도우미 기능은 키를 입력해야 사용할 수 있습니다.';
             statusEl.className = 'ai-status success';
         }
 
@@ -129,7 +129,7 @@
             applyPersonalApiKeyGate();
 
             const statusEl = document.getElementById('settingsApiKeyStatus');
-            statusEl.textContent = '🗑️ 개인 API 키가 삭제되었습니다. AI 도우미 기능은 키를 다시 입력해야 사용할 수 있습니다.';
+            statusEl.textContent = '개인 API 키가 삭제되었습니다. AI 도우미 기능은 키를 다시 입력해야 사용할 수 있습니다.';
             statusEl.className = 'ai-status success';
         }
 
@@ -139,7 +139,7 @@
         async function loadMyBackups() {
             const statusEl = document.getElementById('backupListStatus');
             const table = document.getElementById('backupListTable');
-            statusEl.textContent = '☁️ 불러오는 중...';
+            statusEl.textContent = '불러오는 중...';
             statusEl.className = 'ai-status';
             table.style.display = 'none';
 
@@ -155,7 +155,7 @@
                 const data = await res.json();
 
                 if (data.status !== 'success') {
-                    statusEl.textContent = '⚠️ ' + (data.message || '불러오기에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '불러오기에 실패했습니다');
                     statusEl.className = 'ai-status error';
                     return;
                 }
@@ -179,7 +179,7 @@
                 table.style.display = '';
             } catch (err) {
                 console.error('백업 목록 조회 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -191,7 +191,7 @@
 
             confirmModal(`${backup.savedAt} 시점(${backup.dateCount}일치)으로 되돌릴까요?\n지금 상태도 백업으로 남으니, 되돌린 뒤에도 다시 취소할 수 있습니다.`, async () => {
                 const statusEl = document.getElementById('backupListStatus');
-                statusEl.textContent = '☁️ 되돌리는 중...';
+                statusEl.textContent = '되돌리는 중...';
                 statusEl.className = 'ai-status';
 
                 try {
@@ -208,18 +208,18 @@
                     const data = await res.json();
 
                     if (data.status === 'success') {
-                        statusEl.textContent = `✅ ${data.restoredDateCount || 0}일치를 되돌렸습니다. 화면을 새로고침합니다...`;
+                        statusEl.textContent = `${data.restoredDateCount || 0}일치를 되돌렸습니다. 화면을 새로고침합니다...`;
                         statusEl.className = 'ai-status success';
                         await loadAllFromServer(); // 되돌린 내용을 화면에 반영
                         clearPendingOutbox(); // 되돌리기 전에 못 올린 변경분이 다음 로그인 때 되돌린 내용 위에 다시 얹히지 않게 함
                         loadMyBackups(); // 방금 만들어진 "되돌리기 전" 백업이 목록에 보이도록 새로고침
                     } else {
-                        statusEl.textContent = '⚠️ ' + (data.message || '복구에 실패했습니다');
+                        statusEl.textContent = '' + (data.message || '복구에 실패했습니다');
                         statusEl.className = 'ai-status error';
                     }
                 } catch (err) {
                     console.error('백업 복구 오류:', err);
-                    statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                    statusEl.textContent = '서버 연결에 실패했습니다.';
                     statusEl.className = 'ai-status error';
                 }
             });

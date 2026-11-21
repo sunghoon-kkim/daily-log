@@ -22,6 +22,19 @@
     --color-primary-soft: #EEF0F8;
     --color-primary-muted: #5A67B0;
     --color-focus-ring: rgba(59, 73, 152, 0.22);
+    --color-primary-text: #3B4998;     /* 인디고 글자(링크·강조 글자). 다크에서는 밝은 인디고로 바뀜 */
+    --color-surface-raised: #FFFFFF;   /* 팝업(모달) 표면 */
+    --color-overlay: rgba(15, 23, 42, 0.45); /* 팝업 뒤 덮개 */
+    --color-danger-text: #B91C1C;      /* 오류 글자·위험 버튼 글자 (흰 바탕 대비 6:1) */
+    --color-success-text: #047857;     /* 성공 글자 */
+    --color-danger-strong: #DC2626;    /* 오류 토스트 바탕(흰 글자 대비 4.8:1) */
+    --color-success-strong: #047857;
+    /* 겹침 순서: 내용 < 고정 탭 줄 < 떠 있는 메뉴 < 팝업 < 팝업 위 확인창 < 토스트 */
+    --z-sticky: 50;
+    --z-dropdown: 200;
+    --z-modal: 1000;
+    --z-modal-raised: 2000;
+    --z-toast: 3500;
     /* 타이포그래피 */
     --font-sans: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
     --text-xs: 12px;
@@ -4462,7 +4475,14 @@ html {
     --color-primary-soft: rgba(99, 112, 194, 0.16);
     --color-primary-muted: #A8B1E3;
     --color-focus-ring: rgba(120, 132, 210, 0.45);
-    --color-input-bg: #181A20;
+    --color-input-bg: #111318;          /* 패널색과 같게 한 단계 낮춰 카드(#1A1C22) 안에서 입력칸이 보이게 */
+    --color-primary-text: #A8B1E3;      /* 어두운 바탕 위 인디고 글자 대비 8:1 */
+    --color-surface-raised: #202329;    /* 팝업은 뒤 카드보다 한 단계 밝게 떠 보이게 */
+    --color-overlay: rgba(0, 0, 0, 0.6);
+    --color-danger-text: #F87171;
+    --color-success-text: #34D399;
+    --color-danger-strong: #B91C1C;
+    --color-success-strong: #047857;
     --tint-text-mix: 48%; /* 다크: 원색이 눈부시거나 짙은 색이 묻히지 않게 밝은 본문색 쪽으로 더 섞음 */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.35);
@@ -7627,3 +7647,196 @@ html[data-layout="wide"] { --layout-max: 1920px; }
     font-size: var(--text-sm);
     color: var(--color-text-secondary);
 }
+
+/* ===== 일관성 레이어 (대비·규격·상호작용 정리) ===== */
+
+/* [1] 다크 모드 인디고 글자: 어두운 바탕에서 읽히도록 밝은 인디고 */
+.dark-mode .admin-subtab:hover,
+.dark-mode .admin-subtab.active,
+.dark-mode .admin-sortable-th:hover,
+.dark-mode .admin-sort-indicator,
+.dark-mode .admin-more-btn,
+.dark-mode .admin-menu-item:hover,
+.dark-mode .org-slot-label,
+.dark-mode .admin-action-btn,
+.dark-mode .admin-feature-group-title,
+.dark-mode .upcoming-toggle-btn,
+.dark-mode .upcoming-card-repeat-badge,
+.dark-mode .water-flow-connect-hint,
+.dark-mode .water-flow-diagram-tab.active,
+.dark-mode .water-flow-diagram-add-btn,
+.dark-mode .free-notes-page-tab.active,
+.dark-mode .free-notes-page-add-btn,
+.dark-mode .water-flow-block-connect-btn,
+.dark-mode .water-flow-block-duplicate-btn,
+.dark-mode .add-event-btn,
+.dark-mode .weekday-header,
+.dark-mode .category-name,
+.dark-mode .category-prev-btn,
+.dark-mode .category-collapse-btn:hover,
+.dark-mode .project-card-category,
+.dark-mode .category-default-collapse-toggle,
+.dark-mode .category-tag-edit,
+.dark-mode .team-report-history-target,
+.dark-mode .search-result-tag,
+.dark-mode .result-date,
+.dark-mode .result-category-name,
+.dark-mode .todo-done-group-header:hover,
+.dark-mode .notes-tool-btn:hover,
+.dark-mode .ai-loading,
+.dark-mode .ai-copy-btn,
+.dark-mode .goal-area-check-item:has(input:checked),
+.dark-mode .goal-area-title,
+.dark-mode .quick-preset-btn:hover,
+.dark-mode .maint-complete-target,
+.dark-mode .equipment-plan-row:hover,
+.dark-mode .timeline-month,
+.dark-mode .keyword-stat-table-wrap summary,
+.dark-mode .help-details summary,
+.dark-mode .rotation-open-btn,
+.dark-mode .inv-action-btn:hover,
+.dark-mode .quick-preset-btn.inv-category-add-btn,
+.dark-mode .inv-category-edit-btn:hover,
+.dark-mode .inv-history-btn,
+.dark-mode .inv-link-add-btn,
+.dark-mode .inv-log-month,
+.dark-mode .quick-preset-btn.selected,
+.dark-mode .quick-preset-btn.selected:hover,
+.dark-mode .today-chip.tone-info .today-chip-icon { color: var(--color-primary-text); }
+.dark-mode [style*="; color:var(--color-primary)"],
+.dark-mode [style*="; color: var(--color-primary)"] { color: var(--color-primary-text) !important; }
+a,
+.dark-mode a { color: var(--color-primary-text); }
+/* 위 규칙 중 다크에서 인디고로 채워지는 버튼은 흰 글자를 유지 */
+.dark-mode .add-event-btn,
+.dark-mode .quick-preset-btn.selected { color: #FFFFFF; }
+/* 형광펜 색 견본: 견본 색(밝은 노랑 등) 위 글자는 모드와 상관없이 진하게 */
+.notes-tool-color-swatch { color: #0F172A; }
+
+/* [2] 팝업: 덮개·표면·테두리 토큰 */
+.modal-overlay { background: var(--color-overlay); z-index: var(--z-modal); }
+.modal-box,
+.dark-mode .modal-box {
+    background: var(--color-surface-raised);
+    border: 1px solid var(--color-border);
+}
+.dark-mode .modal-box { border-color: var(--color-border-strong); }
+#confirmActionModal { z-index: var(--z-modal-raised); }
+
+/* [3]·[6] 입력칸: 한 줄 입력칸 40px, 바탕 통일, 다크에서 테두리 진하게 */
+:is(.tab-content, #adminPanel, .modal-box) :is(input[type="text"], input[type="date"], input[type="month"], input[type="number"], input[type="password"], input[type="search"], input[type="email"], input:not([type]), select):not(.compact-input) {
+    height: 40px;
+    box-sizing: border-box;
+    background-color: var(--color-input-bg);
+}
+.search-option-select,
+.ai-template-textarea { background-color: var(--color-input-bg); }
+.dark-mode :is(input[type="text"], input[type="date"], input[type="month"], input[type="number"], input[type="password"], input[type="search"], input[type="email"], input:not([type]), select, textarea):not(.category-record textarea) {
+    border-color: var(--color-border-strong);
+}
+
+/* [4] 위험 보조 버튼(삭제): 빨간 글자 + 1px 빨간 테두리, 올리면 옅은 빨강 */
+.btn-danger-ghost,
+.modal-delete-btn,
+.dark-mode .modal-delete-btn {
+    background: transparent;
+    color: var(--color-danger-text);
+    border: 1px solid color-mix(in srgb, var(--color-danger-text) 55%, transparent);
+}
+.btn-danger-ghost:hover:not(:disabled),
+.modal-delete-btn:hover:not(:disabled),
+.dark-mode .modal-delete-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-danger-text) 10%, transparent);
+    color: var(--color-danger-text);
+    border-color: var(--color-danger-text);
+}
+.category-tag-delete {
+    background: transparent;
+    color: var(--color-danger-text);
+    border: 1px solid transparent;
+}
+.category-tag-delete:hover { background: color-mix(in srgb, var(--color-danger-text) 12%, transparent); color: var(--color-danger-text); }
+.category-image-remove { background: var(--color-danger-strong); }
+
+/* [5] 버튼 높이 2단계: 기본 36px, 강조 44px. 입력칸 옆 버튼은 입력칸과 같은 40px. 글자 14px */
+.add-event-btn, .query-btn, .todo-add-btn, .add-category-btn, .ai-revise-btn, .ai-copy-btn, .quick-preset-btn:not(.query-section-switcher .quick-preset-btn) {
+    min-height: 36px;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: var(--text-base);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.save-btn, .ai-generate-btn {
+    min-height: 44px;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: var(--text-base);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+:is(.search-row, .todo-add-row, .category-controls) > button { min-height: 40px; }
+
+/* [7] 작은 클릭 요소 키우기 */
+.category-prev-btn {
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    font-size: var(--text-sm);
+    display: inline-flex;
+    align-items: center;
+}
+.free-notes-page-tab-edit,
+.water-flow-diagram-tab-edit { width: 24px; height: 24px; font-size: 12px; }
+.category-tag-edit,
+.category-tag-delete { width: 28px; height: 28px; }
+
+/* [8] 답변·결과 칸: 2px 민트 테두리 대신 1px + 옅은 바탕 */
+.ask-log-answer,
+.goal-result-textarea {
+    border: 1px solid var(--color-border);
+    background: var(--color-surface-subtle);
+}
+
+/* [10] 상태 문구: 이모지 대신 색 + 작은 아이콘(CSS) */
+.ai-status.error { color: var(--color-danger-text); }
+.ai-status.success { color: var(--color-success-text); }
+.ai-status.error::before,
+.ai-status.success::before {
+    content: "";
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+    vertical-align: -2px;
+    background: currentColor;
+    -webkit-mask: var(--status-icon) center / contain no-repeat;
+    mask: var(--status-icon) center / contain no-repeat;
+}
+.ai-status.success { --status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/svg%3E"); }
+.ai-status.error { --status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 8v4'/%3E%3Cpath d='M12 16h.01'/%3E%3C/svg%3E"); }
+.ai-status:empty::before { display: none; }
+
+/* [11] 클릭 요소 hover·focus 피드백 */
+.free-notes-page-tab,
+.water-flow-diagram-tab { transition: background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease); }
+.free-notes-page-tab:hover:not(.active),
+.water-flow-diagram-tab:hover:not(.active) { background: var(--color-surface-muted); }
+.search-view-btn { border-radius: var(--radius-md); transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease); }
+.search-view-btn:hover { background: var(--color-surface-muted); color: var(--color-text); }
+.notes-tool-color-swatch { transition: box-shadow var(--duration-fast) var(--ease); }
+.notes-tool-color-swatch:hover { box-shadow: 0 0 0 2px var(--color-border-strong); }
+:is(.free-notes-page-tab, .water-flow-diagram-tab, .search-view-btn, .notes-tool-color-swatch, .free-notes-page-tab-edit, .water-flow-diagram-tab-edit, .category-tag-edit, .category-tag-delete):focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* [12] 겹침 순서 토큰 */
+.tabs-container,
+.dark-mode .tabs-container { z-index: var(--z-sticky); }
+.admin-more-menu { z-index: var(--z-dropdown); }
+
+/* [13] 토스트: 위험·성공 토큰 색 */
+.app-toast { background: var(--color-danger-strong); z-index: var(--z-toast); }
+.app-toast.success { background: var(--color-success-strong); }

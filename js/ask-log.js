@@ -191,12 +191,12 @@
                 if (data.status === 'success') {
                     renderAskLogResult(data.summary || '', items, terms, from, to);
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '답변을 받지 못했습니다');
+                    statusEl.textContent = '' + (data.message || '답변을 받지 못했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('기록 질문 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             } finally {
                 setAskLogBusy(false);
@@ -223,10 +223,10 @@
             const warnEl = document.getElementById('askLogWarning');
             if (invalidCitations > 0) {
                 warnEl.style.display = 'block';
-                warnEl.textContent = `⚠️ 출처를 확인할 수 없는 내용이 ${invalidCitations}곳 있습니다. 그 부분은 믿지 말고 원본 기록을 직접 확인해주세요.`;
+                warnEl.textContent = `출처를 확인할 수 없는 내용이 ${invalidCitations}곳 있습니다. 그 부분은 믿지 말고 원본 기록을 직접 확인해주세요.`;
             } else if (items.length > 0 && cited.size === 0 && !/찾을 수 없습니다/.test(answer)) {
                 warnEl.style.display = 'block';
-                warnEl.textContent = '⚠️ 답변에 출처 표시가 없습니다. 아래 검색된 기록과 직접 대조해 확인해주세요.';
+                warnEl.textContent = '답변에 출처 표시가 없습니다. 아래 검색된 기록과 직접 대조해 확인해주세요.';
             } else {
                 warnEl.style.display = 'none';
             }

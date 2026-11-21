@@ -149,6 +149,17 @@
 - **상태 문구·화면 전환**: AI 로딩 문구 교체, 검색 & 조회 화면 전환은 `motion-fade-in`. 다가오는 일정 카드를 접거나 펼치면 그 카드만 `motion-pop-in`. 동기화 상태가 '동기화됨'으로 바뀌는 순간만 초록 링이 한 번 퍼진다.
 - `prefers-reduced-motion: reduce`이면 모든 효과를 끄고 결과만 바로 보여준다.
 
+## 일관성 규칙 (style.css 맨 아래 "일관성 레이어")
+- **인디고 글자**(링크·강조 글자)는 `--color-primary-text`. 라이트는 `#3B4998`, 다크는 `#A8B1E3`(어두운 바탕 대비 8:1). 인디고로 **채운** 버튼의 글자는 항상 흰색.
+- **팝업**: 표면 `--color-surface-raised`(라이트 흰색, 다크 `#202329`), 덮개 `--color-overlay`(라이트 슬레이트 45%, 다크 검정 60%), 다크에서는 테두리 `--color-border-strong`.
+- **입력칸**: 한 줄 입력칸·선택칸은 높이 40px, 바탕 `--color-input-bg`(다크 `#111318`). 다크에서는 테두리 `--color-border-strong`.
+- **버튼 높이**: 기본 36px, 강조(저장·AI 생성) 44px, 입력칸 옆 버튼은 입력칸과 같은 40px. 글자 14px. 아이콘 버튼은 최소 24~28px, 텍스트 보조 버튼은 최소 32px.
+- **삭제 버튼**: `.btn-danger-ghost`(빨간 글자 + 1px 빨간 테두리, hover 때 옅은 빨강). 원색 채움 삭제 버튼은 쓰지 않는다.
+- **상태 문구**(`.ai-status`): 성공 `--color-success-text`, 오류 `--color-danger-text` + CSS 아이콘. 문구 앞에 ✅·⚠️ 같은 이모지를 붙이지 않는다.
+- **토스트**: 오류 `--color-danger-strong`, 성공 `--color-success-strong` 바탕에 흰 글자.
+- **겹침 순서**: `--z-sticky`(고정 탭 줄 50) < `--z-dropdown`(떠 있는 메뉴 200) < `--z-modal`(1000) < `--z-modal-raised`(2000) < `--z-toast`(3500).
+- 손가락 커서가 나오는 요소는 모두 hover 배경/테두리 변화와 `:focus-visible` 2px 인디고 외곽선을 가진다.
+
 ## 반응형
 - 데스크톱 기준 1920×1080. 상단 바·탭 줄·본문 최대 너비 `--layout-max`, 좌우 여백 `--layout-gutter`(32px). 더 넓은 화면에서는 가운데 정렬.
 - `--layout-max` 기본값은 **표준 폭 1500px**. 사용자가 환경설정 > 화면 너비에서 '와이드 폭'을 고르면 `html[data-layout="wide"]`로 1920px. 이 설정은 계정 설정(`layoutWidth`, 서버 동기화)이며 로그인 전·관리자 화면은 항상 표준 폭.

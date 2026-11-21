@@ -487,7 +487,7 @@
             const listEl = document.getElementById('inventoryHistoryList');
             if (!item || !listEl) return;
             const unit = escapeHtml(item.unit || '');
-            document.getElementById('inventoryHistoryTitle').textContent = `📋 ${item.name} 입출고 기록`;
+            document.getElementById('inventoryHistoryTitle').textContent = `${item.name} 입출고 기록`;
             document.getElementById('inventoryHistoryCurrent').textContent = `현재 재고 ${formatInventoryQty(getInventoryCurrentQty(item))}${item.unit || ''}`;
             document.querySelectorAll('#inventoryHistoryFilterRow .quick-preset-btn').forEach(btn => {
                 btn.classList.toggle('selected', btn.dataset.type === inventoryHistoryFilter);

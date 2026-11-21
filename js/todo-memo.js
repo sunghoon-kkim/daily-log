@@ -252,7 +252,7 @@
                 placeholder.replaceWith(img);
             } catch (err) {
                 console.error('메모 이미지 업로드 실패:', err);
-                placeholder.textContent = '⚠️ 이미지 업로드 실패';
+                placeholder.textContent = '이미지 업로드 실패';
             }
             scheduleNotesSave();
         }

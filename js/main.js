@@ -191,7 +191,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 key: 'notes',
                 label: '📝 할일 & 메모',
                 features: {
-                    todoList: '✅ 해야 할 일',
+                    todoList: '해야 할 일',
                     freeNotes: '📝 메모장'
                 }
             },
@@ -245,9 +245,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             },
             {
                 key: 'teamReport',
-                label: '📋 팀 보고',
+                label: '팀 보고',
                 features: {
-                    teamReport: '📋 팀 보고'
+                    teamReport: '팀 보고'
                 }
             }
         ];
@@ -520,7 +520,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 console.warn(`localStorage 저장 실패 (${key}):`, e);
                 if (!localStorageQuotaWarned) {
                     localStorageQuotaWarned = true; // 같은 경고가 연달아 뜨지 않도록 세션당 한 번만 알림
-                    try { showStatus('⚠️ 기기 저장 공간이 부족해 로컬 캐시 저장에 실패했습니다 (서버 저장은 계속 진행됩니다)', 'error'); } catch (_) { /* 무시 */ }
+                    try { showStatus('기기 저장 공간이 부족해 로컬 캐시 저장에 실패했습니다 (서버 저장은 계속 진행됩니다)', 'error'); } catch (_) { /* 무시 */ }
                 }
                 return false;
             }
@@ -1017,13 +1017,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         async function loadAllFromServer(preloadedData) {
             if (!currentEmployeeId || !currentPasswordHash) return; // 로그인 전에는 불러올 대상이 없음
 
-            showSyncStatus('☁️ 불러오는 중...', 'syncing');
+            showSyncStatus('불러오는 중...', 'syncing');
             try {
                 const data = preloadedData ? preloadedData : await fetchLoadDataWithRetry();
 
                 if (data && data.status === 'error') {
                     // 로그인이 만료됐거나 비밀번호가 서버에서 바뀐 경우 등 - 다시 로그인하도록 함
-                    showSyncStatus('⚠️ ' + (data.message || '인증 오류'), 'error');
+                    showSyncStatus('' + (data.message || '인증 오류'), 'error');
                     logout();
                     return;
                 }
@@ -1125,10 +1125,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     lastServerCheckAt = Date.now();
                 }
 
-                showSyncStatus('☁️ 동기화됨', 'ok');
+                showSyncStatus('동기화됨', 'ok');
             } catch (err) {
                 console.error('서버에서 불러오기 실패:', err);
-                showSyncStatus('⚠️ 서버 연결 실패 (로컬 데이터 사용 중)', 'error');
+                showSyncStatus('서버 연결 실패 (로컬 데이터 사용 중)', 'error');
             } finally {
                 // 성공하든 실패하든, 첫 로드 시도는 끝난 것이므로 이제부터는 저장을 허용함
                 initialLoadDone = true;
@@ -1480,7 +1480,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!initialLoadDone) return; // 서버 최신 데이터를 아직 다 못 받아온 상태에서는 저장 자체를 하지 않음
             if (!currentEmployeeId) return; // 로그인 전에는 저장할 계정 자체가 없음
             clearTimeout(syncTimeout);
-            showSyncStatus('☁️ 저장 대기 중...', 'syncing');
+            showSyncStatus('저장 대기 중...', 'syncing');
             syncTimeout = setTimeout(syncToServer, 800);
         }
 
@@ -1561,14 +1561,14 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         async function syncToServerOnce(isRetryAfterConflict) {
             for (let attempt = 0; attempt <= SYNC_RETRY_DELAYS_MS.length; attempt++) {
-                showSyncStatus(attempt === 0 ? '☁️ 저장 중...' : `☁️ 저장 재시도 중... (${attempt}/${SYNC_RETRY_DELAYS_MS.length})`, 'syncing');
+                showSyncStatus(attempt === 0 ? '저장 중...' : `저장 재시도 중... (${attempt}/${SYNC_RETRY_DELAYS_MS.length})`, 'syncing');
                 try {
                     const fullState = getFullState();
                     const snapshot = stripSyncCredentials(JSON.parse(JSON.stringify(fullState)));
                     const payload = buildSyncPayload(fullState, snapshot);
                     if (isEmptyPartialPayload(payload)) { // 서버와 달라진 게 없음
                         clearPendingOutbox();
-                        showSyncStatus('☁️ 저장됨', 'ok');
+                        showSyncStatus('저장됨', 'ok');
                         return true;
                     }
                     writePendingOutbox(snapshot); // 응답을 못 받고 창이 닫혀도 다음 로그인 때 되살릴 수 있게 먼저 보관
@@ -1590,9 +1590,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                             continue;
                         }
                         console.error('서버가 저장을 거부함:', resultData.message);
-                        showSyncStatus('⚠️ ' + (resultData.message || '저장 거부됨'), 'error');
+                        showSyncStatus('' + (resultData.message || '저장 거부됨'), 'error');
                         if (isLockTimeout) promptRetryAfterLockTimeout();
-                        if (resultData.tooLarge) showAppToast('⚠️ ' + resultData.message, 'error');
+                        if (resultData.tooLarge) showAppToast('' + resultData.message, 'error');
                         return false;
                     }
                     if (resultData && resultData.serverUpdatedAt) serverBaseUpdatedAt = resultData.serverUpdatedAt;
@@ -1600,10 +1600,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     writePendingOutbox(); // 보내는 사이 새로 바뀐 게 없으면 보관함이 비워짐
                     if (resultData && resultData.recordsSkipped) {
                         console.warn('서버가 활동기록 저장을 보류함(다른 항목은 저장됨):', resultData.message);
-                        showSyncStatus('⚠️ 활동기록 저장 보류됨 (다른 변경사항은 저장됨)', 'error');
+                        showSyncStatus('활동기록 저장 보류됨 (다른 변경사항은 저장됨)', 'error');
                         return true;
                     }
-                    showSyncStatus('☁️ 저장됨', 'ok');
+                    showSyncStatus('저장됨', 'ok');
                     return true;
                 } catch (err) {
                     if (attempt < SYNC_RETRY_DELAYS_MS.length) {
@@ -1612,7 +1612,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         continue;
                     }
                     console.error('서버 저장 실패:', err);
-                    showSyncStatus('⚠️ 저장 실패 (이 기기에 보관됨 · 인터넷이 연결되거나 다음 로그인 때 자동으로 다시 올림)', 'error');
+                    showSyncStatus('저장 실패 (이 기기에 보관됨 · 인터넷이 연결되거나 다음 로그인 때 자동으로 다시 올림)', 'error');
                     return false;
                 }
             }
@@ -2192,7 +2192,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (typeof syncActiveFreeNotesPageData === 'function') syncActiveFreeNotesPageData();
             clearTimeout(syncTimeout);
             const ok = await syncToServer();
-            showAppToast(ok ? '☁️ 저장했습니다' : '⚠️ 서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
+            showAppToast(ok ? '저장했습니다' : '서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
         }
 
         function setupAppKeyboardShortcuts() {
@@ -2335,7 +2335,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             try {
                 if (!(await askLoginTakeover(message))) return false;
                 const infoEl = document.getElementById('loginInfoMsg');
-                infoEl.textContent = '🔄 다른 창을 로그아웃하는 중... (저장되지 않은 내용이 있으면 먼저 저장합니다)';
+                infoEl.textContent = '다른 창을 로그아웃하는 중... (저장되지 않은 내용이 있으면 먼저 저장합니다)';
                 infoEl.style.display = 'block';
                 await requestOtherTabsLogout(others);
                 infoEl.style.display = 'none';
@@ -2435,7 +2435,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const errEl = document.getElementById('loginErrorMsg');
             document.getElementById('loginEmployeeIdInput').value = saved.employeeId;
             document.getElementById('loginRememberCheckbox').checked = true;
-            infoEl.textContent = '🔄 로그인 유지 중인 계정으로 자동 로그인하는 중...';
+            infoEl.textContent = '로그인 유지 중인 계정으로 자동 로그인하는 중...';
             infoEl.style.display = 'block';
             btn.disabled = true;
             // 자동 로그인 중에는 사번·비밀번호 등을 고칠 수 없게 잠금(끝나면 finally에서 풂)
@@ -2448,7 +2448,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     infoEl.style.display = 'block';
                     return;
                 }
-                infoEl.textContent = '🔄 로그인 유지 중인 계정으로 자동 로그인하는 중...';
+                infoEl.textContent = '로그인 유지 중인 계정으로 자동 로그인하는 중...';
                 infoEl.style.display = 'block';
                 const result = await fetchAuthAction('login', saved.employeeId, saved.passwordHash);
                 if (result && result.status !== 'error' && !result.isAdmin) {
@@ -2719,7 +2719,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (data.status === 'success') {
                     // 다른 확인 동작들과 달리 브라우저 기본 alert() 대신, 모달을 바로 닫지 않고
                     // 같은 자리에 성공 메시지를 보여준 뒤 사용자가 직접 닫게 함
-                    errEl.textContent = '✅ 요청이 접수되었습니다. 관리자가 확인 후 비밀번호를 초기화해드립니다.';
+                    errEl.textContent = '요청이 접수되었습니다. 관리자가 확인 후 비밀번호를 초기화해드립니다.';
                     errEl.className = 'goal-status success';
                     errEl.style.display = 'block';
                     input.value = '';
@@ -2777,7 +2777,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     document.getElementById('loginEmployeeIdInput').value = employeeId;
                     document.getElementById('loginPasswordInput').value = '';
                     const infoEl = document.getElementById('loginInfoMsg');
-                    infoEl.textContent = '✅ 가입 신청이 접수되었습니다. 관리자 승인 후 이 사번으로 로그인해주세요.';
+                    infoEl.textContent = '가입 신청이 접수되었습니다. 관리자 승인 후 이 사번으로 로그인해주세요.';
                     infoEl.style.display = 'block';
                 } else {
                     errEl.textContent = result.message || '회원가입에 실패했습니다';

@@ -294,7 +294,7 @@
             renderTeamReportRows('thisWeek');
             renderTeamReportRows('nextWeek');
             indicator.style.display = 'none';
-            statusEl.textContent = '☁️ 불러오는 중...';
+            statusEl.textContent = '불러오는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -337,12 +337,12 @@
                     statusEl.textContent = '';
                     statusEl.className = 'ai-status';
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '불러오기에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '불러오기에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('팀 보고 불러오기 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -355,7 +355,7 @@
 
             if (!weekStart) return;
             if (teamReportSelectedTargets.length === 0) {
-                statusEl.textContent = '⚠️ 제출 대상을 한 명 이상 선택해주세요';
+                statusEl.textContent = '제출 대상을 한 명 이상 선택해주세요';
                 statusEl.className = 'ai-status error';
                 return;
             }
@@ -364,7 +364,7 @@
                 .map(r => ({ category: (r.category || '').trim(), date: (r.date || '').trim(), content: (r.content || '').trim() }))
                 .filter(r => r.content); // 내용 없는 빈 줄은 제출하지 않음
 
-            statusEl.textContent = '☁️ 제출하는 중...';
+            statusEl.textContent = '제출하는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -383,19 +383,19 @@
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    statusEl.textContent = '✅ 제출되었습니다';
+                    statusEl.textContent = '제출되었습니다';
                     statusEl.className = 'ai-status success';
                     indicator.style.display = '';
                     indicator.textContent = `✓ ${formatDateTimeKo(data.submittedAt)} 제출됨`;
                     teamReportLastTargets = teamReportSelectedTargets.slice();
                     loadMyTeamReportHistory();
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '제출에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '제출에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('팀 보고 제출 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -427,7 +427,7 @@
                 monthInput.value = formatDate(new Date()).slice(0, 7);
             }
 
-            statusEl.textContent = '☁️ 불러오는 중...';
+            statusEl.textContent = '불러오는 중...';
             statusEl.className = 'ai-status';
             listEl.innerHTML = '';
 
@@ -448,12 +448,12 @@
                     statusEl.className = 'ai-status';
                     renderMyTeamReportHistoryList();
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '불러오기에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '불러오기에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('내 팀 보고 내역 불러오기 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -493,8 +493,8 @@
                     </div>
                     ${isOpen ? `
                         <div class="team-report-history-details">
-                            ${renderTeamReportItemsHtml('✅ 이번주 한 일', item.thisWeek)}
-                            ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
+                            ${renderTeamReportItemsHtml('이번주 한 일', item.thisWeek)}
+                            ${renderTeamReportItemsHtml('다음주 할 일', item.nextWeek)}
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
                                 <span style="color:var(--color-text-tertiary); font-size:12px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</span>
                                 <button type="button" class="admin-action-btn danger" onclick="event.stopPropagation(); deleteMyTeamReport('${item.weekStart}')">삭제</button>
@@ -539,7 +539,7 @@
             if (!weekStart) return;
 
             const statusEl = document.getElementById('myTeamReportHistoryStatus');
-            statusEl.textContent = '☁️ 삭제하는 중...';
+            statusEl.textContent = '삭제하는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -561,12 +561,12 @@
                     }
                     loadMyTeamReportHistory();
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '삭제에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '삭제에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('내 팀 보고 삭제 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -590,7 +590,7 @@
                 monthInput.value = formatDate(new Date()).slice(0, 7);
             }
 
-            statusEl.textContent = '☁️ 불러오는 중...';
+            statusEl.textContent = '불러오는 중...';
             statusEl.className = 'ai-status';
             listEl.innerHTML = '';
 
@@ -607,16 +607,16 @@
 
                 if (data.status === 'success') {
                     teamReportInboxItems = Array.isArray(data.items) ? data.items : [];
-                    statusEl.textContent = `✅ 총 ${teamReportInboxItems.length}건`;
+                    statusEl.textContent = `총 ${teamReportInboxItems.length}건`;
                     statusEl.className = 'ai-status success';
                     renderTeamReportInboxList();
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '불러오기에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '불러오기에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('받은 보고 불러오기 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -657,8 +657,8 @@
                     ${isOpen ? `
                         <div class="team-report-history-details">
                             <div style="color:var(--color-text-tertiary); font-size:12px; margin-bottom:6px;">${escapeHtml(item.department || '')} · ${escapeHtml(item.employeeId)}</div>
-                            ${renderTeamReportItemsHtml('✅ 이번주 한 일', item.thisWeek)}
-                            ${renderTeamReportItemsHtml('📌 다음주 할 일', item.nextWeek)}
+                            ${renderTeamReportItemsHtml('이번주 한 일', item.thisWeek)}
+                            ${renderTeamReportItemsHtml('다음주 할 일', item.nextWeek)}
                             <div style="color:var(--color-text-tertiary); font-size:12px; margin-top:4px;">제출 : ${escapeHtml(formatTeamReportSubmittedAt(item.submittedAt))}</div>
                         </div>
                     ` : ''}

@@ -23,7 +23,7 @@
 
         async function loadAdminUserList() {
             const statusEl = document.getElementById('adminStatus');
-            statusEl.textContent = '☁️ 불러오는 중...';
+            statusEl.textContent = '불러오는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -47,15 +47,15 @@
                     renderAdminPendingTable();
                     renderAdminDefaultFeatureChecklist();
                     renderOrgChart();
-                    statusEl.textContent = `✅ 총 ${adminUserList.length}개 계정 (휴지통 ${adminTrashList.length}개, 승인 대기 ${adminPendingList.length}개)`;
+                    statusEl.textContent = `총 ${adminUserList.length}개 계정 (휴지통 ${adminTrashList.length}개, 승인 대기 ${adminPendingList.length}개)`;
                     statusEl.className = 'ai-status success';
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '목록을 불러오지 못했습니다');
+                    statusEl.textContent = '' + (data.message || '목록을 불러오지 못했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('관리자 계정 목록 조회 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -154,13 +154,13 @@
                 .filter(r => r.value);
 
             if (trimmedRows.length === 0) {
-                statusEl.textContent = '⚠️ 파트를 한 개 이상 입력해주세요';
+                statusEl.textContent = '파트를 한 개 이상 입력해주세요';
                 statusEl.className = 'ai-status error';
                 return;
             }
             const names = trimmedRows.map(r => r.value);
             if (new Set(names).size !== names.length) {
-                statusEl.textContent = '⚠️ 파트 이름이 중복되었습니다';
+                statusEl.textContent = '파트 이름이 중복되었습니다';
                 statusEl.className = 'ai-status error';
                 return;
             }
@@ -190,7 +190,7 @@
 
         async function savePartManagerChangesConfirmed(names, renameMap) {
             const statusEl = document.getElementById('partManagerStatus');
-            statusEl.textContent = '☁️ 저장하는 중...';
+            statusEl.textContent = '저장하는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -209,18 +209,18 @@
                 if (data.status === 'success') {
                     TEAM_REPORT_PARTS = Array.isArray(data.parts) ? data.parts : names;
                     partManagerRows = TEAM_REPORT_PARTS.map(p => ({ original: p, value: p }));
-                    statusEl.textContent = '✅ 저장되었습니다';
+                    statusEl.textContent = '저장되었습니다';
                     statusEl.className = 'ai-status success';
                     renderAllDepartmentSelects();
                     renderPartManagerUI();
                     await loadAdminUserList(); // 소속이 바뀐 인원 반영 + 조직도 다시 그림
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '저장에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '저장에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('파트 목록 저장 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -283,7 +283,7 @@
             });
             html += '</div>';
 
-            html += slotHtml('unassigned', '', 'org-slot-unassigned', '📥 미배정 인원 (다른 소속 포함)', unassigned, '향남공무팀 파트에 속하지 않은 인원이 없습니다');
+            html += slotHtml('unassigned', '', 'org-slot-unassigned', '미배정 인원 (다른 소속 포함)', unassigned, '향남공무팀 파트에 속하지 않은 인원이 없습니다');
             html += '</div>';
 
             container.innerHTML = html;
@@ -403,7 +403,7 @@
         // 있으면 그 사람은 자기 파트의 팀원으로 내림. 끝나면 목록을 다시 불러와 화면을 새로 그림
         async function applyOrgChartAssignment(employeeId, slotType, part, demoteEmployeeId) {
             const statusEl = document.getElementById('orgChartStatus');
-            statusEl.textContent = '☁️ 반영하는 중...';
+            statusEl.textContent = '반영하는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -417,12 +417,12 @@
                     await applyOrgChartPlacement(demoteEmployeeId, 'member', occupantPart || '');
                 }
 
-                statusEl.textContent = '✅ 반영되었습니다';
+                statusEl.textContent = '반영되었습니다';
                 statusEl.className = 'ai-status success';
                 await loadAdminUserList();
             } catch (err) {
                 console.error('조직도 배정 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -594,7 +594,7 @@
 
             tbody.innerHTML = list.map(u => `
                 <tr>
-                    <td>${u.disabled ? (u.disabledReason === 'inactive' ? '🚫(자동 비활성화) ' : '🚫 ') : ''}${u.locked ? '🔒 ' : ''}${escapeHtml(u.employeeId)}</td>
+                    <td>${u.disabled ? (u.disabledReason === 'inactive' ? '🚫(자동 비활성화) ' : '🚫 ') : ''}${u.locked ? '' : ''}${escapeHtml(u.employeeId)}</td>
                     <td>${teamReportRoleIcon(u.teamReportRole)}${escapeHtml(u.name)}</td>
                     <td>${escapeHtml(u.department)}</td>
                     <td>${u.isAdmin ? '-' : `
@@ -620,7 +620,7 @@
                                 <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminEditUserModal('${u.employeeId}')">정보수정</button>
                                 <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminFeatureModal('${u.employeeId}')">기능 설정</button>
                                 <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminResetPassword('${u.employeeId}')">비밀번호 초기화${u.passwordResetRequestedAt ? ' 🔴요청됨' : ''}</button>
-                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminToggleUserDisabled('${u.employeeId}', ${u.disabled ? 'false' : 'true'})">${u.disabled ? '✅ 활성화' : '🚫 비활성화'}</button>
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminToggleUserDisabled('${u.employeeId}', ${u.disabled ? 'false' : 'true'})">${u.disabled ? '활성화' : '🚫 비활성화'}</button>
                                 <button type="button" class="admin-menu-item danger" onclick="closeAllAdminMoreMenus(); adminDeleteUser('${u.employeeId}')">삭제</button>
                             </div>
                         </div>`}
@@ -658,7 +658,7 @@
         async function saveAdminDefaultFeatures() {
             const disabled = readDisabledFeaturesFromChecklist('adminDefaultFeatureChecklist');
             const statusEl = document.getElementById('adminDefaultFeatureStatus');
-            statusEl.textContent = '☁️ 저장하는 중...';
+            statusEl.textContent = '저장하는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -675,15 +675,15 @@
 
                 if (data.status === 'success') {
                     adminDefaultDisabledFeatures = disabled;
-                    statusEl.textContent = '✅ 기본값이 저장되었습니다. 앞으로 새로 가입하는 계정부터 적용됩니다.';
+                    statusEl.textContent = '기본값이 저장되었습니다. 앞으로 새로 가입하는 계정부터 적용됩니다.';
                     statusEl.className = 'ai-status success';
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '저장에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '저장에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('관리자 기본값 저장 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             }
         }
@@ -700,7 +700,7 @@
             const targetName = target ? target.name : (pendingTarget ? pendingTarget.name : '');
             confirmModal(`${targetName || targetEmployeeId}(${targetEmployeeId}) 계정을 삭제할까요?\n휴지통으로 이동되며, 7일 안에는 복구할 수 있고 그 이후 자동으로 완전히 삭제됩니다.`, async () => {
                 const statusEl = document.getElementById('adminStatus');
-                statusEl.textContent = '☁️ 휴지통으로 옮기는 중...';
+                statusEl.textContent = '휴지통으로 옮기는 중...';
                 statusEl.className = 'ai-status';
 
                 try {
@@ -716,16 +716,16 @@
                     const data = await res.json();
 
                     if (data.status === 'success') {
-                        statusEl.textContent = '✅ 휴지통으로 이동되었습니다';
+                        statusEl.textContent = '휴지통으로 이동되었습니다';
                         statusEl.className = 'ai-status success';
                         await loadAdminUserList();
                     } else {
-                        statusEl.textContent = '⚠️ ' + (data.message || '삭제에 실패했습니다');
+                        statusEl.textContent = '' + (data.message || '삭제에 실패했습니다');
                         statusEl.className = 'ai-status error';
                     }
                 } catch (err) {
                     console.error('관리자 계정 삭제 오류:', err);
-                    statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                    statusEl.textContent = '서버 연결에 실패했습니다.';
                     statusEl.className = 'ai-status error';
                 }
             });
@@ -789,7 +789,7 @@
             const targetName = target ? target.name : '';
             confirmModal(`${targetName || targetEmployeeId}(${targetEmployeeId}) 가입을 승인할까요?`, async () => {
                 const statusEl = document.getElementById('adminStatus');
-                statusEl.textContent = '☁️ 승인하는 중...';
+                statusEl.textContent = '승인하는 중...';
                 statusEl.className = 'ai-status';
 
                 try {
@@ -805,16 +805,16 @@
                     const data = await res.json();
 
                     if (data.status === 'success') {
-                        statusEl.textContent = '✅ 승인되었습니다';
+                        statusEl.textContent = '승인되었습니다';
                         statusEl.className = 'ai-status success';
                         await loadAdminUserList();
                     } else {
-                        statusEl.textContent = '⚠️ ' + (data.message || '승인에 실패했습니다');
+                        statusEl.textContent = '' + (data.message || '승인에 실패했습니다');
                         statusEl.className = 'ai-status error';
                     }
                 } catch (err) {
                     console.error('관리자 가입 승인 오류:', err);
-                    statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                    statusEl.textContent = '서버 연결에 실패했습니다.';
                     statusEl.className = 'ai-status error';
                 }
             });
@@ -826,7 +826,7 @@
             const targetName = target ? target.name : '';
             confirmModal(`${targetName || targetEmployeeId}(${targetEmployeeId}) 계정을 복구할까요?`, async () => {
                 const statusEl = document.getElementById('adminStatus');
-                statusEl.textContent = '☁️ 복구하는 중...';
+                statusEl.textContent = '복구하는 중...';
                 statusEl.className = 'ai-status';
 
                 try {
@@ -842,16 +842,16 @@
                     const data = await res.json();
 
                     if (data.status === 'success') {
-                        statusEl.textContent = '✅ 복구되었습니다';
+                        statusEl.textContent = '복구되었습니다';
                         statusEl.className = 'ai-status success';
                         await loadAdminUserList();
                     } else {
-                        statusEl.textContent = '⚠️ ' + (data.message || '복구에 실패했습니다');
+                        statusEl.textContent = '' + (data.message || '복구에 실패했습니다');
                         statusEl.className = 'ai-status error';
                     }
                 } catch (err) {
                     console.error('관리자 계정 복구 오류:', err);
-                    statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                    statusEl.textContent = '서버 연결에 실패했습니다.';
                     statusEl.className = 'ai-status error';
                 }
             });
@@ -862,7 +862,7 @@
             const targetName = target ? target.name : '';
             confirmModal(`${targetName || targetEmployeeId}(${targetEmployeeId}) 계정을 지금 완전히 삭제할까요?\n\n보관기한(7일)을 기다리지 않고 즉시 삭제되며, 이 작업은 절대 되돌릴 수 없습니다.`, async () => {
                 const statusEl = document.getElementById('adminStatus');
-                statusEl.textContent = '☁️ 완전히 삭제하는 중...';
+                statusEl.textContent = '완전히 삭제하는 중...';
                 statusEl.className = 'ai-status';
 
                 try {
@@ -878,16 +878,16 @@
                     const data = await res.json();
 
                     if (data.status === 'success') {
-                        statusEl.textContent = '✅ 완전히 삭제되었습니다';
+                        statusEl.textContent = '완전히 삭제되었습니다';
                         statusEl.className = 'ai-status success';
                         await loadAdminUserList();
                     } else {
-                        statusEl.textContent = '⚠️ ' + (data.message || '삭제에 실패했습니다');
+                        statusEl.textContent = '' + (data.message || '삭제에 실패했습니다');
                         statusEl.className = 'ai-status error';
                     }
                 } catch (err) {
                     console.error('관리자 계정 즉시 삭제 오류:', err);
-                    statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                    statusEl.textContent = '서버 연결에 실패했습니다.';
                     statusEl.className = 'ai-status error';
                 }
             });
@@ -901,7 +901,7 @@
                 : `${targetName || targetEmployeeId}(${targetEmployeeId}) 계정을 다시 활성화할까요?`;
             confirmModal(confirmMsg, async () => {
                 const statusEl = document.getElementById('adminStatus');
-                statusEl.textContent = nextDisabled ? '☁️ 비활성화하는 중...' : '☁️ 활성화하는 중...';
+                statusEl.textContent = nextDisabled ? '비활성화하는 중...' : '활성화하는 중...';
                 statusEl.className = 'ai-status';
 
                 try {
@@ -918,16 +918,16 @@
                     const data = await res.json();
 
                     if (data.status === 'success') {
-                        statusEl.textContent = nextDisabled ? '✅ 비활성화되었습니다' : '✅ 활성화되었습니다';
+                        statusEl.textContent = nextDisabled ? '비활성화되었습니다' : '활성화되었습니다';
                         statusEl.className = 'ai-status success';
                         await loadAdminUserList();
                     } else {
-                        statusEl.textContent = '⚠️ ' + (data.message || '처리에 실패했습니다');
+                        statusEl.textContent = '' + (data.message || '처리에 실패했습니다');
                         statusEl.className = 'ai-status error';
                     }
                 } catch (err) {
                     console.error('관리자 계정 활성화/비활성화 오류:', err);
-                    statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                    statusEl.textContent = '서버 연결에 실패했습니다.';
                     statusEl.className = 'ai-status error';
                 }
             });
@@ -937,7 +937,7 @@
         // 제출 대상을 고를 수 있게 되는 기준이 되는 값이라 확인창 없이 select 하나로 바로 적용함
         async function adminSetTeamReportRole(targetEmployeeId, role) {
             const statusEl = document.getElementById('adminStatus');
-            statusEl.textContent = '☁️ 처리하는 중...';
+            statusEl.textContent = '처리하는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -954,17 +954,17 @@
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    statusEl.textContent = '✅ 역할이 변경되었습니다';
+                    statusEl.textContent = '역할이 변경되었습니다';
                     statusEl.className = 'ai-status success';
                     await loadAdminUserList();
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '처리에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '처리에 실패했습니다');
                     statusEl.className = 'ai-status error';
                     await loadAdminUserList(); // select가 되돌아가도록 실패 시에도 다시 그림
                 }
             } catch (err) {
                 console.error('관리자 팀 보고 역할 지정 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
                 await loadAdminUserList();
             }
@@ -977,7 +977,7 @@
             // 계정을 가로챌 수 있었음. newPasswordHash는 아직 앱스 스크립트를 재배포하기 전의 예전 서버용
             confirmModal(`${targetEmployeeId} 계정의 비밀번호를 임시 비밀번호로 초기화할까요?\n임시 비밀번호는 본인에게 직접 전달해주세요.`, async () => {
                 const statusEl = document.getElementById('adminStatus');
-                statusEl.textContent = '☁️ 비밀번호를 초기화하는 중...';
+                statusEl.textContent = '비밀번호를 초기화하는 중...';
                 statusEl.className = 'ai-status';
 
                 try {
@@ -996,16 +996,16 @@
 
                     if (data.status === 'success') {
                         statusEl.textContent = data.tempPassword
-                            ? `✅ ${targetEmployeeId} 계정의 임시 비밀번호: ${data.tempPassword}  (본인에게 직접 전달하세요. 다음 로그인 때 새 비밀번호로 바꾸게 됩니다)`
-                            : `✅ ${targetEmployeeId} 계정의 비밀번호가 사번(${targetEmployeeId})으로 초기화되었습니다`;
+                            ? `${targetEmployeeId} 계정의 임시 비밀번호: ${data.tempPassword}  (본인에게 직접 전달하세요. 다음 로그인 때 새 비밀번호로 바꾸게 됩니다)`
+                            : `${targetEmployeeId} 계정의 비밀번호가 사번(${targetEmployeeId})으로 초기화되었습니다`;
                         statusEl.className = 'ai-status success';
                     } else {
-                        statusEl.textContent = '⚠️ ' + (data.message || '비밀번호 초기화에 실패했습니다');
+                        statusEl.textContent = '' + (data.message || '비밀번호 초기화에 실패했습니다');
                         statusEl.className = 'ai-status error';
                     }
                 } catch (err) {
                     console.error('관리자 비밀번호 초기화 오류:', err);
-                    statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                    statusEl.textContent = '서버 연결에 실패했습니다.';
                     statusEl.className = 'ai-status error';
                 }
             });
@@ -1045,7 +1045,7 @@
             if (!department) { errEl.textContent = '소속을 입력해주세요'; errEl.style.display = 'block'; return; }
 
             const statusEl = document.getElementById('adminStatus');
-            statusEl.textContent = '☁️ 저장하는 중...';
+            statusEl.textContent = '저장하는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -1092,8 +1092,8 @@
                 if (infoData.status === 'success') {
                     closeAdminEditUserModal();
                     statusEl.textContent = issuedTempPassword
-                        ? `✅ 사번이 ${workingEmployeeId}(으)로 바뀌었습니다. 임시 비밀번호: ${issuedTempPassword}  (본인에게 직접 전달하세요. 다음 로그인 때 새 비밀번호로 바꾸게 됩니다)`
-                        : `✅ ${workingEmployeeId} 계정 정보가 수정되었습니다`;
+                        ? `사번이 ${workingEmployeeId}(으)로 바뀌었습니다. 임시 비밀번호: ${issuedTempPassword}  (본인에게 직접 전달하세요. 다음 로그인 때 새 비밀번호로 바꾸게 됩니다)`
+                        : `${workingEmployeeId} 계정 정보가 수정되었습니다`;
                     statusEl.className = 'ai-status success';
                     await loadAdminUserList();
                 } else {
@@ -1136,7 +1136,7 @@
             errEl.style.display = 'none';
 
             const statusEl = document.getElementById('adminStatus');
-            statusEl.textContent = '☁️ 저장하는 중...';
+            statusEl.textContent = '저장하는 중...';
             statusEl.className = 'ai-status';
 
             try {
@@ -1154,7 +1154,7 @@
 
                 if (data.status === 'success') {
                     closeAdminFeatureModal();
-                    statusEl.textContent = `✅ ${adminFeatureTargetEmployeeId} 계정의 기능 설정이 저장되었습니다`;
+                    statusEl.textContent = `${adminFeatureTargetEmployeeId} 계정의 기능 설정이 저장되었습니다`;
                     statusEl.className = 'ai-status success';
                     await loadAdminUserList();
                 } else {

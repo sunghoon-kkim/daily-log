@@ -74,7 +74,7 @@
                     document.getElementById('trendResultTextarea').value = result.summary;
                     document.getElementById('trendReviseInput').value = '';
                     resultBlock.style.display = 'block';
-                    statusEl.textContent = '✅ 분석이 완료되었습니다';
+                    statusEl.textContent = '분석이 완료되었습니다';
                     statusEl.className = 'ai-status success';
                     
                     trendConversationHistory = [
@@ -82,12 +82,12 @@
                         { role: 'model', text: result.summary }
                     ];
                 } else {
-                    statusEl.textContent = '⚠️ ' + (result.message || '분석에 실패했습니다');
+                    statusEl.textContent = '' + (result.message || '분석에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('경향 분석 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             } finally {
                 btn.disabled = false;
@@ -133,19 +133,19 @@
                 
                 if (result.status === 'success' && result.summary) {
                     document.getElementById('trendResultTextarea').value = result.summary;
-                    statusEl.textContent = '✅ 답변이 반영되었습니다';
+                    statusEl.textContent = '답변이 반영되었습니다';
                     statusEl.className = 'ai-status success';
                     
                     trendConversationHistory.push({ role: 'user', text: instruction });
                     trendConversationHistory.push({ role: 'model', text: result.summary });
                     input.value = '';
                 } else {
-                    statusEl.textContent = '⚠️ ' + (result.message || '처리에 실패했습니다');
+                    statusEl.textContent = '' + (result.message || '처리에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('경향 분석 추가 질문 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             } finally {
                 btn.disabled = false;
@@ -241,7 +241,7 @@
                 });
                 const data = await res.json();
                 if (data.status !== 'success') {
-                    statusEl.textContent = '⚠️ ' + (data.message || '판독에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '판독에 실패했습니다');
                     statusEl.className = 'ai-status error';
                     return;
                 }
@@ -260,12 +260,12 @@
                 document.getElementById('gaugeResultBlock').style.display = 'block';
                 const unsure = gaugeReadings.filter(r => r.confidence !== 'high').length;
                 statusEl.textContent = unsure
-                    ? `✅ ${gaugeReadings.length}개 값을 읽었습니다. 노란색/빨간색 ${unsure}개는 사진과 꼭 대조해주세요.`
-                    : `✅ ${gaugeReadings.length}개 값을 읽었습니다. 사진과 맞는지 확인 후 기록하세요.`;
+                    ? `${gaugeReadings.length}개 값을 읽었습니다. 노란색/빨간색 ${unsure}개는 사진과 꼭 대조해주세요.`
+                    : `${gaugeReadings.length}개 값을 읽었습니다. 사진과 맞는지 확인 후 기록하세요.`;
                 statusEl.className = 'ai-status success';
             } catch (err) {
                 console.error('계기판 판독 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             } finally {
                 btn.disabled = gaugePhotos.length === 0 || !personalAiApiKey;
@@ -379,7 +379,7 @@
             const compared = assessments.filter(a => a.level !== 'none').length;
             if (flagged.length) {
                 el.className = 'gauge-anomaly-summary warn';
-                el.textContent = `⚠️ 평소와 다른 값 ${flagged.length}개: ` + flagged.map(a => `${a.label} (${a.text.split(' · ')[0].replace(/^\S+\s/, '')})`).join(', ');
+                el.textContent = `평소와 다른 값 ${flagged.length}개: ` + flagged.map(a => `${a.label} (${a.text.split(' · ')[0].replace(/^\S+\s/, '')})`).join(', ');
             } else if (compared) {
                 el.className = 'gauge-anomaly-summary ok';
                 el.textContent = `✓ 과거 기록과 비교한 ${compared}개 값 모두 평소 범위입니다.`;
@@ -533,7 +533,7 @@
             document.execCommand('copy');
             
             const statusEl = document.getElementById('trendStatus');
-            statusEl.textContent = '📋 복사되었습니다!';
+            statusEl.textContent = '복사되었습니다!';
             statusEl.className = 'ai-status success';
         }
         

@@ -86,8 +86,8 @@
             queueSync();
             const status = document.getElementById('dailySummarySettingsStatus');
             status.textContent = dailySummaryFixedFirstItem
-                ? '✅ 1번 항목을 저장했습니다. 다음 요약 생성부터 적용됩니다.'
-                : '✅ 고정 항목을 해제했습니다.';
+                ? '1번 항목을 저장했습니다. 다음 요약 생성부터 적용됩니다.'
+                : '고정 항목을 해제했습니다.';
             status.className = 'ai-status success';
         }
 
@@ -202,17 +202,17 @@
                     dailySummaryItems = parseDailySummaryItems(data.summary).map(text => ({ text, checked: true }));
                     resultBlock.style.display = '';
                     renderDailySummaryItems();
-                    statusEl.textContent = '✅ 오늘 업무 요약이 생성되었습니다';
+                    statusEl.textContent = '오늘 업무 요약이 생성되었습니다';
                     statusEl.className = 'ai-status success';
                 } else {
                     stopDailySummaryProgress(false);
-                    statusEl.textContent = '⚠️ ' + (data.message || '요약 생성에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '요약 생성에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('일일 업무 요약 오류:', err);
                 stopDailySummaryProgress(false);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다. Apps Script 설정을 확인해주세요.';
+                statusEl.textContent = '서버 연결에 실패했습니다. Apps Script 설정을 확인해주세요.';
                 statusEl.className = 'ai-status error';
             } finally {
                 btn.disabled = false;
@@ -275,7 +275,7 @@
             document.execCommand('copy');
 
             const statusEl = document.getElementById('dailySummaryStatus');
-            statusEl.textContent = '📋 복사되었습니다!';
+            statusEl.textContent = '복사되었습니다!';
             statusEl.className = 'ai-status success';
         }
 
@@ -378,17 +378,17 @@
                     lastGeneratedWeeklySummaryText = data.summary;
                     document.getElementById('weeklySummaryResultTextarea').value = data.summary;
                     resultBlock.style.display = 'block';
-                    statusEl.textContent = '✅ 이번주 업무 요약이 생성되었습니다';
+                    statusEl.textContent = '이번주 업무 요약이 생성되었습니다';
                     statusEl.className = 'ai-status success';
                 } else {
                     stopWeeklySummaryProgress(false);
-                    statusEl.textContent = '⚠️ ' + (data.message || '요약 생성에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '요약 생성에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('이번주 업무 요약 오류:', err);
                 stopWeeklySummaryProgress(false);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다. Apps Script 설정을 확인해주세요.';
+                statusEl.textContent = '서버 연결에 실패했습니다. Apps Script 설정을 확인해주세요.';
                 statusEl.className = 'ai-status error';
             } finally {
                 btn.disabled = false;
@@ -402,7 +402,7 @@
             document.execCommand('copy');
 
             const statusEl = document.getElementById('weeklySummaryStatus');
-            statusEl.textContent = '📋 복사되었습니다!';
+            statusEl.textContent = '복사되었습니다!';
             statusEl.className = 'ai-status success';
         }
 
@@ -508,7 +508,7 @@
                     document.getElementById('aiImproveTextarea').value = data.improve || '';
                     document.getElementById('aiReviseInput').value = '';
                     resultBlock.style.display = 'block';
-                    statusEl.textContent = '✅ 요약이 생성되었습니다';
+                    statusEl.textContent = '요약이 생성되었습니다';
                     statusEl.className = 'ai-status success';
                     
                     // 새로운 요약을 생성했으니 대화 히스토리도 새로 시작
@@ -525,12 +525,12 @@
                         { role: 'model', text: data.raw || JSON.stringify({ good: data.good, improve: data.improve }) }
                     ];
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || 'AI 요약 생성에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || 'AI 요약 생성에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('AI 요약 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다. Apps Script 설정을 확인해주세요.';
+                statusEl.textContent = '서버 연결에 실패했습니다. Apps Script 설정을 확인해주세요.';
                 statusEl.className = 'ai-status error';
             } finally {
                 btn.disabled = false;
@@ -585,19 +585,19 @@
                 if (data.status === 'success') {
                     document.getElementById('aiGoodTextarea').value = data.good || '';
                     document.getElementById('aiImproveTextarea').value = data.improve || '';
-                    statusEl.textContent = '✅ 수정 내용이 반영되었습니다';
+                    statusEl.textContent = '수정 내용이 반영되었습니다';
                     statusEl.className = 'ai-status success';
                     
                     aiConversationHistory.push({ role: 'user', text: instruction });
                     aiConversationHistory.push({ role: 'model', text: data.raw || JSON.stringify({ good: data.good, improve: data.improve }) });
                     instructionInput.value = '';
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '수정 반영에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '수정 반영에 실패했습니다');
                     statusEl.className = 'ai-status error';
                 }
             } catch (err) {
                 console.error('AI 수정 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
             } finally {
                 reviseBtn.disabled = false;
@@ -612,7 +612,7 @@
             textarea.select();
             document.execCommand('copy');
             const statusEl = document.getElementById('aiStatus');
-            statusEl.textContent = '📋 잘한점(한일)이 복사되었습니다!';
+            statusEl.textContent = '잘한점(한일)이 복사되었습니다!';
             statusEl.className = 'ai-status success';
         }
         
@@ -621,7 +621,7 @@
             textarea.select();
             document.execCommand('copy');
             const statusEl = document.getElementById('aiStatus');
-            statusEl.textContent = '📋 개선/보완할 점(할일)이 복사되었습니다!';
+            statusEl.textContent = '개선/보완할 점(할일)이 복사되었습니다!';
             statusEl.className = 'ai-status success';
         }
 
@@ -711,7 +711,7 @@
             if (indicator) {
                 if (record.updatedAt) {
                     indicator.style.display = '';
-                    indicator.textContent = '💾 저장됨 · ' + formatTeamReportSubmittedAt(record.updatedAt);
+                    indicator.textContent = '저장됨 · ' + formatTeamReportSubmittedAt(record.updatedAt);
                 } else {
                     indicator.style.display = 'none';
                 }
@@ -736,7 +736,7 @@
             renderFeedbackHistoryForm();
 
             const statusEl = document.getElementById('feedbackHistoryStatus');
-            statusEl.textContent = `✅ ${formatYearMonthLabel(currentFeedbackHistoryMonth)} 기록이 저장되었습니다`;
+            statusEl.textContent = `${formatYearMonthLabel(currentFeedbackHistoryMonth)} 기록이 저장되었습니다`;
             statusEl.className = 'ai-status success';
         }
 
@@ -803,7 +803,7 @@
                     currentFeedbackHistoryMonth = ym;
                     renderFeedbackHistoryForm();
                 }
-                statusEl.textContent = `✅ ${formatYearMonthLabel(ym)} 피드백 이력(자가 피드백)에 저장되었습니다`;
+                statusEl.textContent = `${formatYearMonthLabel(ym)} 피드백 이력(자가 피드백)에 저장되었습니다`;
                 statusEl.className = 'ai-status success';
             };
 
@@ -967,7 +967,7 @@
                             document.getElementById(`goalResult-${area.id}`).value = draftText;
                             document.getElementById(`goalReviseInput-${area.id}`).value = '';
                             document.getElementById(`goalResultBlock-${area.id}`).style.display = 'block';
-                            statusEl.textContent = '✅ 초안이 생성되었습니다';
+                            statusEl.textContent = '초안이 생성되었습니다';
                             statusEl.className = 'goal-status success';
                             goalConversationHistories[area.id] = [
                                 { role: 'user', text: userPromptText },
@@ -975,20 +975,20 @@
                             ];
                         } else {
                             missingCount++;
-                            statusEl.textContent = '⚠️ 이 항목의 생성 결과를 받지 못했습니다. 다시 시도해주세요.';
+                            statusEl.textContent = '이 항목의 생성 결과를 받지 못했습니다. 다시 시도해주세요.';
                             statusEl.className = 'goal-status error';
                         }
                     });
 
                     if (missingCount === 0) {
-                        globalStatusEl.textContent = `✅ ${checkedAreas.length}개 항목 초안이 생성되었습니다`;
+                        globalStatusEl.textContent = `${checkedAreas.length}개 항목 초안이 생성되었습니다`;
                         globalStatusEl.className = 'goal-status success';
                     } else {
-                        globalStatusEl.textContent = `⚠️ ${checkedAreas.length - missingCount}개 성공, ${missingCount}개 실패했습니다 (아래 항목별 상태 확인)`;
+                        globalStatusEl.textContent = `${checkedAreas.length - missingCount}개 성공, ${missingCount}개 실패했습니다 (아래 항목별 상태 확인)`;
                         globalStatusEl.className = 'goal-status error';
                     }
                 } else {
-                    const message = '⚠️ ' + (data.message || '초안 생성에 실패했습니다');
+                    const message = '' + (data.message || '초안 생성에 실패했습니다');
                     globalStatusEl.textContent = message;
                     globalStatusEl.className = 'goal-status error';
                     checkedAreas.forEach(area => {
@@ -999,7 +999,7 @@
                 }
             } catch (err) {
                 console.error('목표수립 초안 생성 오류:', err);
-                const message = '⚠️ 서버 연결에 실패했습니다.';
+                const message = '서버 연결에 실패했습니다.';
                 globalStatusEl.textContent = message;
                 globalStatusEl.className = 'goal-status error';
                 checkedAreas.forEach(area => {
@@ -1057,19 +1057,19 @@
                 
                 if (data.status === 'success' && data.summary) {
                     document.getElementById(`goalResult-${areaId}`).value = data.summary;
-                    statusEl.textContent = '✅ 수정 내용이 반영되었습니다';
+                    statusEl.textContent = '수정 내용이 반영되었습니다';
                     statusEl.className = 'goal-status success';
                     
                     goalConversationHistories[areaId].push({ role: 'user', text: instruction });
                     goalConversationHistories[areaId].push({ role: 'model', text: data.summary });
                     instructionInput.value = '';
                 } else {
-                    statusEl.textContent = '⚠️ ' + (data.message || '수정 반영에 실패했습니다');
+                    statusEl.textContent = '' + (data.message || '수정 반영에 실패했습니다');
                     statusEl.className = 'goal-status error';
                 }
             } catch (err) {
                 console.error('목표수립 수정 오류:', err);
-                statusEl.textContent = '⚠️ 서버 연결에 실패했습니다.';
+                statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'goal-status error';
             } finally {
                 reviseBtn.disabled = false;
@@ -1083,7 +1083,7 @@
             document.execCommand('copy');
             
             const statusEl = document.getElementById(`goalStatus-${areaId}`);
-            statusEl.textContent = '📋 복사되었습니다!';
+            statusEl.textContent = '복사되었습니다!';
             statusEl.className = 'goal-status success';
         }
         

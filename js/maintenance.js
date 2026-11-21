@@ -57,7 +57,7 @@
         // 확인하는 용도의 탭이므로 이미 지난 달은 흐리게, 아직 남은 달은 진하게, 이번 달은
         // 눈에 띄는 색 배지로 표시해서 지금 뭘 챙겨야 하는지 한눈에 보이게 함
         function renderOccurrenceMonthsHtml(months, doneMonths) {
-            if (!months || months.length === 0) return '<span class="month-chip month-undated">📌 미정</span>';
+            if (!months || months.length === 0) return '<span class="month-chip month-undated">미정</span>';
             const now = new Date();
             const nowIndex = now.getFullYear() * 12 + now.getMonth();
             return months.map(mo => {

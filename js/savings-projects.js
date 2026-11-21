@@ -48,7 +48,7 @@
                     <div class="project-card-category">${p.category}</div>
                     ${p.target ? `<div class="project-card-row"><b>목표:</b> ${escapeHtml(p.target)}</div>` : ''}
                     ${p.actual ? `<div class="project-card-row"><b>실제:</b> ${escapeHtml(p.actual)}</div>` : ''}
-                    ${(p.monthlyLogs && p.monthlyLogs.length) ? `<div class="project-card-row">📌 월별 기록 ${p.monthlyLogs.length}건</div>` : ''}
+                    ${(p.monthlyLogs && p.monthlyLogs.length) ? `<div class="project-card-row">월별 기록 ${p.monthlyLogs.length}건</div>` : ''}
                     ${(p.createdMonth || p.updatedMonth) ? `<div class="project-card-date">${[p.createdMonth ? '등록: ' + p.createdMonth : '', p.updatedMonth ? '최근 수정: ' + p.updatedMonth : ''].filter(Boolean).join(' · ')}</div>` : ''}
                 </div>
             `).join('');

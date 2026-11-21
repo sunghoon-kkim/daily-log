@@ -318,7 +318,7 @@
             renderWaterFlowDiagramTabs();
             renderWaterFlowCanvas();
             fitWaterFlowViewToContent();
-            showStatus('📥 흐름도 ' + toAdd.length + '개를 추가했습니다' + (skipped > 0 ? ` (같은 이름 ${skipped}개는 건너뜀)` : ''), 'success');
+            showStatus('흐름도 ' + toAdd.length + '개를 추가했습니다' + (skipped > 0 ? ` (같은 이름 ${skipped}개는 건너뜀)` : ''), 'success');
         }
 
         function saveWaterFlowBlocksToStorage() {
@@ -1559,7 +1559,7 @@
             });
             saveWaterFlowBlocksToStorage();
             renderWaterFlowCanvas();
-            showStatus('📋 블록을 복제했습니다', 'success');
+            showStatus('블록을 복제했습니다', 'success');
         }
 
         // 빈 곳(블록/연결선이 아닌 곳)을 더블클릭하면 그 위치에 새 블록을 추가하는 창을 바로 띄움

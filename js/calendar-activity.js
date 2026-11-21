@@ -273,7 +273,7 @@
 
         function describeRotationStatus(st) {
             const text = Object.keys(st.states).sort().map(u => `${st.name} ${u} ${ROTATION_STATE_LABELS[st.states[u]]}`).join(' · ');
-            return st.conflict ? `⚠️ ${text} (같은 날 겹침)` : text;
+            return st.conflict ? `${text} (같은 날 겹침)` : text;
         }
 
         function buildRotationStatusChips(statuses) {
@@ -510,7 +510,7 @@
             }
 
             if (upcoming.length === 0) {
-                widget.innerHTML = '<div class="upcoming-empty">📌 다가오는 일정이 없습니다</div>';
+                widget.innerHTML = '<div class="upcoming-empty">다가오는 일정이 없습니다</div>';
                 return;
             }
 
@@ -788,7 +788,7 @@
                 if (gallery) gallery.appendChild(createCategoryImageThumb(date, category, imageObj));
             } catch (err) {
                 console.error('활동기록 이미지 업로드 실패:', err);
-                placeholder.textContent = '⚠️ 업로드 실패';
+                placeholder.textContent = '업로드 실패';
                 setTimeout(() => placeholder.remove(), 2500);
             }
         }
@@ -1198,14 +1198,14 @@
             }
 
             clearTimeout(syncTimeout); // 곧 이어서 직접 동기화하므로, 뒤늦게 또 도는 디바운스 자동저장은 취소함
-            showStatus('💾 저장 중...', 'success');
+            showStatus('저장 중...', 'success');
 
             // 저장이 끝나기 전에 버튼을 다시 눌러 syncToServer()가 겹쳐 나가는 것을 막음
             const saveBtn = document.getElementById('saveAllBtn');
             if (saveBtn) saveBtn.disabled = true;
             try {
                 const ok = await syncToServer();
-                showStatus(ok ? '✅ 저장되었습니다!' : '⚠️ 서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
+                showStatus(ok ? '저장되었습니다!' : '서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
             } finally {
                 if (saveBtn) saveBtn.disabled = false;
             }
@@ -1303,7 +1303,7 @@
                 const ev = events.find(e => e.id === eventId);
                 if (!ev) return;
 
-                document.getElementById('modalTitle').textContent = '📌 일정 수정';
+                document.getElementById('modalTitle').textContent = '일정 수정';
                 document.getElementById('eventTitleInput').value = ev.title;
                 document.getElementById('eventStartInput').value = ev.start;
                 document.getElementById('eventEndInput').value = ev.end;
@@ -1317,7 +1317,7 @@
             } else {
                 // 추가 모드
                 const dateStr = defaultDateStr || formatDate(new Date());
-                document.getElementById('modalTitle').textContent = '📌 일정 추가';
+                document.getElementById('modalTitle').textContent = '일정 추가';
                 document.getElementById('eventTitleInput').value = '';
                 document.getElementById('eventStartInput').value = dateStr;
                 document.getElementById('eventEndInput').value = dateStr;
@@ -1411,7 +1411,7 @@
             closeEventModal();
             renderCalendar();
             if (selectedDate) renderRecordForm();
-            showStatus(repeatCount > 1 ? `✅ 일정이 ${repeatCount}건 반복 등록되었습니다!` : '✅ 일정이 저장되었습니다!', 'success');
+            showStatus(repeatCount > 1 ? `일정이 ${repeatCount}건 반복 등록되었습니다!` : '일정이 저장되었습니다!', 'success');
         }
 
         function deleteEvent() {
@@ -1441,14 +1441,14 @@
                     `반복 등록된 일정입니다 (총 ${seriesEvents.length}건). 이 일정만 삭제할까요, 반복 전체를 삭제할까요?`,
                     () => {
                         removeEventsByIds([editingEventId]);
-                        showStatus('🗑️ 삭제되었습니다', 'success');
+                        showStatus('삭제되었습니다', 'success');
                     },
                     {
                         confirmLabel: '이 일정만',
                         extraLabel: `전체 ${seriesEvents.length}건 삭제`,
                         extraCallback: () => {
                             removeEventsByIds(seriesEvents.map(e => e.id));
-                            showStatus(`🗑️ ${seriesEvents.length}건 모두 삭제되었습니다`, 'success');
+                            showStatus(`${seriesEvents.length}건 모두 삭제되었습니다`, 'success');
                         }
                     }
                 );
@@ -1457,7 +1457,7 @@
 
             confirmModal('이 일정을 삭제하시겠습니까?', () => {
                 removeEventsByIds([editingEventId]);
-                showStatus('🗑️ 삭제되었습니다', 'success');
+                showStatus('삭제되었습니다', 'success');
             });
         }
         
@@ -1592,7 +1592,7 @@
             renderCalendar();
             if (selectedDate) renderRecordForm();
 
-            let msg = `✅ 교대 운전 일정 ${addedCount}건 등록되었습니다`;
+            let msg = `교대 운전 일정 ${addedCount}건 등록되었습니다`;
             if (skippedCount) msg += ` (이미 있는 ${skippedCount}건 제외)`;
             showStatus(msg, 'success');
             if (beyondHolidayData) {
