@@ -64,9 +64,10 @@
         // 메모장 내용은 HTML(서식/이미지 포함)이라 검색·표시용으로 순수 텍스트만 뽑아냄
         function htmlToPlainText(html) {
             if (!html) return '';
-            const div = document.createElement('div');
-            div.innerHTML = String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(div|p|li)>/gi, '\n');
-            return (div.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+            // 실제 화면 문서(document)에 div를 만들어 innerHTML로 넣으면 <img onerror> 같은 이벤트가 실행될 수
+            // 있어서(보안 감사 지적), 스크립트가 실행되지 않는 DOMParser 문서에서 글자만 뽑음
+            const doc = new DOMParser().parseFromString(String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(div|p|li)>/gi, '\n'), 'text/html');
+            return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
         }
 
         // 긴 텍스트(메모장 등)는 검색어가 들어있는 줄만 최대 몇 줄 뽑아서 보여줌

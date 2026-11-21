@@ -924,16 +924,69 @@ function getLockDenialMessage(parsedData) {
 // 관리자 초기화 직후 옛 해시로 계속 오는 자동저장 때문에 계정이 다시 잠기므로(handleLogin 주석 참고),
 // 로그인 잠금과 별개로 캐시에 짧게 세고 이 경로들만 막음. 로그인에 성공하면 이 카운트를 지움.
 // 차단 중에는 맞는 비밀번호도 거부해야 대입 시도로 정답 여부를 알아낼 수 없음
+// 실패 횟수는 "읽고 → 1 더하고 → 쓰기"라서, 잠금 없이 동시에 여러 요청을 보내면 모두 같은 값을 읽어
+// 횟수가 거의 오르지 않았음(동시 대입으로 차단 우회 - 보안 감사 지적). 그래서 짧은 잠금 안에서
+// 횟수를 다시 읽고, 비밀번호를 확인하기 "전에" 이번 시도를 먼저 1회로 기록해 둠(맞으면 되돌림).
+// 이 함수는 이미 스크립트 잠금을 잡은 handleSaveState/백업 복원 안에서도 불리므로, 같은 스크립트 잠금을
+// 다시 잡지 않고 별도의 문서 잠금(스프레드시트 단위)을 씀
+function getAuthCounterLock() {
+  return LockService.getDocumentLock() || LockService.getUserLock();
+}
+
 function checkPasswordHash(employeeId, storedHash, passwordHash) {
   const cache = CacheService.getScriptCache();
   const key = AUTH_FAIL_CACHE_PREFIX + employeeId;
-  const failCount = Number(cache.get(key) || 0);
-  if (failCount >= AUTH_FAIL_LIMIT) {
-    return "비밀번호 확인 실패가 너무 많아 잠시 차단되었습니다. 다시 로그인해주세요.";
+  const lock = getAuthCounterLock();
+  try {
+    lock.waitLock(10000);
+  } catch (lockErr) {
+    return "요청이 몰려 비밀번호를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.";
   }
-  if (passwordHashMatches(storedHash, passwordHash)) return null;
-  cache.put(key, String(failCount + 1), AUTH_FAIL_WINDOW_SECONDS);
+  try {
+    const failCount = Number(cache.get(key) || 0);
+    if (failCount >= AUTH_FAIL_LIMIT) {
+      return "비밀번호 확인 실패가 너무 많아 잠시 차단되었습니다. 다시 로그인해주세요.";
+    }
+    cache.put(key, String(failCount + 1), AUTH_FAIL_WINDOW_SECONDS); // 확인 전에 이번 시도를 먼저 기록
+  } finally {
+    lock.releaseLock();
+  }
+  if (passwordHashMatches(storedHash, passwordHash)) {
+    // 맞았으면 방금 기록한 이번 시도만 되돌림(그 사이 다른 실패가 더해졌다면 그 몫은 남겨둠)
+    try {
+      lock.waitLock(10000);
+      try {
+        const now = Number(cache.get(key) || 0);
+        if (now > 0) cache.put(key, String(now - 1), AUTH_FAIL_WINDOW_SECONDS);
+      } finally {
+        lock.releaseLock();
+      }
+    } catch (lockErr) { /* 되돌리지 못해도 정답 통과에는 지장 없음(창이 지나면 자동 만료) */ }
+    return null;
+  }
   return "비밀번호가 일치하지 않습니다.";
+}
+
+// Users 시트 프로필(3열)을 읽고-고치고-쓰는 요청들을 서로 겹치지 않게 줄 세움.
+// handleSaveState·사번 변경·완전 삭제는 이미 스크립트 잠금을 쓰는데, 관리자 정지/역할 변경 등은
+// 잠금 없이 써서 동시에 들어온 저장이 관리자 변경을 옛 값으로 덮어쓰는 문제가 있었음(보안 감사 지적).
+// 이 함수 안에서 실행되는 처리는 잠금을 잡은 뒤에 시트를 읽으므로 항상 최신 값을 기준으로 씀.
+// 주의: 이미 스크립트 잠금을 잡은 함수(handleSaveState 등) 안에서 다시 부르면 안 됨
+function withScriptLock(fn) {
+  // 비밀번호 암호화 키(pepper)가 아직 없으면 getPasswordPepper가 처음 만들면서 스크립트 잠금을 잡으므로,
+  // 잠금 안에서 처음 만들어 잠금이 겹치지 않도록 잠금을 잡기 전에 미리 준비해 둠(이미 있으면 바로 끝남)
+  getPasswordPepper();
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return jsonResponse({ status: "error", message: "다른 요청과 겹쳐서 처리하지 못했습니다. 잠시 후 다시 시도해주세요." });
+  }
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function clearPasswordCheckFailures(employeeId) {
@@ -1099,22 +1152,14 @@ function filterTeamReportTargetsByRole(candidates, myRole) {
 // 해시로 계속 요청을 보내면서 몇 초 만에 계정이 다시 잠기는 사고가 날 수 있음.
 // 성공 시에는 handleLoad와 동일하게 프로필+records를 함께 반환해서, 로그인 확인과 데이터
 // 조회를 위해 GAS를 두 번 왕복하지 않고 한 번만 왕복하도록 함(느린 GAS 응답 특성상 중요함)
-function handleLogin(employeeId, passwordHash) {
-  const timing = startTiming();
-  if (!employeeId) {
-    return jsonResponse({ status: "error", message: "사번을 입력해주세요." });
-  }
-  if (!passwordHash) {
-    return jsonResponse({ status: "error", message: "비밀번호를 입력해주세요." });
-  }
-
-  const sheet = getUsersSheet();
+// handleLogin의 비밀번호 대조·실패 횟수·잠금·마지막 로그인 시각 기록 부분. 반드시 withScriptLock 안에서 호출함
+// (잠금을 잡은 뒤에 행을 읽어야 최신 값 기준으로 씀). 오류면 { response }, 통과면 { parsedData }
+function handleLoginAuthLocked(sheet, employeeId, passwordHash) {
+  // 잠금 전에 찾은 행 번호는 그 사이 위쪽 행 삭제로 어긋날 수 있으므로 잠금 안에서 다시 찾음
   const row = findUserRow(sheet, employeeId);
-
   if (row === -1) {
-    return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다. 회원가입을 먼저 진행해주세요." });
+    return { response: jsonResponse({ status: "error", message: "등록되지 않은 사번입니다. 회원가입을 먼저 진행해주세요." }) };
   }
-
   // 비밀번호 해시(2열)와 프로필 JSON(3열)을 각각 따로 읽지 않고 한 번에 묶어서 읽음
   const rowValues = sheet.getRange(row, 2, 1, 2).getValues()[0];
   const storedHash = rowValues[0];
@@ -1128,7 +1173,7 @@ function handleLogin(employeeId, passwordHash) {
   // 비밀번호를 무제한 대입할 수 있음. 잠금은 LOGIN_LOCK_MINUTES 뒤 자동으로 풀리므로 풀어줄 사람이 없어도 됨
   const lockMessage = getLockDenialMessage(parsedData);
   if (lockMessage) {
-    return jsonResponse({ status: "error", message: lockMessage });
+    return { response: jsonResponse({ status: "error", message: lockMessage }) };
   }
 
   if (!passwordHashMatches(storedHash, passwordHash)) {
@@ -1150,7 +1195,7 @@ function handleLogin(employeeId, passwordHash) {
     }
 
     sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
-    return jsonResponse({ status: "error", message: message });
+    return { response: jsonResponse({ status: "error", message: message }) };
   }
 
   // 비밀번호가 맞았으니 실패 기록(있었다면)을 지움
@@ -1166,13 +1211,13 @@ function handleLogin(employeeId, passwordHash) {
 
   const denialMessage = getAccountAccessDenialMessage(parsedData, true);
   if (denialMessage) {
-    return jsonResponse({ status: "error", message: denialMessage });
+    return { response: jsonResponse({ status: "error", message: denialMessage }) };
   }
 
   // 관리자 초기화로 받은 임시 비밀번호로 들어온 경우: 데이터는 내려주지 않고, 프론트가 새 비밀번호
   // 설정 화면을 띄우도록 표시만 함. 바꾸기 전까지는 getAccountAccessDenialMessage가 다른 모든 요청을 막음
   if (parsedData.mustChangePassword) {
-    return jsonResponse({ status: "error", mustChangePassword: true, message: "임시 비밀번호로 로그인했습니다. 새 비밀번호를 설정해주세요." });
+    return { response: jsonResponse({ status: "error", mustChangePassword: true, message: "임시 비밀번호로 로그인했습니다. 새 비밀번호를 설정해주세요." }) };
   }
 
   // 자동 로그인 없이 매번 직접 로그인해야 하므로(resetToLoggedOutState 참고), 이 시각이 곧
@@ -1185,6 +1230,36 @@ function handleLogin(employeeId, passwordHash) {
     parsedData.lastLoginAt = new Date().toISOString();
     sheet.getRange(row, 3).setValue(JSON.stringify(parsedData));
   }
+  return { parsedData: parsedData };
+}
+
+function handleLogin(employeeId, passwordHash) {
+  const timing = startTiming();
+  if (!employeeId) {
+    return jsonResponse({ status: "error", message: "사번을 입력해주세요." });
+  }
+  if (!passwordHash) {
+    return jsonResponse({ status: "error", message: "비밀번호를 입력해주세요." });
+  }
+
+  const sheet = getUsersSheet();
+  const row = findUserRow(sheet, employeeId);
+
+  if (row === -1) {
+    return jsonResponse({ status: "error", message: "등록되지 않은 사번입니다. 회원가입을 먼저 진행해주세요." });
+  }
+
+  // 실패 횟수(failedLoginCount/lockedAt)를 잠금 없이 읽고-더하고-쓰면 동시에 보낸 오답들이 같은 값을
+  // 읽어 5회 잠금을 우회할 수 있었고, 프로필 칸 전체를 옛 값으로 다시 써서 그 사이 관리자가 바꾼
+  // 정지/역할 등을 되돌릴 수도 있었음(보안 감사 지적). 그래서 읽기부터 실패/성공 기록까지를
+  // 스크립트 잠금 안에서 처리하고, 무거운 기록 불러오기는 잠금 밖에서 함
+  const authResult = withScriptLock(function() {
+    return handleLoginAuthLocked(sheet, employeeId, passwordHash);
+  });
+  if (!authResult || typeof authResult.getContent === "function") return authResult; // 잠금 대기 실패 안내
+  if (authResult.response) return authResult.response;
+  const parsedData = authResult.parsedData;
+  const isAdminAccount = (employeeId === ADMIN_EMPLOYEE_ID);
   markTiming(timing, "auth");
 
   parsedData.records = loadMergedRecords(employeeId, parsedData);
@@ -1294,6 +1369,9 @@ function doPost(e) {
       if (auth.error) return auth.error;
     }
 
+    // 아래에서 withScriptLock으로 감싼 처리들은 Users 프로필(3열)을 읽고-고치고-쓰므로, 저장(handleSaveState)·
+    // 로그인 등과 겹치지 않게 잠금 안에서 실행함(관리자 변경이 동시 저장에 덮어써지던 문제 - 보안 감사 지적).
+    // adminChangeEmployeeId/adminPurgeUser는 함수 안에서 이미 같은 잠금을 잡으므로 여기서 감싸지 않음
     if (data.action === "uploadImage") return handleUploadImage(data);
     if (data.action === "summarize") return handleSummarize(data);
     if (data.action === "revise") return handleRevise(data);
@@ -1307,22 +1385,22 @@ function doPost(e) {
     if (data.action === "askLog") return handleAskLog(data);
     if (data.action === "gaugeRead") return handleGaugeRead(data);
     if (data.action === "signup") return handleSignup(data);
-    if (data.action === "changePassword") return handleChangePassword(data);
+    if (data.action === "changePassword") return withScriptLock(function() { return handleChangePassword(data); });
     if (data.action === "requestPasswordReset") return handleRequestPasswordReset(data);
     if (data.action === "getMyBackups") return handleGetMyBackups(data);
     if (data.action === "restoreFromBackup") return handleRestoreFromBackup(data);
     if (data.action === "adminListUsers") return handleAdminListUsers(data);
-    if (data.action === "adminDeleteUser") return handleAdminDeleteUser(data);
-    if (data.action === "adminResetPassword") return handleAdminResetPassword(data);
-    if (data.action === "adminUpdateUserInfo") return handleAdminUpdateUserInfo(data);
+    if (data.action === "adminDeleteUser") return withScriptLock(function() { return handleAdminDeleteUser(data); });
+    if (data.action === "adminResetPassword") return withScriptLock(function() { return handleAdminResetPassword(data); });
+    if (data.action === "adminUpdateUserInfo") return withScriptLock(function() { return handleAdminUpdateUserInfo(data); });
     if (data.action === "adminChangeEmployeeId") return handleAdminChangeEmployeeId(data);
-    if (data.action === "adminUpdateUserFeatures") return handleAdminUpdateUserFeatures(data);
+    if (data.action === "adminUpdateUserFeatures") return withScriptLock(function() { return handleAdminUpdateUserFeatures(data); });
     if (data.action === "adminSetDefaultFeatures") return handleAdminSetDefaultFeatures(data);
-    if (data.action === "adminRestoreUser") return handleAdminRestoreUser(data);
-    if (data.action === "adminApproveUser") return handleAdminApproveUser(data);
+    if (data.action === "adminRestoreUser") return withScriptLock(function() { return handleAdminRestoreUser(data); });
+    if (data.action === "adminApproveUser") return withScriptLock(function() { return handleAdminApproveUser(data); });
     if (data.action === "adminPurgeUser") return handleAdminPurgeUser(data);
-    if (data.action === "adminSetUserDisabled") return handleAdminSetUserDisabled(data);
-    if (data.action === "adminSetTeamReportRole") return handleAdminSetTeamReportRole(data);
+    if (data.action === "adminSetUserDisabled") return withScriptLock(function() { return handleAdminSetUserDisabled(data); });
+    if (data.action === "adminSetTeamReportRole") return withScriptLock(function() { return handleAdminSetTeamReportRole(data); });
     if (data.action === "submitTeamWeeklyReport") return handleSubmitTeamWeeklyReport(data);
     if (data.action === "getMyTeamWeeklyReport") return handleGetMyTeamWeeklyReport(data);
     if (data.action === "getMyTeamWeeklyReportHistory") return handleGetMyTeamWeeklyReportHistory(data);
@@ -1331,7 +1409,7 @@ function doPost(e) {
     if (data.action === "getTeamReportMemberList") return handleGetTeamReportMemberList(data);
     if (data.action === "getTeamReportPendingStatus") return handleGetTeamReportPendingStatus(data);
     if (data.action === "getTeamReportParts") return handleGetTeamReportParts();
-    if (data.action === "adminSetTeamReportParts") return handleAdminSetTeamReportParts(data);
+    if (data.action === "adminSetTeamReportParts") return withScriptLock(function() { return handleAdminSetTeamReportParts(data); });
 
     return handleSaveState(data, body);
   } catch (error) {
@@ -1532,6 +1610,7 @@ function handleAdminChangeEmployeeId(data) {
     renameLargeFieldsOwner(oldEmployeeId, newEmployeeId);
     renameTeamReportsOwner(oldEmployeeId, newEmployeeId);
     renameTeamWeeklyReportsOwner(oldEmployeeId, newEmployeeId);
+    renameBackupsOwner(oldEmployeeId, newEmployeeId); // 옛 사번에 백업이 남으면 그 사번을 새로 받은 사람이 복원할 수 있었음
   } finally {
     lock.releaseLock();
   }
@@ -1697,6 +1776,30 @@ function handleAdminListUsers(data) {
   return jsonResponse({ status: "success", users: users, trash: trash, pendingApproval: pendingApproval, defaultDisabledFeatures: getDefaultDisabledFeatures() });
 }
 
+// 자동 백업 시트(BACKUP_SHEET_NAME)는 사번 문자열로만 주인을 구분하므로, 계정 완전 삭제/사번 변경 때
+// 다른 부속 데이터와 똑같이 지우거나 새 사번으로 옮겨야 함(보안 감사 지적). 둘 다 스크립트 잠금 안에서 호출됨
+function deleteBackupsForUser(employeeId) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BACKUP_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return;
+  const ids = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues();
+  for (let i = ids.length - 1; i >= 0; i--) {
+    if (String(ids[i][0]).trim() === employeeId) sheet.deleteRow(i + 2);
+  }
+}
+
+function renameBackupsOwner(oldEmployeeId, newEmployeeId) {
+  if (oldEmployeeId === newEmployeeId) return;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BACKUP_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() < 2) return;
+  const ids = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === oldEmployeeId) {
+      lockEmployeeIdCellAsText(sheet, i + 2, 2);
+      sheet.getRange(i + 2, 2).setValue(newEmployeeId);
+    }
+  }
+}
+
 // Users 시트의 특정 행(계정)과 그 계정의 부속 데이터(읽기용 시트, Records 시트 기록)를 전부 완전히 삭제함.
 // 보관기한 만료 자동삭제와 관리자의 "즉시 삭제" 둘 다 이 함수를 씀
 function purgeUserRow(sheet, rowNumber) {
@@ -1710,6 +1813,7 @@ function purgeUserRow(sheet, rowNumber) {
   deleteTeamReportsForUser(purgedEmployeeId);
   deleteTeamWeeklyReportsForUser(purgedEmployeeId);
   deleteImageFolderForUser(purgedEmployeeId);
+  deleteBackupsForUser(purgedEmployeeId); // 백업이 남으면 같은 사번으로 새로 가입한 사람이 이전 주인 기록을 복원할 수 있었음
   // 삭제가 시트에 확실히 반영된 뒤에 응답을 돌려주기 위함. 이게 없으면 이 요청 직후에 프론트가
   // 곧바로 보내는 adminListUsers 조회가 아직 안 지워진 상태를 읽어올 수 있어서(새로고침해야만
   // 사라지는 것처럼 보이는 원인), 관리자 화면에서 "즉시 삭제"를 눌러도 목록에 그대로 남아 보였음
@@ -1941,25 +2045,42 @@ function autoDisableInactiveAccounts() {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return;
 
-  const rows = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
   const thresholdMs = AUTO_DISABLE_INACTIVE_DAYS * 24 * 60 * 60 * 1000;
-  const now = Date.now();
+  // 예전엔 처음에 한 번 읽은 행 번호로 나중에 썼는데, 그 사이 위쪽 행이 완전 삭제되면 다음 사람 행에
+  // 엉뚱한 프로필(API 키 포함)을 덮어쓸 수 있었고, 잠금도 없어 동시에 바뀐 값을 되돌렸음(보안 감사 지적).
+  // 그래서 처음 읽은 값으로는 "대상 사번"만 고르고, 실제 쓰기는 잠금 안에서 사번으로 행을 다시 찾아
+  // 최신 값을 다시 읽은 뒤 disabled/disabledReason만 바꿈
+  function isInactiveTarget(employeeId, profile, userRow) {
+    if (!employeeId || employeeId === ADMIN_EMPLOYEE_ID) return false;
+    if (profile.disabled || profile.deletedAt || profile.pending) return false;
+    const lastActive = getLastActiveDate(profile, userRow);
+    if (!lastActive) return false; // 마지막 활동 시각을 전혀 알 수 없으면 건드리지 않음(안전 우선)
+    return Date.now() - lastActive.getTime() >= thresholdMs;
+  }
 
-  rows.forEach(function(row, i) {
+  const targets = [];
+  sheet.getRange(2, 1, lastRow - 1, 5).getValues().forEach(function(row) {
     const employeeId = String(row[0]).trim();
-    if (!employeeId || employeeId === ADMIN_EMPLOYEE_ID) return;
-
-    const profile = parseUserJson(row[2]);
-    if (profile.disabled || profile.deletedAt || profile.pending) return;
-
-    const lastActive = getLastActiveDate(profile, row);
-    if (!lastActive) return; // 마지막 활동 시각을 전혀 알 수 없으면 건드리지 않음(안전 우선)
-    if (now - lastActive.getTime() < thresholdMs) return;
-
-    profile.disabled = true;
-    profile.disabledReason = 'inactive'; // 관리자 목록 화면에서 관리자가 직접 끈 것(manual)과 구분해서 보여줌
-    sheet.getRange(i + 2, 3).setValue(JSON.stringify(profile));
+    if (isInactiveTarget(employeeId, parseUserJson(row[2]), row)) targets.push(employeeId);
   });
+  if (targets.length === 0) return;
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    targets.forEach(function(employeeId) {
+      const r = findUserRow(sheet, employeeId);
+      if (r === -1) return;
+      const current = sheet.getRange(r, 1, 1, 5).getValues()[0];
+      const profile = parseUserJson(current[2]);
+      if (!isInactiveTarget(employeeId, profile, current)) return;
+      profile.disabled = true;
+      profile.disabledReason = 'inactive'; // 관리자 목록 화면에서 관리자가 직접 끈 것(manual)과 구분해서 보여줌
+      sheet.getRange(r, 3).setValue(JSON.stringify(profile));
+    });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // Apps Script 편집기에서 이 함수를 딱 한 번 직접 실행(▶ 실행)해두면, 매일 새벽 3시경 자동으로

@@ -146,9 +146,53 @@
         // 이 업데이트 전까지 메모장은 일반 텍스트(textarea.value)로 저장됐음. 예전 방식으로 저장된
         // 내용을 그대로 innerHTML에 넣으면 <, >, & 같은 문자가 HTML로 해석돼 깨질 수 있어서,
         // HTML 태그가 없는(=아직 예전 방식인) 내용일 때만 이스케이프 + 줄바꿈 변환을 거쳐줌
+        // 메모장 HTML은 innerHTML로 그리므로, 서식(굵게·기울임·밑줄·글자색·크기·형광펜·목록·메모 이미지)에
+        // 필요한 태그/속성만 남기고 나머지는 걸러냄. on…= 이벤트 속성, script·iframe 같은 태그, javascript: 주소가
+        // 들어 있으면 그대로 실행될 수 있었음(보안 감사 지적). 파싱은 DOMParser로 해서 정리 중에도 아무것도 실행되지 않음
+        const NOTE_ALLOWED_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'BR', 'SPAN', 'FONT', 'DIV', 'P', 'UL', 'OL', 'LI', 'SUB', 'SUP', 'BLOCKQUOTE', 'IMG']);
+        const NOTE_DROP_TAGS = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'FRAME', 'FRAMESET', 'OBJECT', 'EMBED', 'LINK', 'META', 'BASE', 'FORM', 'INPUT', 'BUTTON', 'TEXTAREA', 'SELECT', 'SVG', 'MATH', 'TEMPLATE', 'NOSCRIPT', 'AUDIO', 'VIDEO', 'SOURCE', 'TITLE', 'HEAD']);
+        const NOTE_ALLOWED_ATTRS = { '*': ['style'], FONT: ['color', 'face', 'size'], IMG: ['src', 'alt', 'class', 'width', 'height'] };
+
+        function isSafeNoteStyle(value) {
+            return !/url\s*\(|expression\s*\(|javascript:|@import|behavior\s*:/i.test(value || '');
+        }
+
+        function isSafeNoteImageSrc(value) {
+            return /^(https:\/\/|data:image\/(png|jpe?g|gif|webp);base64,)/i.test(String(value || '').trim());
+        }
+
+        function sanitizeNoteNode(node) {
+            Array.from(node.childNodes).forEach(child => {
+                if (child.nodeType === Node.TEXT_NODE) return;
+                if (child.nodeType !== Node.ELEMENT_NODE) { child.remove(); return; }
+                const tag = child.tagName.toUpperCase();
+                if (NOTE_DROP_TAGS.has(tag)) { child.remove(); return; }
+                if (!NOTE_ALLOWED_TAGS.has(tag)) {
+                    sanitizeNoteNode(child);
+                    child.replaceWith(...Array.from(child.childNodes)); // 모르는 태그는 글자만 남김
+                    return;
+                }
+                const allowed = NOTE_ALLOWED_ATTRS['*'].concat(NOTE_ALLOWED_ATTRS[tag] || []);
+                Array.from(child.attributes).forEach(attr => {
+                    const name = attr.name.toLowerCase();
+                    if (!allowed.includes(name)) { child.removeAttribute(attr.name); return; }
+                    if (name === 'style' && !isSafeNoteStyle(attr.value)) child.removeAttribute(attr.name);
+                    if (name === 'src' && !isSafeNoteImageSrc(attr.value)) child.removeAttribute(attr.name);
+                });
+                if (tag === 'IMG' && !child.getAttribute('src')) { child.remove(); return; }
+                sanitizeNoteNode(child);
+            });
+        }
+
+        function sanitizeNotesHtml(html) {
+            const doc = new DOMParser().parseFromString('<body>' + String(html || '') + '</body>', 'text/html');
+            sanitizeNoteNode(doc.body);
+            return doc.body.innerHTML;
+        }
+
         function toDisplayNotesHtml(content) {
             if (!content) return '';
-            if (/<[a-z][\s\S]*>/i.test(content)) return content; // 이미 서식 있는 메모(새 방식)로 저장된 내용
+            if (/<[a-z][\s\S]*>/i.test(content)) return sanitizeNotesHtml(content); // 이미 서식 있는 메모(새 방식)로 저장된 내용
             const escaped = content
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')

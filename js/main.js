@@ -887,6 +887,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         function cacheAllToLocalStorage() {
+            // 이 캐시가 누구 것인지 함께 적어둠. 다른 사번이 로그인하면 finishLoginSuccess가 이 값을 보고
+            // 화면을 그리기 전에 이전 계정 캐시를 지움(공용 PC에서 이전 계정 메모가 다음 사람 화면에 뜨던 문제)
+            if (currentEmployeeId) safeSetItem(CACHE_OWNER_KEY, currentEmployeeId);
             safeSetItem('activityRecords', JSON.stringify(records));
             safeSetItem('categoryImages', JSON.stringify(categoryImages));
             safeSetItem('calendarEvents', JSON.stringify(events));
@@ -2221,6 +2224,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 // 로그인 전에 화면/캐시에 있던 데이터는 이 계정 것이 아닐 수 있으므로,
                 // 방금 로그인 확인(action=login)에서 이미 받아온 이 계정의 데이터로 덮어씀
                 // (여기서 서버를 또 호출하면 느린 GAS 왕복을 로그인마다 불필요하게 두 번 하게 됨)
+                // 이 브라우저에 남은 캐시가 다른 계정 것이면(로그아웃 없이 창을 닫았거나 다른 탭 로그인으로
+                // 밀려난 경우) 화면에 그리기 전에 먼저 지움. 그렇지 않으면 initAppUI가 이전 계정의 메모 등을
+                // 이 계정 로그인 상태에서 그대로 그려, 이전 계정이 심어둔 HTML이 이 계정 화면에서 실행될 수 있었음
+                clearCacheIfOwnedByAnotherAccount(employeeId);
                 await initAppUI();
                 await loadAllFromServer(result);
                 await restorePendingOutboxAfterLogin(result); // 지난번에 서버에 못 올린 변경분이 있으면 되살림
@@ -2883,11 +2890,24 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'categoryColors', 'categoryDefaultCollapsed', 'categoryBoxHeights', 'dateCategoryBoxHeights',
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
             'tabOrder', 'disabledTabIds', 'hiddenFeatures', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate', 'dailySummaryFixedFirstItem',
+            // categoryImages(사진 링크)·monthlyFeedbacks(월별 평가)는 빠져 있어서 로그아웃 뒤에도 남았음(보안 감사 지적)
+            'categoryImages', 'monthlyFeedbacks', 'waterFlowBlocks', 'waterFlowConnections', 'cacheOwnerId',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'inventoryItems', 'inventoryCategories', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment',
             'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory',
             'recentSearchKeywords', 'recentEquipmentNames', 'recentKeywordStats'
         ];
+
+        const CACHE_OWNER_KEY = 'cacheOwnerId';
+
+        function clearCacheIfOwnedByAnotherAccount(employeeId) {
+            let owner = null;
+            try { owner = localStorage.getItem(CACHE_OWNER_KEY); } catch (e) { owner = null; }
+            if (owner === employeeId) return;
+            ACCOUNT_SCOPED_STORAGE_KEYS.forEach(key => {
+                try { localStorage.removeItem(key); } catch (e) { /* 무시 */ }
+            });
+        }
 
         function logout() {
             const pendingNotice = hasPendingOutbox()
