@@ -1610,12 +1610,14 @@
             if (!editUnlocked || document.querySelector('.modal-overlay.active')) return;
             currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1);
             renderCalendar();
+            playMotion(document.getElementById('daysContainer'), 'motion-cal-from-left');
         }
 
         function nextMonth() {
             if (!editUnlocked || document.querySelector('.modal-overlay.active')) return;
             currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1);
             renderCalendar();
+            playMotion(document.getElementById('daysContainer'), 'motion-cal-from-right');
         }
         
         // 캘린더 상단 "연 월" 표시를 눌렀을 때: 화살표로 한 달씩 이동하는 대신 원하는 연/월로 바로 이동

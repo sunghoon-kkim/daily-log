@@ -64,6 +64,9 @@
     --ease: cubic-bezier(0.2, 0, 0, 1);
     --duration-fast: 120ms;
     --duration: 180ms;
+    --duration-slow: 260ms;
+    --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+    --stagger-step: 25ms;
     /* 소프트 틴트(일정·배지): 데이터 색을 배경 14% / 테두리 25%로 옅게, 글자는 본문색과 섞어 톤다운 */
     --tint-bg: 14%;
     --tint-border: 25%;
@@ -8554,3 +8557,54 @@ body.admin-mode .cmdk-trigger { display: none; }
 .sticky-menu-action:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 /* 좁은 창: 제목 줄에는 새 창·…·접기·닫기만 남기고 나머지는 '…' 메뉴에서 */
 @container sticky (max-width: 330px) { .sticky-bar-extra { display: none; } }
+
+/* ===== 모션 확장: 누름·호버 / 모달 열림 / 토스트 / 탭 stagger / 달력 월 이동 =====
+   transform·opacity만 움직이고, 동작 줄이기 설정에서는 모두 끈다. 닫힘은 즉시(기존 동작 유지) */
+.modal-btn, .modal-save-btn, .modal-cancel-btn, .modal-delete-btn, .btn-danger-ghost,
+.goal-generate-btn, .ai-revise-btn {
+    transition: transform var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+.modal-btn:not(:disabled):active, .modal-save-btn:not(:disabled):active, .modal-cancel-btn:not(:disabled):active,
+.modal-delete-btn:not(:disabled):active, .btn-danger-ghost:not(:disabled):active,
+.goal-generate-btn:not(:disabled):active, .ai-revise-btn:not(:disabled):active { transform: scale(0.97); }
+@media (hover: hover) {
+    .upcoming-card, .org-card, .project-card:not(.inv-card) { transition: transform var(--duration) var(--ease), border-color var(--duration-fast) var(--ease), box-shadow var(--duration) var(--ease); }
+    .upcoming-card:hover, .org-card:hover, .project-card:not(.inv-card):hover { transform: translateY(-1px); }
+}
+
+@keyframes motionOverlayIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes motionModalIn { from { opacity: 0; transform: translateY(8px) scale(0.94); } to { opacity: 1; transform: none; } }
+@keyframes motionSheetIn { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: none; } }
+.modal-overlay.active { animation: motionOverlayIn var(--duration) var(--ease); }
+.modal-overlay.active > .modal-box { animation: motionModalIn var(--duration-slow) var(--ease-spring); }
+@media (max-width: 768px) {
+    .modal-overlay.active > .modal-box { animation-name: motionSheetIn; }
+}
+
+.app-toast { transition: opacity var(--duration) var(--ease), transform var(--duration-slow) var(--ease-spring); }
+
+/* 탭 전환: 위에서 6번째 덩어리까지만 25ms 간격으로 이어서 등장 (최대 125ms 지연) */
+.tab-content.motion-tab-from-right > *,
+.tab-content.motion-tab-from-left > * { animation-fill-mode: backwards; }
+.tab-content.motion-tab-from-right > :nth-child(2), .tab-content.motion-tab-from-left > :nth-child(2) { animation-delay: calc(var(--stagger-step) * 1); }
+.tab-content.motion-tab-from-right > :nth-child(3), .tab-content.motion-tab-from-left > :nth-child(3) { animation-delay: calc(var(--stagger-step) * 2); }
+.tab-content.motion-tab-from-right > :nth-child(4), .tab-content.motion-tab-from-left > :nth-child(4) { animation-delay: calc(var(--stagger-step) * 3); }
+.tab-content.motion-tab-from-right > :nth-child(5), .tab-content.motion-tab-from-left > :nth-child(5) { animation-delay: calc(var(--stagger-step) * 4); }
+.tab-content.motion-tab-from-right > :nth-child(n+6), .tab-content.motion-tab-from-left > :nth-child(n+6) { animation-delay: calc(var(--stagger-step) * 5); }
+
+/* 달력 월 이동: 날짜 칸만 이동 방향으로 밀려 들어옴 (요일 줄은 고정) */
+@keyframes motionCalFromRight { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes motionCalFromLeft { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+.days.motion-cal-from-right { animation: motionCalFromRight var(--duration-slow) var(--ease); }
+.days.motion-cal-from-left { animation: motionCalFromLeft var(--duration-slow) var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay.active, .modal-overlay.active > .modal-box,
+    .days.motion-cal-from-right, .days.motion-cal-from-left { animation: none; }
+    .app-toast { transition: none; }
+    .modal-btn:not(:disabled):active, .modal-save-btn:not(:disabled):active, .modal-cancel-btn:not(:disabled):active,
+    .modal-delete-btn:not(:disabled):active, .btn-danger-ghost:not(:disabled):active,
+    .goal-generate-btn:not(:disabled):active, .ai-revise-btn:not(:disabled):active,
+    .upcoming-card:hover, .org-card:hover, .project-card:not(.inv-card):hover { transform: none; }
+    .tab-content.motion-tab-from-right > *, .tab-content.motion-tab-from-left > * { animation-delay: 0s !important; }
+}
