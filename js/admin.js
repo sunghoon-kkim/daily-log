@@ -26,6 +26,7 @@
             statusEl.textContent = '불러오는 중...';
             statusEl.className = 'ai-status';
 
+            const hideListSkeleton = showSkeletonAfter(statusEl, 3);
             try {
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
@@ -57,6 +58,8 @@
                 console.error('관리자 계정 목록 조회 오류:', err);
                 statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
+            } finally {
+                hideListSkeleton();
             }
         }
 

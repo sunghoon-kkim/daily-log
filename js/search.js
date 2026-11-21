@@ -279,7 +279,7 @@
             lastSearchResults = results; // 인라인 수정에서 참조하기 위해 결과를 보관
 
             if (results.length === 0) {
-                resultsEl.innerHTML = `<div class="no-result">'${escapeHtml(keyword)}'에 대한 검색 결과가 없습니다</div>`;
+                resultsEl.innerHTML = `<div class="no-result">${emptyStateHtml('search', `'${keyword}'에 대한 검색 결과가 없습니다`, '띄어쓰기를 바꾸거나(예: 블로우다운 → 블로우 다운), 더 짧은 낱말로 검색해 보세요. 같은 뜻은 | 로 묶을 수 있습니다(누설|누수).')}</div>`;
                 return;
             }
             if (countEl) countEl.textContent = `검색 결과 ${results.length}건`;
@@ -459,7 +459,7 @@
             lastQueryResults = results;
 
             if (results.length === 0) {
-                document.getElementById('queryResults').innerHTML = '<div class="no-result">해당 기간에 기록이 없습니다</div>';
+                document.getElementById('queryResults').innerHTML = '<div class="no-result">' + emptyStateHtml('calendar-range', '이 기간에는 기록이 없습니다', '기간을 넓히거나 다른 카테고리를 골라 보세요.') + '</div>';
                 return;
             }
 

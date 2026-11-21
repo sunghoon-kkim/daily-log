@@ -431,6 +431,7 @@
             statusEl.className = 'ai-status';
             listEl.innerHTML = '';
 
+            const hideListSkeleton = showSkeletonAfter(statusEl, 3);
             try {
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
@@ -455,6 +456,8 @@
                 console.error('내 팀 보고 내역 불러오기 오류:', err);
                 statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
+            } finally {
+                hideListSkeleton();
             }
         }
 
@@ -465,7 +468,7 @@
             if (!listEl) return;
 
             if (myTeamReportHistoryItems.length === 0) {
-                listEl.innerHTML = '<p style="color:var(--color-text-tertiary); text-align:center; padding:16px;">아직 제출한 보고가 없습니다.</p>';
+                listEl.innerHTML = emptyStateHtml('send', '아직 제출한 보고가 없습니다', '이번 주 한 일과 다음 주 할 일을 적고 제출하면 여기에 쌓입니다.');
                 return;
             }
 
@@ -475,7 +478,7 @@
                 : myTeamReportHistoryItems;
 
             if (items.length === 0) {
-                listEl.innerHTML = '<p style="color:var(--color-text-tertiary); text-align:center; padding:16px;">이 달에 제출한 보고가 없습니다.</p>';
+                listEl.innerHTML = emptyStateHtml('send', '이 달에 제출한 보고가 없습니다', '다른 달을 고르거나 \'전체보기\'를 눌러 보세요.');
                 return;
             }
 
@@ -594,6 +597,7 @@
             statusEl.className = 'ai-status';
             listEl.innerHTML = '';
 
+            const hideListSkeleton = showSkeletonAfter(statusEl, 3);
             try {
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
@@ -618,6 +622,8 @@
                 console.error('받은 보고 불러오기 오류:', err);
                 statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
+            } finally {
+                hideListSkeleton();
             }
         }
 
@@ -628,7 +634,7 @@
             if (!listEl) return;
 
             if (teamReportInboxItems.length === 0) {
-                listEl.innerHTML = '<p style="color:var(--color-text-tertiary); text-align:center; padding:16px;">나에게 제출된 보고가 없습니다.</p>';
+                listEl.innerHTML = emptyStateHtml('clipboard-list', '나에게 제출된 보고가 없습니다', '팀원이 나를 제출 대상으로 골라 보고를 제출하면 여기에 보입니다.');
                 return;
             }
 

@@ -118,6 +118,7 @@
 
             renderUpcomingWidget();
             if (typeof renderTodaySummary === 'function') renderTodaySummary();
+            if (typeof renderActivityHeatmap === 'function') renderActivityHeatmap(); // 기록 현황(히트맵)도 기록이 바뀔 때마다 갱신
             setupCalendarSwipe();
         }
 
@@ -510,7 +511,7 @@
             }
 
             if (upcoming.length === 0) {
-                widget.innerHTML = '<div class="upcoming-empty">다가오는 일정이 없습니다</div>';
+                widget.innerHTML = '<div class="upcoming-empty">' + emptyStateHtml('calendar-days', '다가오는 일정이 없습니다', '정비·당직·연차 같은 일정을 등록하면 여기에 남은 날짜와 함께 보입니다.', { label: '일정 추가', icon: 'plus', onclick: 'openEventModal(null, formatDate(new Date()))' }) + '</div>';
                 return;
             }
 
@@ -1206,6 +1207,7 @@
             try {
                 const ok = await syncToServer();
                 showStatus(ok ? '저장되었습니다!' : '서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
+                if (ok && typeof flashButtonSuccess === 'function') flashButtonSuccess(saveBtn);
             } finally {
                 if (saveBtn) saveBtn.disabled = false;
             }

@@ -516,7 +516,7 @@
             if (hintEl) hintEl.classList.toggle('active', !!waterFlowConnectSourceId);
 
             if (waterFlowBlocks.length === 0) {
-                canvas.innerHTML = '<div class="water-flow-empty">➕ "블록 추가" 버튼을 눌러 흐름도를 만들어보세요</div>';
+                canvas.innerHTML = '<div class="water-flow-empty">' + emptyStateHtml('workflow', '아직 블록이 없습니다', '설비나 공정을 블록으로 추가하고 연결선으로 이어 흐름도를 만들어 보세요.', { label: '블록 추가', icon: 'plus', onclick: 'openAddWaterFlowBlockModalAtViewportCenter()' }) + '</div>';
                 return;
             }
 

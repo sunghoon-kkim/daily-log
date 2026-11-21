@@ -21,7 +21,7 @@
             if (!container) return;
 
             if (savingsProjects.length === 0) {
-                container.innerHTML = '<div class="no-projects">아직 등록된 과제가 없습니다. "새 과제 추가"로 시작해보세요.</div>';
+                container.innerHTML = '<div class="no-projects">' + emptyStateHtml('lightbulb', '아직 등록된 과제가 없습니다', '개선·절감 과제를 등록하고 월별 진행 내용을 쌓아 보세요.', { label: '새 과제 추가', icon: 'plus', onclick: 'openProjectModal(null)' }) + '</div>';
                 return;
             }
 
@@ -32,7 +32,7 @@
             });
 
             if (filtered.length === 0) {
-                container.innerHTML = '<div class="no-projects">조건에 맞는 과제가 없습니다.</div>';
+                container.innerHTML = '<div class="no-projects">' + emptyStateHtml('lightbulb', '조건에 맞는 과제가 없습니다', '위의 상태·분류 필터를 바꾸거나 새 과제를 등록해 보세요.', { label: '새 과제 추가', icon: 'plus', onclick: 'openProjectModal(null)' }) + '</div>';
                 return;
             }
 

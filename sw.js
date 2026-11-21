@@ -28,7 +28,8 @@ const CORE_ASSETS = [
   './js/settings.js',
   './js/admin.js',
   './js/history-insights.js',
-  './js/record-tools.js'
+  './js/record-tools.js',
+  './js/quick-actions.js'
 ];
 
 self.addEventListener('install', (event) => {

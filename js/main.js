@@ -168,7 +168,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     rotationSchedule: '🔁 교대 운전 일정 등록',
                     eventGroupFilter: '👁️ 일정 분류별 보이기/숨기기',
                     rotationStatusChips: '🟢 교대 설비 가동/대기 표시',
-                    recordImport: '⬆️ 과거 일지 가져오기(CSV, 환경설정 탭)'
+                    recordImport: '⬆️ 과거 일지 가져오기(CSV, 환경설정 탭)',
+                    activityHeatmap: '🟩 기록 현황(활동 히트맵)',
+                    quickInsert: '⚡ 활동기록 / 빠른 입력'
                 }
             },
             {
@@ -2209,10 +2211,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 }
                 if (mod && !e.altKey && key === 'k') {
                     e.preventDefault();
-                    switchTab('query');
-                    if (typeof showQuerySection === 'function') showQuerySection('search');
-                    const input = document.getElementById('searchKeywordInput');
-                    if (input) { input.focus(); input.select(); }
+                    // 명령 팔레트: 탭 이동·날짜 이동·동작·기록 미리보기를 한 창에서 (통합 검색도 그 안에서 이어짐)
+                    if (typeof cmdkIsOpen === 'function' && cmdkIsOpen()) closeCommandPalette();
+                    else if (typeof openCommandPalette === 'function') openCommandPalette();
                     return;
                 }
                 if (e.altKey && !mod && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && activeTabId === 'calendar' && selectedDate) {
@@ -2582,6 +2583,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             btn.disabled = true;
             const mustChangeMode = isLoginMustChangeMode();
             btn.textContent = '확인 중...';
+            // 서버 응답을 기다리는 동안 로그인 창 뒤에 앱 뼈대(스켈레톤)를 보여줘서 기다림을 덜 지루하게
+            const hideLoginSkeleton = (typeof showSkeletonAfter === 'function' && !document.querySelector('.skeleton-app'))
+                ? showSkeletonAfter(document.querySelector('.sync-status-bar'), 'app') : () => {};
 
             try {
                 if (mustChangeMode) {
@@ -2617,6 +2621,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 errEl.textContent = '서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
                 errEl.style.display = 'block';
             } finally {
+                hideLoginSkeleton();
                 btn.disabled = false;
                 btn.innerHTML = icon('log-in') + (isLoginMustChangeMode() ? '비밀번호 변경 후 로그인' : '로그인');
             }

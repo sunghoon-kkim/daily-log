@@ -304,7 +304,7 @@
             }
 
             if (inventoryItems.length === 0) {
-                container.innerHTML = '<div class="no-projects">아직 등록된 품목이 없습니다. "품목 추가"로 첫 품목을 등록해보세요.</div>';
+                container.innerHTML = '<div class="no-projects">' + emptyStateHtml('package', '아직 등록된 품목이 없습니다', '품목과 최소 재고를 등록하면 부족해질 때 오늘 요약에서 알려 줍니다.', { label: '품목 추가', icon: 'plus', onclick: 'openInventoryItemModal(null)' }) + '</div>';
                 return;
             }
 
@@ -312,8 +312,8 @@
                 || (inventoryCategoryFilter === INVENTORY_UNCATEGORIZED ? !x.item.category : x.item.category === inventoryCategoryFilter));
             if (filtered.length === 0) {
                 container.innerHTML = inventoryCategoryFilter === INVENTORY_UNCATEGORIZED
-                    ? '<div class="no-projects">미분류 품목이 없습니다.</div>'
-                    : '<div class="no-projects">이 분류에 등록된 품목이 없습니다. "품목 추가"를 누르면 이 분류로 등록돼요.</div>';
+                    ? '<div class="no-projects">' + emptyStateHtml('package', '미분류 품목이 없습니다', '모든 품목이 분류에 들어가 있습니다.') + '</div>'
+                    : '<div class="no-projects">' + emptyStateHtml('package', '이 분류에 등록된 품목이 없습니다', '품목을 추가하면 지금 고른 분류로 등록됩니다.', { label: '품목 추가', icon: 'plus', onclick: 'openInventoryItemModal(null)' }) + '</div>';
                 return;
             }
 
@@ -509,7 +509,7 @@
                 return inventoryHistoryFilter === 'all' || type === inventoryHistoryFilter;
             });
             if (logs.length === 0) {
-                listEl.innerHTML = `<p class="inv-log-empty">${inventoryHistoryFilter === 'all' ? '아직 입출고 기록이 없습니다.' : `${INVENTORY_LOG_LABELS[inventoryHistoryFilter]} 기록이 없습니다.`}</p>`;
+                listEl.innerHTML = `<div class="inv-log-empty">${emptyStateHtml('history', inventoryHistoryFilter === 'all' ? '아직 입출고 기록이 없습니다' : `${INVENTORY_LOG_LABELS[inventoryHistoryFilter]} 기록이 없습니다`, '입고·사용·실사를 기록하면 여기에 날짜순으로 쌓입니다.')}</div>`;
                 return;
             }
             const itemArg = escapeForOnclickArg(item.id);

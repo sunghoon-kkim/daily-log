@@ -30,11 +30,14 @@
 
         // 이 탭에서 본인이 따로 켜고 끌 수 있는 세부 항목 키. 관리자·코드가 막은 항목과,
         // 환경설정 화면 안에만 있는 항목(과거 일지 가져오기 등)은 제외
+        const SETTINGS_NON_DOM_FEATURES = ['quickInsert'];
+
         function getUserToggleableFeatureKeys(tabId) {
             const group = FEATURE_GROUPS.find(g => g.key === tabId);
             if (!group) return [];
             return Object.keys(group.features).filter(key => {
                 if (isFeatureAdminDisabled(key)) return false;
+                if (SETTINGS_NON_DOM_FEATURES.includes(key)) return true; // 화면 요소 없이 동작하는 기능('/' 빠른 입력 등)
                 const els = document.querySelectorAll(`[data-feature="${key}"]`);
                 return Array.from(els).some(el => !el.closest('#settings'));
             });
@@ -143,6 +146,7 @@
             statusEl.className = 'ai-status';
             table.style.display = 'none';
 
+            const hideListSkeleton = showSkeletonAfter(statusEl, 3);
             try {
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
@@ -181,6 +185,8 @@
                 console.error('백업 목록 조회 오류:', err);
                 statusEl.textContent = '서버 연결에 실패했습니다.';
                 statusEl.className = 'ai-status error';
+            } finally {
+                hideListSkeleton();
             }
         }
 

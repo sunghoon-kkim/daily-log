@@ -601,7 +601,7 @@
             if (activeItems.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'todo-empty';
-                empty.textContent = '작성된 할 일이 없습니다.';
+                empty.innerHTML = emptyStateHtml('check', '할 일이 없습니다', '위 입력칸에 적고 Enter를 누르면 추가됩니다.', { label: '할 일 입력하기', onclick: "document.getElementById('todoNewInput').focus()" });
                 activeContainer.appendChild(empty);
             } else {
                 activeItems.forEach(item => activeContainer.appendChild(buildTodoItemRow(item)));
@@ -610,7 +610,7 @@
             if (doneItems.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'todo-empty';
-                empty.textContent = '완료된 항목이 없습니다.';
+                empty.innerHTML = emptyStateHtml('check', '완료한 항목이 아직 없습니다', '할 일 앞의 체크 상자를 누르면 여기로 옮겨집니다.');
                 doneContainer.appendChild(empty);
             } else {
                 renderTodoDoneGroups(doneContainer, doneItems);
@@ -642,6 +642,20 @@
             if (!checkEditPermission()) { renderTodoList(); return; }
             const item = todoItems.find(t => t.id === id);
             if (!item) return;
+            // 완료로 바꿀 때는 체크 팝 + 줄 긋기를 잠깐 보여준 뒤 '완료' 목록으로 옮김(동작 줄이기 설정이면 바로)
+            if (!item.done && !(typeof prefersReducedMotion === 'function' && prefersReducedMotion())) {
+                const wrap = document.querySelector(`#todoList .todo-item-wrap[data-id="${CSS.escape(String(id))}"]`);
+                if (wrap && !wrap.classList.contains('todo-completing')) {
+                    wrap.classList.add('todo-completing');
+                    setTimeout(() => finishToggleTodoItem(item), 420);
+                    return;
+                }
+                if (wrap) return; // 애니메이션 중 두 번 눌린 경우
+            }
+            finishToggleTodoItem(item);
+        }
+
+        function finishToggleTodoItem(item) {
             item.done = !item.done;
             if (item.done) item.doneAt = formatDate(new Date());
             else delete item.doneAt;

@@ -282,7 +282,7 @@
             if (yearLabelEl) yearLabelEl.textContent = maintenanceViewYear + '년';
 
             if (maintenanceSchedule.length === 0) {
-                container.innerHTML = '<div class="no-projects">아직 등록된 정비계획이 없습니다. "새 일정 추가"로 시작해보세요.</div>';
+                container.innerHTML = '<div class="no-projects">' + emptyStateHtml('wrench', '아직 등록된 정비계획이 없습니다', '설비와 주기를 적어 두면 해마다 예정월이 자동으로 계산되고, 급한 정비는 오늘 요약에도 나타납니다.', { label: '새 일정 추가', icon: 'plus', onclick: 'openMaintenanceModal(null)' }) + '</div>';
                 return;
             }
 
@@ -304,7 +304,7 @@
             }
 
             if (visibleItems.length === 0) {
-                container.innerHTML = `<div class="no-projects">${maintenanceViewYear}년에는 ${maintenanceStatusFilter === '전체' ? '' : '"' + maintenanceStatusFilter + '" 상태의 '}정비계획이 없습니다.</div>`;
+                container.innerHTML = `<div class="no-projects">${emptyStateHtml('wrench', `${maintenanceViewYear}년에는 ${maintenanceStatusFilter === '전체' ? '' : '"' + maintenanceStatusFilter + '" 상태의 '}정비계획이 없습니다`, '설비와 주기를 적어 두면 해마다 예정월이 자동으로 계산됩니다.', maintenanceStatusFilter === '전체' ? { label: '새 일정 추가', icon: 'plus', onclick: 'openMaintenanceModal(null)' } : null)}</div>`;
                 return;
             }
 
