@@ -8246,10 +8246,9 @@ body.admin-mode .cmdk-trigger { display: none; }
     color: var(--color-primary-text);
     white-space: nowrap;
     pointer-events: auto;
-    z-index: 1;
-    padding: 2px var(--space-1);
+    padding: 0;
     border: 0;
-    background: var(--color-surface);
+    background: none;
     font-family: inherit;
     cursor: pointer;
 }

@@ -307,7 +307,7 @@
                         let next = '';
                         if (month === 12 && dueKey && Number(dueKey.slice(0, 4)) > maintenanceViewYear && m.status !== '완료') {
                             const [dy, dm] = dueKey.split('-').map(Number);
-                            next = `<button type="button" class="mt-next-year" title="다음 예정 ${escapeHtml(m.nextDue)} · 누르면 ${dy}년으로 이동" aria-label="차기 예정 ${dy}년 ${dm}월, ${dy}년으로 이동" onclick="changeMaintenanceViewYear(${dy - maintenanceViewYear})">→ ${dy}년 ${dm}월</button>`;
+                            next = `<button type="button" class="mt-next-year" title="다음 예정 ${escapeHtml(m.nextDue)} · 누르면 ${dy}년으로 이동" aria-label="차기 예정 ${dy}년 ${dm}월, ${dy}년으로 이동" onclick="changeMaintenanceViewYear(${dy - maintenanceViewYear})">→ ${dm}월</button>`;
                         }
                         return `<div class="mt-cell">${bar}${tick}${dots}${next}</div>`;
                     }).join('');
