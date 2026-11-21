@@ -5,7 +5,34 @@
         let maintenanceLayout = (function () {
             try { return localStorage.getItem('maintenanceLayout') === 'timeline' ? 'timeline' : 'cards'; } catch (e) { return 'cards'; }
         })();
-        const maintTimelineCollapsed = new Set(); // 타임라인에서 접어 둔 설비 이름 (화면 상태값이라 저장하지 않음)
+        const maintTimelineCollapsed = new Set(); // 카드·타임라인에서 접어 둔 설비 이름 (두 보기 공통, 화면 상태값이라 저장하지 않음)
+        let maintenanceSearchQuery = ''; // 툴바 검색어(항목명·설비명·SOP). 화면 상태값이라 저장하지 않음
+
+        // 화면 표시용 날짜. 저장값(YYYY-MM-DD, 예전 점 형식·월 단위 포함)은 그대로 두고 YYYY.MM.DD(짧게는 MM.DD)로만 보여줌
+        function formatMaintDateDisplay(str, short) {
+            const t = normalizeMaintDate(str);
+            let mm = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (mm) return short ? `${mm[2]}.${mm[3]}` : `${mm[1]}.${mm[2]}.${mm[3]}`;
+            mm = t.match(/^(\d{4})-(\d{2})$/);
+            return mm ? `${mm[1]}.${mm[2]}` : t;
+        }
+
+        // 연동된 재고 중 모자란 품목. 재고 기능이 꺼져 있거나 이미 끝난(완료) 항목이면 빈 배열
+        function getMaintenanceInventoryShortages(m) {
+            if (typeof isInventoryFeatureOn !== 'function' || typeof getInventoryNeedsForMaintenance !== 'function' || !isInventoryFeatureOn()) return [];
+            if (m.status === '완료') return [];
+            return getInventoryNeedsForMaintenance(m.id).filter(n => !n.enough);
+        }
+
+        function formatMaintShortageText(shortages) {
+            const fmt = typeof formatInventoryQty === 'function' ? formatInventoryQty : String;
+            return shortages.map(n => `${n.item.name} ${fmt(n.qty)}${n.item.unit || ''} (현재 ${fmt(n.current)})`).join(', ');
+        }
+
+        function maintEquipmentHistoryBtn(equipmentName, cls) {
+            if (equipmentName === '(설비 미지정)' || isFeatureDisabled('keywordSearch')) return '';
+            return `<button type="button" class="${cls}" onclick="event.stopPropagation(); openEquipmentTimeline('${escapeForOnclickArg(equipmentName)}')" title="이 설비의 활동기록·정비 완료 이력을 시간순으로 보기">설비 이력</button>`;
+        }
 
         function changeMaintenanceViewYear(delta) {
             maintenanceViewYear += delta;
@@ -156,11 +183,41 @@
         }
 
         // 정비계획 목록 상태 필터(전체/예정/완료/보류) 버튼 클릭 시 호출
+        // 상태 필터와 빠른 보기 칩(지연·임박·이번 달·재고 부족)은 둘 중 하나만 켜짐: 상태를 고르면 칩이 꺼짐
         function setMaintenanceStatusFilter(status) {
             maintenanceStatusFilter = status;
+            maintQuickFilter = null;
+            syncMaintenanceStatusButtons();
+            renderMaintenanceSchedule();
+        }
+
+        function syncMaintenanceStatusButtons() {
             document.querySelectorAll('#maintenanceFilterRow .quick-preset-btn').forEach(btn => {
-                btn.classList.toggle('selected', btn.dataset.filter === status);
+                btn.classList.toggle('selected', btn.dataset.filter === maintenanceStatusFilter);
             });
+        }
+
+        // 검색어: 띄어쓰기로 나눈 낱말이 항목명·설비명·SOP 어디에든 모두 들어 있으면 표시. 새로 검색하면 접어 둔 설비를 모두 펼침
+        function setMaintenanceSearch(value) {
+            const prev = maintenanceSearchQuery.trim();
+            maintenanceSearchQuery = String(value || '');
+            if (!prev && maintenanceSearchQuery.trim()) maintTimelineCollapsed.clear();
+            renderMaintenanceSchedule();
+        }
+
+        function maintSearchMatch(m, terms) {
+            if (terms.length === 0) return true;
+            const hay = [m.item, m.equipment, m.sop].map(v => String(v || '').toLowerCase()).join('\n');
+            return terms.every(t => hay.includes(t));
+        }
+
+        function clearMaintenanceFilters() {
+            maintenanceStatusFilter = '전체';
+            maintQuickFilter = null;
+            maintenanceSearchQuery = '';
+            const input = document.getElementById('maintenanceSearchInput');
+            if (input) input.value = '';
+            syncMaintenanceStatusButtons();
             renderMaintenanceSchedule();
         }
 
@@ -193,25 +250,44 @@
             if (modeRow) modeRow.style.display = maintenanceLayout === 'timeline' ? 'none' : '';
         }
 
-        function toggleMaintTimelineGroup(name) {
+        function toggleMaintGroup(name) {
             if (maintTimelineCollapsed.has(name)) maintTimelineCollapsed.delete(name);
             else maintTimelineCollapsed.add(name);
             renderMaintenanceSchedule();
         }
 
-        // 타임라인 빠른 걸러 보기(위쪽 요약 칩): null | 'overdue' | 'urgent' | 'thisMonth'. 화면 상태값이라 저장하지 않음
-        let maintTimelineQuick = null;
+        // 빠른 보기(툴바 칩, 카드·타임라인 공통): null | 'overdue' | 'urgent' | 'thisMonth' | 'invShort'. 화면 상태값이라 저장하지 않음
+        let maintQuickFilter = null;
         // 다시 그려도 보던 스크롤 위치를 유지하기 위한 값(연도가 바뀌면 이번 달로 다시 맞춤)
         let maintTimelineScroll = null;
 
-        function setMaintTimelineQuick(kind) {
-            maintTimelineQuick = maintTimelineQuick === kind ? null : kind;
+        // 칩을 켜면 상태 필터는 '전체'로 돌림(칩 숫자가 상태 필터와 무관한 연도 전체 기준이라 결과와 숫자가 맞도록)
+        function setMaintQuickFilter(kind) {
+            maintQuickFilter = maintQuickFilter === kind ? null : kind;
+            if (maintQuickFilter) { maintenanceStatusFilter = '전체'; syncMaintenanceStatusButtons(); }
             renderMaintenanceSchedule();
         }
 
-        function setAllMaintTimelineGroups(collapse) {
+        function maintQuickMatch(m, kind) {
+            if (!kind) return true;
+            if (kind === 'overdue' || kind === 'urgent') return maintTimelineLevel(m) === kind;
+            if (kind === 'thisMonth') return getNextDueMonthKey(m.nextDue) === formatDate(new Date()).slice(0, 7) && m.status !== '완료' && m.status !== '보류';
+            if (kind === 'invShort') return m._invShort.length > 0;
+            return true;
+        }
+
+        function renderMaintenanceQuickChips(counts) {
+            const el = document.getElementById('maintenanceQuickChips');
+            if (!el) return;
+            if (!counts) { el.innerHTML = ''; return; }
+            const chip = (kind, label) => `<button type="button" class="mt-summary-chip mt-summary-${kind}${maintQuickFilter === kind ? ' active' : ''}" onclick="setMaintQuickFilter('${kind}')" aria-pressed="${maintQuickFilter === kind}">${label} <b>${counts[kind]}</b></button>`;
+            const invOn = typeof isInventoryFeatureOn === 'function' && isInventoryFeatureOn();
+            el.innerHTML = chip('overdue', '지연') + chip('urgent', '임박') + chip('thisMonth', '이번 달') + (invOn ? chip('invShort', '📦 재고 부족') : '');
+        }
+
+        function setAllMaintGroups(collapse) {
             maintTimelineCollapsed.clear();
-            if (collapse) document.querySelectorAll('#maintenanceList .mt-group').forEach(g => maintTimelineCollapsed.add(g.dataset.group));
+            if (collapse) document.querySelectorAll('#maintenanceList [data-group]').forEach(g => maintTimelineCollapsed.add(g.dataset.group));
             renderMaintenanceSchedule();
         }
 
@@ -232,29 +308,9 @@
             const now = new Date();
             const thisYear = now.getFullYear();
             const thisMonth = now.getMonth() + 1;
-            const thisMonthKey = `${thisYear}-${String(thisMonth).padStart(2, '0')}`;
             const isThisYear = maintenanceViewYear === thisYear;
             const daysInMonth = new Date(thisYear, thisMonth, 0).getDate();
             const todayPos = isThisYear ? ((thisMonth - 1) + (now.getDate() - 0.5) / daysInMonth) / 12 : null; // 0~1 (월 영역 안 비율)
-
-            // 위쪽 요약: 지연·임박·이번 달(보류 제외)
-            const all = equipmentNames.flatMap(n => groups[n]);
-            const isThisMonthDue = m => getNextDueMonthKey(m.nextDue) === thisMonthKey && m.status !== '완료' && m.status !== '보류';
-            const counts = {
-                overdue: all.filter(m => maintTimelineLevel(m) === 'overdue').length,
-                urgent: all.filter(m => maintTimelineLevel(m) === 'urgent').length,
-                thisMonth: all.filter(isThisMonthDue).length
-            };
-            const quickMatch = m => !maintTimelineQuick
-                || (maintTimelineQuick === 'thisMonth' ? isThisMonthDue(m) : maintTimelineLevel(m) === maintTimelineQuick);
-            const chip = (kind, label) => `<button type="button" class="mt-summary-chip mt-summary-${kind}${maintTimelineQuick === kind ? ' active' : ''}" onclick="setMaintTimelineQuick('${kind}')" aria-pressed="${maintTimelineQuick === kind}">${label} <b>${counts[kind]}</b></button>`;
-            const summary = `<div class="mt-summary">
-                <div class="mt-summary-chips">${chip('overdue', '지연')}${chip('urgent', '임박')}${chip('thisMonth', '이번 달')}${maintTimelineQuick ? '<button type="button" class="mt-summary-clear" onclick="setMaintTimelineQuick(null)">전체 보기</button>' : ''}</div>
-                <div class="mt-summary-actions">
-                    <button type="button" class="mt-text-btn" onclick="setAllMaintTimelineGroups(false)">모두 펼치기</button>
-                    <button type="button" class="mt-text-btn" onclick="setAllMaintTimelineGroups(true)">모두 접기</button>
-                </div>
-            </div>`;
 
             const head = `<div class="mt-row mt-head">
                 <div class="mt-label">설비 · 정비 항목</div>
@@ -262,15 +318,14 @@
             </div>`;
 
             const body = equipmentNames.map(name => {
-                const items = groups[name].filter(quickMatch);
-                if (items.length === 0) return '';
+                const items = groups[name];
                 const collapsed = maintTimelineCollapsed.has(name);
                 const hasOverdue = items.some(m => maintTimelineLevel(m) === 'overdue');
                 const nameArg = escapeForOnclickArg(name);
                 const groupRow = `<div class="mt-row mt-group${hasOverdue ? ' has-overdue' : ''}" data-group="${escapeHtml(name)}">
-                    <div class="mt-label"><button type="button" class="mt-group-toggle" onclick="toggleMaintTimelineGroup('${nameArg}')" aria-expanded="${collapsed ? 'false' : 'true'}">
+                    <div class="mt-label"><button type="button" class="mt-group-toggle" onclick="toggleMaintGroup('${nameArg}')" aria-expanded="${collapsed ? 'false' : 'true'}">
                         ${icon('chevron-right')}<span class="mt-group-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="mt-group-count">${items.length}</span>
-                    </button></div>
+                    </button>${maintEquipmentHistoryBtn(name, 'mt-text-btn mt-group-history')}</div>
                     <div class="mt-months mt-months-empty"></div>
                 </div>`;
                 if (collapsed) return groupRow;
@@ -283,7 +338,7 @@
                     const latestDone = getLatestMaintenanceDoneDate(m);
                     const days = getDaysUntilDue(m.nextDue);
                     const doneMonths = new Set(m._doneDates.map(d => Number(d.slice(5, 7))));
-                    const tipBase = { name: m.item || '(항목명 없음)', equipment: m.equipment || '', cycle: m.cycle || '주기 미정', due: isValidNextDue(m.nextDue) ? m.nextDue + (days !== null && m.status !== '완료' ? ` (${formatDday(days)})` : '') : '미정', done: latestDone || '없음', status: m.status || '예정' };
+                    const tipBase = { name: m.item || '(항목명 없음)', equipment: m.equipment || '', cycle: m.cycle || '주기 미정', due: isValidNextDue(m.nextDue) ? formatMaintDateDisplay(m.nextDue) + (days !== null && m.status !== '완료' ? ` (${formatDday(days)})` : '') : '미정', done: latestDone ? formatMaintDateDisplay(latestDone) : '없음', status: m.status || '예정', inv: formatMaintShortageText(m._invShort) };
                     const cells = Array.from({ length: 12 }, (_, i) => {
                         const month = i + 1;
                         const key = `${maintenanceViewYear}-${String(month).padStart(2, '0')}`;
@@ -302,32 +357,32 @@
                         const tick = (key === dueKey && dueDay && m.status !== '완료')
                             ? `<span class="mt-due-tick" style="--d:${((dueDay - 0.5) / monthDays).toFixed(3)}" aria-hidden="true"></span>` : '';
                         const dots = m._doneDates.filter(d => Number(d.slice(5, 7)) === month)
-                            .map(d => `<span class="mt-done-dot" style="--d:${((Number(d.slice(8, 10)) - 0.5) / monthDays).toFixed(3)}" title="${escapeHtml(d)} 완료" aria-label="${escapeHtml(d)} 완료">${icon('check')}</span>`).join('');
+                            .map(d => `<span class="mt-done-dot" style="--d:${((Number(d.slice(8, 10)) - 0.5) / monthDays).toFixed(3)}" title="${escapeHtml(formatMaintDateDisplay(d))} 완료" aria-label="${escapeHtml(formatMaintDateDisplay(d))} 완료">${icon('check')}</span>`).join('');
                         // 차기 예정이 보는 연도 이후면 12월 칸 끝에 이어짐 표시
                         let next = '';
                         if (month === 12 && dueKey && Number(dueKey.slice(0, 4)) > maintenanceViewYear && m.status !== '완료') {
                             const [dy, dm] = dueKey.split('-').map(Number);
-                            next = `<button type="button" class="mt-next-year" title="다음 예정 ${escapeHtml(m.nextDue)} · 누르면 ${dy}년으로 이동" aria-label="차기 예정 ${dy}년 ${dm}월, ${dy}년으로 이동" onclick="changeMaintenanceViewYear(${dy - maintenanceViewYear})">→ ${dy}년 ${String(dm).padStart(2, '0')}월</button>`;
+                            next = `<button type="button" class="mt-next-year" title="다음 예정 ${escapeHtml(formatMaintDateDisplay(m.nextDue))} · 누르면 ${dy}년으로 이동" aria-label="차기 예정 ${dy}년 ${dm}월, ${dy}년으로 이동" onclick="changeMaintenanceViewYear(${dy - maintenanceViewYear})">→ ${dy}년 ${String(dm).padStart(2, '0')}월</button>`;
                         }
                         return `<div class="mt-cell">${bar}${tick}${dots}${next}</div>`;
                     }).join('');
                     const badge = maintTimelineBadge(m);
                     const canComplete = m.status !== '완료';
+                    const acked = ['overdue', 'urgent', 'notice'].includes(m._urgency.level) && m.ackFor && m.ackFor === m.nextDue;
+                    const invBadge = m._invShort.length ? `<span class="mt-badge mt-badge-inv" title="${escapeHtml('재고 부족: ' + tipBase.inv)}">📦 부족</span> · ` : '';
                     return `<div class="mt-row mt-item${level === 'overdue' ? ' is-overdue' : ''}${level === 'hold' ? ' is-hold' : ''}" data-maint-id="${escapeHtml(m.id)}">
                         <div class="mt-label">
                             <div class="mt-label-text">
                                 <button type="button" class="mt-item-name" onclick="openMaintenanceModal('${idArg}')" title="${escapeHtml(tipBase.name)}">${escapeHtml(tipBase.name)}</button>
-                                <span class="mt-item-meta">${badge ? `<span class="mt-badge mt-badge-${level}">${escapeHtml(badge)}</span> · ` : ''}${escapeHtml(m.cycle || '주기 미정')}</span>
+                                <span class="mt-item-meta">${badge ? `<span class="mt-badge mt-badge-${level}">${escapeHtml(badge)}</span> · ` : ''}${invBadge}${escapeHtml(m.cycle || '주기 미정')}${acked ? ' · 인지 완료' : ''}</span>
                             </div>
-                            ${canComplete ? `<button type="button" class="mt-complete-btn" onclick="openMaintenanceCompleteModal('${idArg}')" title="완료 처리" aria-label="${escapeHtml(tipBase.name + ' 완료 처리')}">${icon('check')}</button>` : ''}
+                            ${canComplete ? `<button type="button" class="mt-complete-btn" onclick="openMaintenanceCompleteModal('${idArg}')" title="완료 처리" aria-label="${escapeHtml(tipBase.name + ' 완료 처리')}">완료</button>` : ''}
                         </div>
                         <div class="mt-months">${cells}</div>
                     </div>`;
                 }).join('');
                 return groupRow + rows;
             }).join('');
-
-            const emptyQuick = body.trim() === '' ? `<div class="mt-quick-empty">${escapeHtml(maintTimelineQuick === 'thisMonth' ? '이번 달 예정인 정비가 없습니다' : `${maintTimelineQuick === 'overdue' ? '지연' : '임박'}된 정비가 없습니다`)}</div>` : '';
 
             const legend = `<div class="mt-legend" aria-hidden="true">
                 <span><i class="mt-bar mt-bar-overdue"></i>지연</span><span><i class="mt-bar mt-bar-urgent"></i>임박</span>
@@ -339,8 +394,8 @@
                 ${isThisYear ? '<span><i class="mt-today-legend"></i>오늘</span>' : ''}
             </div>`;
 
-            return `${summary}<div class="maint-timeline-scroll" data-year="${maintenanceViewYear}"><div class="maint-timeline"${todayPos !== null ? ` style="--today:${todayPos.toFixed(4)}"` : ''}>
-                ${head}${body}${emptyQuick}${todayPos !== null && !emptyQuick ? '<div class="mt-today-line" aria-hidden="true"></div>' : ''}
+            return `<div class="maint-timeline-scroll" data-year="${maintenanceViewYear}"><div class="maint-timeline"${todayPos !== null ? ` style="--today:${todayPos.toFixed(4)}"` : ''}>
+                ${head}${body}${todayPos !== null ? '<div class="mt-today-line" aria-hidden="true"></div>' : ''}
             </div></div>${legend}`;
         }
 
@@ -373,7 +428,7 @@
             }
             maintTooltipEl.innerHTML = `<div class="mt-tooltip-title">${escapeHtml(data.name)}</div>
                 <div class="mt-tooltip-sub">${escapeHtml(data.equipment)} · ${escapeHtml(data.month)}</div>
-                <dl><dt>차기 예정</dt><dd>${escapeHtml(data.due)}</dd><dt>최근 완료</dt><dd>${escapeHtml(data.done)}</dd><dt>주기</dt><dd>${escapeHtml(data.cycle)}</dd><dt>상태</dt><dd>${escapeHtml(data.status)}</dd></dl>`;
+                <dl><dt>차기 예정</dt><dd>${escapeHtml(data.due)}</dd><dt>최근 완료</dt><dd>${escapeHtml(data.done)}</dd><dt>주기</dt><dd>${escapeHtml(data.cycle)}</dd><dt>상태</dt><dd>${escapeHtml(data.status)}</dd>${data.inv ? `<dt>재고 부족</dt><dd>${escapeHtml(data.inv)}</dd>` : ''}</dl>`;
             maintTooltipEl.classList.add('open');
             const r = bar.getBoundingClientRect();
             const w = maintTooltipEl.offsetWidth, h = maintTooltipEl.offsetHeight;
@@ -402,8 +457,13 @@
                 document.body.appendChild(maintQuickMenuEl);
             }
             const idArg = escapeForOnclickArg(itemId);
+            // 카드의 "사전 인지 완료" 체크와 같은 값. 지연·임박·인지 필요 항목에만 보임
+            const showAck = ['overdue', 'urgent', 'notice'].includes(getMaintenanceUrgency(m).level);
+            const acked = m.ackFor && m.ackFor === m.nextDue;
+            const ackBtn = showAck ? `<button type="button" role="menuitemcheckbox" aria-checked="${acked ? 'true' : 'false'}" onclick="closeMaintQuickMenu(); toggleMaintenanceAck('${idArg}')">${icon(acked ? 'x' : 'check')}${acked ? '사전 인지 취소' : '사전 인지 완료'}</button>` : '';
             maintQuickMenuEl.innerHTML = `<div class="mt-quick-menu-title">${escapeHtml(m.item || '(항목명 없음)')}</div>
                 ${m.status !== '완료' ? `<button type="button" role="menuitem" onclick="closeMaintQuickMenu(); openMaintenanceCompleteModal('${idArg}')">${icon('check')}완료 처리</button>` : ''}
+                ${ackBtn}
                 <button type="button" role="menuitem" onclick="closeMaintQuickMenu(); openMaintenanceModal('${idArg}')">${icon('pencil')}수정</button>`;
             maintQuickMenuEl.classList.add('open');
             const r = event.currentTarget.getBoundingClientRect();
@@ -471,7 +531,7 @@
                 const lastDoneInYear = doneDates.length ? doneDates[doneDates.length - 1] : '';
                 const badges = [
                     badgeLabel ? `<span class="project-badge urgency-${urgency.level}${noticeAcked ? ' is-acked' : ''}">${badgeLabel}</span>` : '',
-                    lastDoneInYear ? `<span class="project-badge status-완료" title="${escapeHtml(lastDoneInYear)} 완료">완료 ${escapeHtml(lastDoneInYear.slice(5).replace('-', '/'))}</span>` : '',
+                    lastDoneInYear ? `<span class="project-badge status-완료" title="${escapeHtml(formatMaintDateDisplay(lastDoneInYear))} 완료">완료 ${escapeHtml(formatMaintDateDisplay(lastDoneInYear, true))}</span>` : '',
                     // "예정"은 기본 상태라 배지를 생략하고, 완료 배지가 이미 있으면 "완료" 상태 배지는 중복이라 생략
                     (m.status && m.status !== '예정' && !(m.status === '완료' && lastDoneInYear)) ? `<span class="project-badge status-${maintenanceStatusClass(m.status)}">${escapeHtml(m.status)}</span>` : ''
                 ].filter(Boolean).join('');
@@ -480,7 +540,7 @@
                 const dueParts = [];
                 if (isValidNextDue(m.nextDue)) {
                     const ddayText = (urgency.daysUntil !== null && m.status !== '완료' && !badgeLabel) ? ` (${formatDday(urgency.daysUntil)})` : '';
-                    dueParts.push(`<b>차기</b> ${escapeHtml(m.nextDue)}${m.nextDue.length === 7 ? ' (날짜 미지정)' : ''}${ddayText}`);
+                    dueParts.push(`<b>차기</b> ${escapeHtml(formatMaintDateDisplay(m.nextDue))}${m.nextDue.length === 7 ? ' (날짜 미지정)' : ''}${ddayText}`);
                 }
                 if (m.cycle) dueParts.push(cycleUnknown
                     ? `<span class="maint-cycle-warning" title="주기 표현을 자동으로 인식하지 못해, 등록된 차기 점검월만 표시돼요. (&quot;3개월&quot;, &quot;격월&quot;, &quot;분기&quot;, &quot;반기&quot;, &quot;매년&quot; 등으로 적으면 반복월이 자동 계산됩니다)">⚠️ ${escapeHtml(m.cycle)} (주기 인식 불가)</span>`
@@ -506,12 +566,18 @@
             `;
             }).join('');
 
+            // 타임라인과 같은 접기 상태(maintTimelineCollapsed)를 씀. 접으면 머리줄만 남기고 지연 항목이 있으면 빨간 점으로 알림
+            const collapsed = maintTimelineCollapsed.has(equipmentName);
+            const hasOverdue = items.some(m => m._urgency.level === 'overdue' && m.status !== '보류');
             return `
-                <div class="maintenance-equipment-group" style="margin-bottom:24px;">
-                    <div class="result-date maint-group-title">🔧 ${escapeHtml(equipmentName)}
-                        ${(equipmentName !== '(설비 미지정)' && !isFeatureDisabled('keywordSearch')) ? `<button class="result-action-btn" onclick="openEquipmentTimeline('${escapeForOnclickArg(equipmentName)}')" title="이 설비의 활동기록·정비 완료 이력을 시간순으로 보기">설비 이력</button>` : ''}
+                <div class="maintenance-equipment-group${collapsed ? ' is-collapsed' : ''}" data-group="${escapeHtml(equipmentName)}" style="margin-bottom:24px;">
+                    <div class="result-date maint-group-title">
+                        <button type="button" class="maint-group-toggle${hasOverdue ? ' has-overdue' : ''}" onclick="toggleMaintGroup('${escapeForOnclickArg(equipmentName)}')" aria-expanded="${collapsed ? 'false' : 'true'}">
+                            ${icon('chevron-right')}<span class="maint-group-name">🔧 ${escapeHtml(equipmentName)}</span><span class="maint-group-count">${items.length}</span>
+                        </button>
+                        ${maintEquipmentHistoryBtn(equipmentName, 'result-action-btn')}
                     </div>
-                    <div class="maint-card-grid">${cardsHtml}</div>
+                    ${collapsed ? '' : `<div class="maint-card-grid">${cardsHtml}</div>`}
                 </div>
             `;
         }
@@ -532,28 +598,46 @@
             syncMaintenanceLayoutButtons();
 
             if (maintenanceSchedule.length === 0) {
+                renderMaintenanceQuickChips(null);
                 container.innerHTML = '<div class="no-projects">' + emptyStateHtml('wrench', '아직 등록된 정비계획이 없습니다', '설비와 주기를 적어 두면 해마다 예정월이 자동으로 계산되고, 급한 정비는 오늘 요약에도 나타납니다.', { label: '새 일정 추가', icon: 'plus', onclick: 'openMaintenanceModal(null)' }) + '</div>';
                 return;
             }
 
             const isCurrentYear = maintenanceViewYear === new Date().getFullYear();
 
-            const visibleItems = [];
+            // 1단계: 보는 연도에 나올 항목(상태·검색과 무관). 빠른 보기 칩 숫자는 이 기준으로 셈
+            const yearItems = [];
             for (const m of maintenanceSchedule) {
-                // 주기가 있는 항목은 완료 처리하면 바로 다음 주기("예정")로 넘어가므로, 상태만 보면 "완료" 목록에서
-                // 빠져 버림. 보고 있는 연도에 완료 기록이 있으면 "완료" 필터에도 나오게 함
                 const doneDates = getMaintenanceCompletionDatesInYear(m, maintenanceViewYear);
-                if (maintenanceStatusFilter === '완료') {
-                    if (m.status !== '완료' && doneDates.length === 0) continue;
-                } else if (maintenanceStatusFilter !== '전체' && m.status !== maintenanceStatusFilter) continue;
                 const isUndated = !isValidNextDue(m.nextDue);
                 const months = isUndated ? [] : getMaintenanceOccurrenceMonths(m, maintenanceViewYear);
                 // 예정월이 없는 해라도 그 해에 완료한 기록이 있으면 표시 (완료 후 차기 일정이 다음 해 이후로 넘어간 경우)
                 const visible = isUndated ? (isCurrentYear || doneDates.length > 0) : (months.length > 0 || doneDates.length > 0);
-                if (visible) visibleItems.push(Object.assign({}, m, { _occurrenceMonths: months, _doneDates: doneDates, _urgency: getMaintenanceUrgency(m) }));
+                if (visible) yearItems.push(Object.assign({}, m, { _occurrenceMonths: months, _doneDates: doneDates, _urgency: getMaintenanceUrgency(m), _invShort: getMaintenanceInventoryShortages(m) }));
             }
 
+            const quickKinds = ['overdue', 'urgent', 'thisMonth', 'invShort'];
+            renderMaintenanceQuickChips(Object.fromEntries(quickKinds.map(k => [k, yearItems.filter(m => maintQuickMatch(m, k)).length])));
+
+            // 2단계: 상태 필터·빠른 보기·검색어로 거름.
+            // 주기가 있는 항목은 완료 처리하면 바로 다음 주기("예정")로 넘어가므로, 상태만 보면 "완료" 목록에서
+            // 빠져 버림. 보고 있는 연도에 완료 기록이 있으면 "완료" 필터에도 나오게 함
+            const searchTerms = maintenanceSearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+            const visibleItems = yearItems.filter(m => {
+                if (maintenanceStatusFilter === '완료') { if (m.status !== '완료' && m._doneDates.length === 0) return false; }
+                else if (maintenanceStatusFilter !== '전체' && m.status !== maintenanceStatusFilter) return false;
+                return maintQuickMatch(m, maintQuickFilter) && maintSearchMatch(m, searchTerms);
+            });
+
             if (visibleItems.length === 0) {
+                if (yearItems.length > 0 && (searchTerms.length || maintQuickFilter)) {
+                    const quickLabel = { overdue: '지연된', urgent: '임박한', thisMonth: '이번 달 예정인', invShort: '재고가 부족한' }[maintQuickFilter] || '';
+                    const title = searchTerms.length
+                        ? `"${maintenanceSearchQuery.trim()}"에 맞는 ${quickLabel ? quickLabel + ' ' : ''}정비계획이 없습니다`
+                        : `${maintenanceViewYear}년에 ${quickLabel} 정비가 없습니다`;
+                    container.innerHTML = `<div class="no-projects">${emptyStateHtml('wrench', title, '검색어나 빠른 보기를 지우면 전체 목록이 다시 보입니다.', { label: '조건 지우기', icon: 'x', onclick: 'clearMaintenanceFilters()' })}</div>`;
+                    return;
+                }
                 container.innerHTML = `<div class="no-projects">${emptyStateHtml('wrench', `${maintenanceViewYear}년에는 ${maintenanceStatusFilter === '전체' ? '' : '"' + maintenanceStatusFilter + '" 상태의 '}정비계획이 없습니다`, '설비와 주기를 적어 두면 해마다 예정월이 자동으로 계산됩니다.', maintenanceStatusFilter === '전체' ? { label: '새 일정 추가', icon: 'plus', onclick: 'openMaintenanceModal(null)' } : null)}</div>`;
                 return;
             }
@@ -575,9 +659,14 @@
             });
 
             if (typeof closeMaintQuickMenu === 'function') { closeMaintQuickMenu(); hideMaintTooltip(); }
-            container.innerHTML = maintenanceLayout === 'timeline'
+            // 설비가 2개 이상일 때만 [모두 펼치기/접기] (두 보기 공통)
+            const groupActions = equipmentNames.length > 1 ? `<div class="maint-list-actions">
+                    <button type="button" class="mt-text-btn" onclick="setAllMaintGroups(false)">모두 펼치기</button>
+                    <button type="button" class="mt-text-btn" onclick="setAllMaintGroups(true)">모두 접기</button>
+                </div>` : '';
+            container.innerHTML = groupActions + (maintenanceLayout === 'timeline'
                 ? renderMaintenanceTimeline(equipmentNames, groups)
-                : equipmentNames.map(name => renderMaintenanceEquipmentGroup(name, groups[name])).join('');
+                : equipmentNames.map(name => renderMaintenanceEquipmentGroup(name, groups[name])).join(''));
             if (maintenanceLayout === 'timeline') restoreMaintTimelineScroll();
         }
 
@@ -721,13 +810,13 @@
             return (m && Array.isArray(m.completions)) ? m.completions : [];
         }
 
+        // 입력 순서와 무관하게 완료 이력·이전 완료일 중 가장 최근 날짜를 보여줌. 날짜 형식이 아닌 예전 값은 그대로 표시
         function renderMaintenanceLastDoneRow(m) {
-            const completions = getMaintenanceCompletions(m);
-            if (completions.length > 0) {
-                const latest = completions[completions.length - 1];
-                return `<div class="project-card-row"><b>이전 완료</b> ${escapeHtml(latest.date)} <span class="maint-completion-count">(누적 ${completions.length}회)</span></div>`;
-            }
-            return m.lastDone ? `<div class="project-card-row"><b>이전 완료</b> ${escapeHtml(m.lastDone)}</div>` : '';
+            const count = getMaintenanceCompletions(m).length;
+            const latest = getLatestMaintenanceDoneDate(m);
+            const text = latest ? formatMaintDateDisplay(latest) : String(m.lastDone || '').trim();
+            if (!text) return '';
+            return `<div class="project-card-row"><b>이전 완료</b> ${escapeHtml(text)}${count > 0 ? ` <span class="maint-completion-count">(누적 ${count}회)</span>` : ''}</div>`;
         }
 
         // "YYYY-MM-DD" 완료일 + 주기(개월) → 다음 예정월 "YYYY-MM". 주기를 알아들을 수 없으면 null
@@ -753,7 +842,7 @@
                 ? '<div class="maint-completion-empty">아직 누적된 완료 이력이 없습니다.</div>'
                 : completions.map(c => `
                     <div class="maint-completion-item">
-                        <span class="maint-completion-date">${escapeHtml(c.date)}</span>
+                        <span class="maint-completion-date">${escapeHtml(formatMaintDateDisplay(c.date))}</span>
                         <span class="maint-completion-note">${escapeHtml(c.note || '')}</span>
                         <button type="button" class="category-tag-delete" onclick="deleteMaintenanceCompletion('${m.id}', '${c.id}')" aria-label="이 완료 이력 삭제">${icon('x', 'ui-icon-em')}</button>
                     </div>`).join('');
@@ -767,7 +856,7 @@
             const date = document.getElementById('maintCompleteDateInput').value;
             const nextDue = computeNextDueFromCompletion(date, m.cycle);
             hintEl.textContent = nextDue
-                ? `주기(${m.cycle})에 따라 차기 점검 예정이 ${nextDue}로 자동 변경되고 상태는 "예정"이 됩니다.`
+                ? `주기(${m.cycle})에 따라 차기 점검 예정이 ${formatMaintDateDisplay(nextDue)}로 자동 변경되고 상태는 "예정"이 됩니다.`
                 : '주기를 자동으로 인식하지 못해 차기 점검 예정은 그대로 두고, 상태만 "완료"로 바뀝니다.';
         }
 
@@ -872,7 +961,7 @@
             renderCalendar();
             if (selectedDate === date) renderRecordForm();
             if (typeof renderInventory === 'function') renderInventory(); // 재고 카드의 차기 일정
-            const baseMsg = logToRecord && category ? `완료 처리했습니다 (${date} 활동기록 [${category}]에도 기록됨)` : '완료 처리했습니다';
+            const baseMsg = logToRecord && category ? `완료 처리했습니다 (${formatMaintDateDisplay(date)} 활동기록 [${category}]에도 기록됨)` : '완료 처리했습니다';
             // 재고가 모자라 출고를 건너뛴 품목이 있으면 놓치지 않게 경고 색으로 보여줌
             const inventorySkipped = inventoryMsg.includes('출고 안 함');
             showAppToast(inventoryMsg ? `${baseMsg} · ${inventoryMsg}` : baseMsg, inventorySkipped ? 'error' : 'success');

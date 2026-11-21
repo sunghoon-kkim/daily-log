@@ -702,18 +702,22 @@
                 </div>
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">설비별 정비/점검 일정을 등록해두세요. 주기를 적어두면 그 해의 예정월이 자동으로 계산되고, [카드]와 [타임라인] 중 편한 보기로 볼 수 있습니다. 항목을 클릭하면 상세 내용을 보거나 수정할 수 있습니다.</p>
 
-                <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
+                <div class="maint-year-row" style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
                     <button class="category-prev-btn" onclick="changeMaintenanceViewYear(-1)"><span data-icon="chevron-left"></span>이전 해</button>
                     <span id="maintenanceViewYearLabel" style="font-weight:700; font-size:16px; color: var(--color-text);"></span>
                     <button class="category-prev-btn" onclick="changeMaintenanceViewYear(1)">다음 해<span data-icon="chevron-right" class="icon-trailing"></span></button>
+                    <input type="search" id="maintenanceSearchInput" class="search-input maint-search-input" placeholder="항목·설비·SOP 검색" aria-label="정비계획 검색 (항목명·설비명·SOP)" autocomplete="off" oninput="setMaintenanceSearch(this.value)">
                 </div>
 
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                    <div class="maint-filter-group">
                     <div class="quick-preset-row" id="maintenanceFilterRow">
                         <button type="button" class="quick-preset-btn selected" data-filter="전체" onclick="setMaintenanceStatusFilter('전체')">전체</button>
                         <button type="button" class="quick-preset-btn" data-filter="예정" onclick="setMaintenanceStatusFilter('예정')">예정</button>
                         <button type="button" class="quick-preset-btn" data-filter="완료" onclick="setMaintenanceStatusFilter('완료')">완료</button>
                         <button type="button" class="quick-preset-btn" data-filter="보류" onclick="setMaintenanceStatusFilter('보류')">보류</button>
+                    </div>
+                    <div id="maintenanceQuickChips" class="maint-quick-chips" role="group" aria-label="빠른 보기 (보는 연도 전체 기준 개수)"></div>
                     </div>
                     <div class="maint-view-switch">
                     <div class="quick-preset-row" id="maintenanceLayoutRow" role="tablist" aria-label="정비계획 보기 방식">
