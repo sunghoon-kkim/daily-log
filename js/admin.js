@@ -1050,6 +1050,7 @@
 
             try {
                 let workingEmployeeId = adminEditOriginalEmployeeId;
+                let issuedTempPassword = null; // 사번을 바꾸면 서버가 새 사번 기준 임시 비밀번호를 발급함
 
                 if (newEmployeeId !== adminEditOriginalEmployeeId) {
                     const idRes = await fetch(GOOGLE_APPS_SCRIPT_URL, {
@@ -1069,6 +1070,7 @@
                         return;
                     }
                     workingEmployeeId = newEmployeeId;
+                    issuedTempPassword = idData.tempPassword || null;
                     // 사번 변경은 이미 서버에 반영됐으니, 아래 이름/소속 저장이 실패해서 다시 시도하더라도
                     // 이 사번으로 또 바꾸려 하지 않도록(예전 사번은 이제 존재하지 않아 실패함) 갱신해둠
                     adminEditOriginalEmployeeId = newEmployeeId;
@@ -1089,11 +1091,15 @@
 
                 if (infoData.status === 'success') {
                     closeAdminEditUserModal();
-                    statusEl.textContent = `✅ ${workingEmployeeId} 계정 정보가 수정되었습니다`;
+                    statusEl.textContent = issuedTempPassword
+                        ? `✅ 사번이 ${workingEmployeeId}(으)로 바뀌었습니다. 임시 비밀번호: ${issuedTempPassword}  (본인에게 직접 전달하세요. 다음 로그인 때 새 비밀번호로 바꾸게 됩니다)`
+                        : `✅ ${workingEmployeeId} 계정 정보가 수정되었습니다`;
                     statusEl.className = 'ai-status success';
                     await loadAdminUserList();
                 } else {
-                    errEl.textContent = infoData.message || '저장에 실패했습니다';
+                    // 사번 변경은 이미 끝났으므로, 이름/소속 저장이 실패해도 발급된 임시 비밀번호는 꼭 보여줌
+                    errEl.textContent = (infoData.message || '저장에 실패했습니다')
+                        + (issuedTempPassword ? ` (사번은 ${workingEmployeeId}(으)로 바뀌었고 임시 비밀번호는 ${issuedTempPassword} 입니다)` : '');
                     errEl.style.display = 'block';
                 }
             } catch (err) {

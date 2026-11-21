@@ -1582,6 +1582,7 @@ function handleAdminChangeEmployeeId(data) {
     return jsonResponse({ status: "error", message: "관리자 계정 자신의 사번은 변경할 수 없습니다." });
   }
 
+  let tempPassword = null;
   // 기록/대용량 필드 시트는 저장할 때 사번 순으로 정렬될 수 있어서(sortOwnerDataSheet), 행 위치를 읽고
   // 쓰는 이 작업도 저장과 같은 잠금 안에서 해야 정렬과 겹쳐 엉뚱한 행의 사번을 바꾸지 않음
   const lock = LockService.getScriptLock();
@@ -1611,6 +1612,21 @@ function handleAdminChangeEmployeeId(data) {
     renameTeamReportsOwner(oldEmployeeId, newEmployeeId);
     renameTeamWeeklyReportsOwner(oldEmployeeId, newEmployeeId);
     renameBackupsOwner(oldEmployeeId, newEmployeeId); // 옛 사번에 백업이 남으면 그 사번을 새로 받은 사람이 복원할 수 있었음
+
+    // 비밀번호 해시는 "비밀번호:사번"으로 만들어지므로(프론트 sha256Hex), 사번만 바꾸면 그 직원은 원래
+    // 비밀번호로 다시는 로그인할 수 없었음. 그래서 사번을 바꿀 때 임시 비밀번호를 새 사번 기준으로 발급하고,
+    // 다음 로그인 때 새 비밀번호를 정하게 함(관리자 비밀번호 초기화와 같은 방식)
+    if (newEmployeeId !== oldEmployeeId) {
+      tempPassword = generateTempPassword();
+      sheet.getRange(row, 2).setValue(wrapPasswordHash(computeSha256(tempPassword + ':' + newEmployeeId)));
+      const profile = parseUserJson(sheet.getRange(row, 3).getValue());
+      delete profile.failedLoginCount;
+      delete profile.lockedAt;
+      profile.mustChangePassword = true;
+      sheet.getRange(row, 3).setValue(JSON.stringify(profile));
+      clearPasswordCheckFailures(oldEmployeeId);
+      clearPasswordCheckFailures(newEmployeeId);
+    }
   } finally {
     lock.releaseLock();
   }
@@ -1624,7 +1640,7 @@ function handleAdminChangeEmployeeId(data) {
     }
   } catch (renameErr) {}
 
-  return jsonResponse({ status: "success" });
+  return jsonResponse(tempPassword ? { status: "success", tempPassword: tempPassword } : { status: "success" });
 }
 
 // 요청에 실려온 employeeId/passwordHash가 실제 관리자(ADMIN_EMPLOYEE_ID) 계정과 정확히
@@ -2130,6 +2146,48 @@ function handleAdminSetTeamReportRole(data) {
 }
 
 // 관리자 초기화용 임시 비밀번호(10자리). 헷갈리기 쉬운 문자(0/o, 1/l/i)는 뺌
+// ===== 관리자 계정 일회용 복구 (Apps Script 편집기에서 직접 ▶실행) =====
+// 관리자 사번을 Users 시트 A열과 스크립트 속성(ADMIN_EMPLOYEE_ID)에서 직접 바꾸면, 비밀번호 해시가
+// "비밀번호:사번"으로 만들어지는 구조라 새 사번으로는 원래 비밀번호가 맞지 않게 됨. 이 함수를 편집기에서
+// 한 번 실행하면 현재 ADMIN_EMPLOYEE_ID 계정의 비밀번호를 임시 비밀번호(ADMIN_RECOVERY_TEMP_PASSWORD,
+// 새 사번 기준)로 바꾸고, 로그인 잠금 기록을 지우고, 다음 로그인 때 새 비밀번호를 정하게 함.
+// doGet/doPost에 연결돼 있지 않아 웹에서는 호출할 수 없음. 실행 직후 바로 로그인해서 비밀번호를 바꾸고,
+// 복구가 끝나면 이 함수는 지워도 됨
+const ADMIN_RECOVERY_TEMP_PASSWORD = "1234";
+
+function resetAdminAccount() {
+  const configuredId = normalizeEmployeeId(PropertiesService.getScriptProperties().getProperty('ADMIN_EMPLOYEE_ID'));
+  if (!configuredId) {
+    Logger.log("중단: 스크립트 속성 ADMIN_EMPLOYEE_ID가 비어 있습니다. 먼저 새 관리자 사번을 속성에 등록하세요.");
+    return;
+  }
+  if (!EMPLOYEE_ID_PATTERN.test(configuredId)) {
+    Logger.log("중단: ADMIN_EMPLOYEE_ID(" + configuredId + ")가 숫자 7자리가 아닙니다.");
+    return;
+  }
+  getPasswordPepper(); // 잠금 안에서 처음 만들며 잠금이 겹치지 않도록 미리 준비
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getUsersSheet();
+    const row = findUserRow(sheet, configuredId);
+    if (row === -1) {
+      Logger.log("중단: Users 시트 A열에서 사번 " + configuredId + " 행을 찾지 못했습니다. A열 값(앞자리 0, 공백)을 확인하세요.");
+      return;
+    }
+    sheet.getRange(row, 2).setValue(wrapPasswordHash(computeSha256(ADMIN_RECOVERY_TEMP_PASSWORD + ':' + configuredId)));
+    const profile = parseUserJson(sheet.getRange(row, 3).getValue());
+    delete profile.failedLoginCount;
+    delete profile.lockedAt;
+    profile.mustChangePassword = true;
+    sheet.getRange(row, 3).setValue(JSON.stringify(profile));
+    clearPasswordCheckFailures(configuredId);
+    Logger.log("완료: 관리자 " + configuredId + " 계정을 임시 비밀번호로 초기화했습니다. 지금 바로 이 사번과 임시 비밀번호로 로그인해 새 비밀번호를 정하세요.");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function generateTempPassword() {
   const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
   const hex = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");

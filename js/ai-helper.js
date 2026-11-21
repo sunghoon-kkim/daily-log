@@ -76,7 +76,7 @@
             return text.trim();
         }
         
-        // ===== 일일 업무 요약 (퇴근 전 보고용) =====
+        // ===== 일일 업무 요약 =====
         function saveDailySummarySettings() {
             if (!checkEditPermission()) return;
             const input = document.getElementById('dailySummaryFixedFirstItem');

@@ -1150,7 +1150,8 @@
 
             <div class="modal-field">
                 <label>사번</label>
-                <input type="text" id="adminEditEmployeeIdInput" placeholder="숫자 7자리" inputmode="numeric" maxlength="7" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,7)">
+                <input type="text" id="adminEditEmployeeIdInput" placeholder="숫자 7자리" inputmode="numeric" maxlength="7" aria-describedby="adminEditEmployeeIdHelp" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,7)">
+                <small id="adminEditEmployeeIdHelp" style="color: var(--color-text-secondary);">사번을 바꾸면 비밀번호가 맞지 않게 되므로 임시 비밀번호가 새로 발급됩니다. 본인에게 직접 전달해주세요.</small>
             </div>
             <div class="modal-field">
                 <label>이름</label>
