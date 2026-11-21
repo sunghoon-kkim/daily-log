@@ -4,6 +4,9 @@
 :root {
     /* 색상 */
     --color-bg: #F1F5F9;            /* 한 톤 눌러서 흰 카드가 떠 보이게 */
+    /* 화면 3단 명암: 페이지 바탕(가장 진함) < 탭 줄과 이어지는 본문 패널 < 카드(흰색) */
+    --color-page: #E3E8EF;
+    --color-panel: #F4F6F9;
     --color-surface: #FFFFFF;
     --color-surface-subtle: #F8FAFC;
     --color-surface-muted: #E9EEF4;    /* 배경(#F1F5F9) 위 hover도 보이도록 한 단계 더 진하게 */
@@ -59,6 +62,10 @@
     /* 활동기록 본문 */
     --leading-relaxed: 1.7;
     --tracking-ko: -0.005em;
+    /* 레이아웃: 상단 바·탭 줄·본문·관리자 화면 모두 이 폭과 좌우 여백을 씀 */
+    --layout-max: 1920px;
+    --layout-gutter: 32px;
+    --measure: 80ch;   /* 설명 문단 최대 줄 길이 */
 }
 
 html {
@@ -4440,7 +4447,9 @@ html {
     /* DESIGN.md 다크 토큰. 예전 --d-* 이름은 기존 규칙 호환용으로 같은 값을 가리킴 */
     /* 푸른 남색(slate) 대신 뉴트럴 차콜/징크 */
     --color-bg: #0B0C0E;
-    --color-surface: #13151A;
+    --color-page: #08090B;
+    --color-panel: #111318;
+    --color-surface: #1A1C22;   /* 패널(#111318)보다 한 단계 밝게 해서 카드가 떠 보이게 */
     --color-surface-subtle: #101216;
     --color-surface-muted: #181A20;
     --color-border: #242730;
@@ -7460,4 +7469,114 @@ button > .ui-icon-em,
     .motion-fade-in,
     .motion-pop-in,
     .sync-status.motion-sync-done { animation: none; }
+}
+
+/* ===== 레이아웃·명암 레이어 (전체 폭 통일 + 폴더형 탭 + 3단 명암) =====
+   - 폭: 모든 탭·상단 바·관리자 화면이 --layout-max(1920px) 안에서 좌우 --layout-gutter 여백을 공유
+   - 명암: 페이지 바탕(--color-page) < 본문 패널(--color-panel) < 카드(--color-surface)
+   - 탭: 탭 줄은 페이지 바탕 위에 놓이고, 선택된 탭만 본문 패널과 같은 색·테두리로 이어진 폴더 모양 */
+html,
+body,
+.dark-mode body { background: var(--color-page); }
+body { padding-left: var(--layout-gutter); padding-right: var(--layout-gutter); }
+.container { max-width: var(--layout-max); }
+
+/* 검색 & 조회·환경설정만 안쪽을 1160px로 좁히던 규칙 해제 (다른 탭과 같은 폭) */
+#query > *,
+#settings > * { max-width: none; }
+
+/* 탭 줄: 페이지 바탕색 + 아래쪽 1px 선. 선택된 탭이 이 선을 덮어 본문 패널과 이어짐 */
+.tabs-container,
+.dark-mode .tabs-container {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background-color: var(--color-page);
+    background-image: linear-gradient(to top, var(--color-border-strong) 1px, transparent 1px);
+    border: none;
+    border-radius: 0;
+    padding: var(--space-2) var(--space-2) 0;
+}
+.tab,
+.dark-mode .tab {
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    color: var(--color-text-secondary);
+    background: transparent;
+    transition: background-color var(--duration) var(--ease), color var(--duration) var(--ease);
+}
+.tab:hover,
+.dark-mode .tab:hover {
+    background: color-mix(in srgb, var(--color-panel) 55%, transparent);
+    color: var(--color-text);
+}
+.tab.active,
+.dark-mode .tab.active {
+    background: var(--color-panel);
+    color: var(--color-text);
+    font-weight: 600;
+    border-color: var(--color-border-strong);
+    box-shadow: inset 0 2px 0 var(--color-primary); /* 위쪽 2px 포인트 선 */
+    z-index: 1;
+}
+.tab.active .ui-icon { color: var(--color-primary); }
+
+/* 본문 패널: 탭 줄 아래 선과 이어지도록 위 테두리 없음 */
+.tab-content,
+.dark-mode .tab-content {
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-strong);
+    border-top: none;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    min-height: 0;
+}
+body.admin-mode #adminPanel,
+.dark-mode body.admin-mode #adminPanel {
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: none;
+    padding: var(--space-6);
+    min-height: 0;
+}
+
+/* 설명 문단: 넓어진 화면에서 한 줄이 너무 길어지지 않게 */
+.tab-content p[style*="--color-text-secondary"],
+#adminPanel p[style*="--color-text-secondary"] { max-width: var(--measure); }
+
+/* 상단 시계: 첫 시각이 그려지기 전의 "- -"는 숨김(자리는 유지해 오른쪽 버튼 위치가 흔들리지 않음) */
+.live-clock:not(.is-ready) { visibility: hidden; }
+
+/* 버튼 글자 뒤에 오는 아이콘(다음 해 등) */
+button > .icon-trailing > .ui-icon { margin-right: 0; margin-left: 6px; }
+
+/* 태블릿 폭까지 탭 줄을 한 줄 가로 스크롤로 (여러 줄로 쌓이지 않게) */
+@media (max-width: 1100px) {
+    .tabs-container {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .tabs-container::-webkit-scrollbar { display: none; }
+    .tab { flex: 0 0 auto; white-space: nowrap; }
+    .tabs-container.more-right {
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+    }
+    .tabs-container.more-left {
+        -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent);
+        mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent);
+    }
+    .tabs-container.more-left.more-right {
+        -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+        mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+    }
+}
+@media (max-width: 768px) {
+    :root { --layout-gutter: var(--space-3); }
+    body { padding-left: calc(var(--layout-gutter) + env(safe-area-inset-left)); padding-right: calc(var(--layout-gutter) + env(safe-area-inset-right)); }
+    body.admin-mode #adminPanel { padding: var(--space-4); }
 }

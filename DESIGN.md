@@ -14,8 +14,10 @@
 
 | 토큰 | 라이트 | 다크 | 용도 |
 |---|---|---|---|
-| `--color-bg` | `#F1F5F9` | `#0B0C0E` | 페이지 배경, 탭 내용 영역 바탕 (카드보다 한 톤 낮게) |
-| `--color-surface` | `#FFFFFF` | `#13151A` | 카드·모달 |
+| `--color-page` | `#E3E8EF` | `#08090B` | 페이지 바탕·탭 줄 (가장 진함) |
+| `--color-panel` | `#F4F6F9` | `#111318` | 본문 패널(`.tab-content`, 관리자 화면)·선택된 탭 |
+| `--color-bg` | `#F1F5F9` | `#0B0C0E` | 예전 바탕 토큰. 화면 골격에는 `--color-page`/`--color-panel`을 쓴다 |
+| `--color-surface` | `#FFFFFF` | `#1A1C22` | 카드·모달 (패널보다 한 단계 밝게) |
 | `--color-surface-subtle` | `#F8FAFC` | `#101216` | 카드 안의 옅은 영역 |
 | `--color-surface-muted` | `#E9EEF4` | `#181A20` | 보조·Ghost 버튼 hover, 상태 칩 배경 |
 | `--color-input-bg` | `#F8FAFC` | `#181A20` | 카드 안 입력칸 바탕 (포커스 때 라이트는 흰색으로) |
@@ -94,9 +96,10 @@
 여백은 4의 배수만 쓰고, 같은 단계의 요소에는 같은 간격을 쓴다.
 
 ## 표면 명암 3단
-- **페이지·탭 내용 바탕(`--color-bg`) < 섹션 카드(`--color-surface`, 흰색) > 카드 안 입력칸(`--color-input-bg`)** 순서로 층을 나눈다. 탭 내용 영역(`.tab-content`)도 바탕 톤이라 그 안의 섹션 카드가 떠 보인다.
+- **페이지 바탕(`--color-page`) < 본문 패널(`--color-panel`) < 섹션 카드(`--color-surface`)** 순서로 명도가 올라간다. 라이트·다크 모두 같은 구조. 카드 안 입력칸은 `--color-input-bg`로 한 톤 낮춘다.
+- 본문 패널은 `--color-border-strong` 1px 테두리, 위쪽 테두리는 없음(탭 줄 아래 선과 이어짐).
 - 섹션 카드(`.ai-container`, `.query-container`, `.category-manager`, `.notes-container` 등)는 모두 흰 표면. 오프화이트 카드는 쓰지 않는다.
-- 폼 위주 탭(검색 & 조회·카테고리 관리·환경설정)은 탭 카드 폭은 그대로 두고 안쪽 내용만 `max-width: 1160px` 가운데 정렬.
+- 모든 탭·관리자 화면이 같은 폭을 쓴다(탭별로 안쪽 폭을 따로 좁히지 않음). 설명 문단만 `--measure`(80ch)로 줄 길이를 제한.
 
 ## 섹션 제목 아이콘 배지
 - 데이터 색이 없는 폼 탭의 섹션 제목(현재 AI 도우미 6개) 왼쪽에 28×28px, 6px 모서리, 파스텔 틴트 배경(색조 12%) + 1.5px 아이콘(색조 78%를 본문색과 섞음).
@@ -129,7 +132,7 @@
 ## 컴포넌트 규칙 (style.css 맨 아래 "디자인 시스템 컴포넌트 레이어" + "정밀 교정 레이어")
 - **상단 유틸리티 버튼**(`.theme-toggle-btn`: 개인 정보 수정·로그아웃·다크모드): 배경·테두리 없는 Ghost 버튼, 아이콘 + 글자, hover 때만 `--color-surface-muted`.
 - **동기화 상태**(`.sync-status`): 1px 테두리의 얇은 둥근 배지 + 6px 상태 점(초록 동기화됨, 주황 저장 중, 빨강 오류).
-- **탭**: 왼쪽 정렬, 글자 너비만큼(`flex: 0 0 auto`), 좌우 12px. 아이콘 16px + 글자 14px.
+- **탭(폴더형)**: 왼쪽 정렬, 글자 너비만큼(`flex: 0 0 auto`), 아이콘 16px + 글자 14px. 탭 줄은 페이지 바탕색 + 아래 1px `--color-border-strong` 선, 화면 위에 고정(sticky). 선택된 탭만 `--color-panel` 배경 + 위·양옆 1px 테두리 + 위쪽 2px 인디고 선으로 본문 패널과 이어진다. 비활성 탭은 보조 글자색, hover 때 옅은 패널색. 1100px 이하에서는 한 줄 가로 스크롤(양 끝 흐림).
 - **주 버튼** (`.query-btn`, `.save-btn`, `.add-category-btn`, `.add-event-btn`, `.modal-save-btn` 등): 인디고 채움, 흰 글자, 6px, 600. hover 때 `--color-primary-hover`. 한 화면 영역에 하나만 둔다.
 - **보조 버튼** (`.ai-copy-btn`, `.quick-preset-btn`, `.category-prev-btn`, `.nav-btn`, `.result-action-btn`, `.modal-cancel-btn`): 흰 바탕 + 1px 테두리 + 보조 글자색. hover 때 `--color-surface-muted` 배경과 `--color-border-strong` 테두리.
 - **선택 상태** (`.quick-preset-btn.selected`, 활성 탭): `--color-primary-soft` 배경 + 인디고 글자. 탭은 배경 없이 2px 인디고 밑줄.
@@ -147,8 +150,8 @@
 - `prefers-reduced-motion: reduce`이면 모든 효과를 끄고 결과만 바로 보여준다.
 
 ## 반응형
-- 데스크톱 기준 1920×1080, 본문 최대 너비 1500px.
-- 768px 이하: 페이지 여백 12px, 탭 내용 16px, 카드 16px, 모달 24px.
+- 데스크톱 기준 1920×1080. 상단 바·탭 줄·본문 최대 너비 `--layout-max`(1920px), 좌우 여백 `--layout-gutter`(32px). 더 넓은 화면에서는 가운데 정렬.
+- 768px 이하: 페이지 여백 12px(`--layout-gutter`), 탭 내용 16px, 카드 16px, 모달 24px.
 - 390px 폭에서 가로 스크롤이 생기면 안 된다 (흐름도 캔버스처럼 자체 스크롤 영역은 예외).
 
 ## 새 UI를 만들 때 확인할 것

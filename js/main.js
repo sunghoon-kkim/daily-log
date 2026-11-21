@@ -2005,6 +2005,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
             tick();
             setInterval(tick, 1000);
+            // 첫 시각을 그린 뒤에야 시계를 보이게 함(그 전엔 "- -" 자리표시만 있어서 CSS로 숨겨둠)
+            const clockEl = document.getElementById('liveClock');
+            if (clockEl) clockEl.classList.add('is-ready');
         }
 
         // ===== 메모장/활동기록 카테고리 박스 공용: 이미지 붙여넣기·업로드·확대보기 =====
