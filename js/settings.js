@@ -30,7 +30,7 @@
 
         // 이 탭에서 본인이 따로 켜고 끌 수 있는 세부 항목 키. 관리자·코드가 막은 항목과,
         // 환경설정 화면 안에만 있는 항목(과거 일지 가져오기 등)은 제외
-        const SETTINGS_NON_DOM_FEATURES = ['quickInsert'];
+        const SETTINGS_NON_DOM_FEATURES = ['quickInsert', 'stickyMemo'];
 
         function getUserToggleableFeatureKeys(tabId) {
             const group = FEATURE_GROUPS.find(g => g.key === tabId);

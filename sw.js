@@ -29,7 +29,8 @@ const CORE_ASSETS = [
   './js/admin.js',
   './js/history-insights.js',
   './js/record-tools.js',
-  './js/quick-actions.js'
+  './js/quick-actions.js',
+  './js/sticky-memo.js'
 ];
 
 self.addEventListener('install', (event) => {

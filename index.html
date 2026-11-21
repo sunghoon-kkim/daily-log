@@ -46,6 +46,7 @@
             </div>
             <span class="theme-toggle-btn" id="currentUserLabel" style="display:none; cursor:pointer;" onclick="openAccountModal()" title="개인 정보 수정" aria-label="개인 정보 수정"></span>
             <button class="theme-toggle-btn" id="logoutBtn" onclick="logout()" style="display:none;"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>로그아웃</button>
+            <button type="button" class="theme-toggle-btn sticky-toggle-btn" id="stickyMemoToggleBtn" onclick="toggleStickyMemo()" title="스티커 메모 열기/닫기 (Alt+M)" aria-pressed="false" aria-controls="stickyMemo" hidden><span data-icon="sticky-note"></span>스티커 메모</button>
             <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()">다크모드</button>
             <span class="sync-status" id="syncStatus">대기 중</span>
         </div>
@@ -1868,6 +1869,33 @@
     <!-- 토큰 절감을 위해 script.js를 탭 단위로 분할함 (js/*.js). main.js가 전역 상태/공통
          유틸리티를 담고 있어 반드시 가장 먼저 로드되어야 하고, 그 뒤 순서는 서로 의존하지
          않아 자유로움 - sw.js의 CORE_ASSETS 캐시 목록도 이 순서와 맞춰뒀음 -->
+    <!-- 플로팅 스티커 메모 (js/sticky-memo.js) -->
+    <section class="sticky-memo" id="stickyMemo" role="dialog" aria-label="스티커 메모" hidden>
+        <div class="sticky-titlebar" title="끌어서 이동 · 더블클릭으로 접기">
+            <span class="sticky-grip" aria-hidden="true"></span>
+            <select class="sticky-page-select" id="stickyMemoPageSelect" aria-label="띄울 메모 선택"></select>
+            <span class="sticky-saved" id="stickyMemoSaved" aria-live="polite">저장됨</span>
+            <button type="button" class="sticky-icon-btn" onclick="addStickyPage()" title="새 메모" aria-label="새 메모"><span data-icon="plus"></span></button>
+            <button type="button" class="sticky-icon-btn" onclick="openStickyPageInTab()" title="할일 & 메모 탭에서 열기" aria-label="할일 & 메모 탭에서 열기"><span data-icon="external-link"></span></button>
+            <button type="button" class="sticky-icon-btn sticky-collapse-btn" id="stickyMemoCollapseBtn" onclick="toggleStickyCollapsed()" title="접기 (제목 줄만 남김)" aria-label="접기/펼치기" aria-expanded="true"><span data-icon="chevron-right"></span></button>
+            <button type="button" class="sticky-icon-btn" onclick="toggleStickyMemo(false)" title="닫기 (Alt+M)" aria-label="스티커 메모 닫기"><span data-icon="x"></span></button>
+        </div>
+        <div class="sticky-tools">
+            <div class="sticky-swatches" role="group" aria-label="배경색"><button type="button" class="sticky-swatch" data-color="yellow" onclick="setStickyColor('yellow')" title="노랑" aria-label="배경색 노랑"></button><button type="button" class="sticky-swatch" data-color="mint" onclick="setStickyColor('mint')" title="민트" aria-label="배경색 민트"></button><button type="button" class="sticky-swatch" data-color="sky" onclick="setStickyColor('sky')" title="하늘" aria-label="배경색 하늘"></button><button type="button" class="sticky-swatch" data-color="pink" onclick="setStickyColor('pink')" title="분홍" aria-label="배경색 분홍"></button><button type="button" class="sticky-swatch" data-color="lavender" onclick="setStickyColor('lavender')" title="라벤더" aria-label="배경색 라벤더"></button><button type="button" class="sticky-swatch" data-color="default" onclick="setStickyColor('default')" title="기본" aria-label="배경색 기본"></button></div>
+            <label class="sticky-alpha" title="배경 투명도 (글자는 그대로 선명)">
+                <input type="range" id="stickyMemoAlpha" min="30" max="100" step="5" value="100" aria-label="배경 투명도">
+                <span class="sticky-alpha-value" id="stickyMemoAlphaLabel">100%</span>
+            </label>
+            <div class="sticky-font" role="group" aria-label="글자 크기">
+                <button type="button" class="sticky-icon-btn" onclick="changeStickyFont(-1)" title="글자 작게" aria-label="글자 작게">A−</button>
+                <button type="button" class="sticky-icon-btn" onclick="changeStickyFont(1)" title="글자 크게" aria-label="글자 크게">A+</button>
+            </div>
+        </div>
+        <div class="sticky-editor" id="stickyMemoEditor" contenteditable="true" spellcheck="false" data-placeholder="여기에 메모하면 할일 & 메모 탭에도 저장됩니다"></div>
+        <span class="sticky-resize" data-dir="e" aria-hidden="true"></span>
+        <span class="sticky-resize" data-dir="s" aria-hidden="true"></span>
+        <span class="sticky-resize" data-dir="se" aria-hidden="true"></span>
+    </section>
     <script src="js/main.js"></script>
     <script src="js/icons.js"></script>
     <script src="js/category-manage.js"></script>
@@ -1887,5 +1915,6 @@
     <script src="js/history-insights.js"></script>
     <script src="js/record-tools.js"></script>
     <script src="js/quick-actions.js"></script>
+    <script src="js/sticky-memo.js"></script>
 </body>
 </html>

@@ -57,6 +57,7 @@
                    </details>`
                 : `<div class="free-notes-folder-pages free-notes-ungrouped">${pages.map(tab).join('')}</div>`
             ).join('') + '<button class="free-notes-page-add-btn" onclick="addFreeNotesPage()" title="메모장 추가" aria-label="메모장 추가">메모장 추가</button>';
+            if (typeof stickyMemoOnPagesChanged === 'function') stickyMemoOnPagesChanged(); // 띄워 둔 스티커 메모의 목록·내용도 맞춤
         }
 
         function switchFreeNotesPage(pageId) {
@@ -211,17 +212,28 @@
         function scheduleNotesSave() {
             autoGrowNotesContainer();
             clearTimeout(notesSaveTimeout);
-            notesSaveTimeout = setTimeout(() => {
-                const textarea = document.getElementById('notesTextarea');
-                notesContent = textarea.innerHTML;
-                syncActiveFreeNotesPageData();
-                safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
-                safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
-                queueSync();
-                const indicator = document.getElementById('notesSaveIndicator');
-                indicator.classList.add('show');
-                setTimeout(() => indicator.classList.remove('show'), 1500);
-            }, 500);
+            notesSaveTimeout = setTimeout(runNotesSave, 500);
+        }
+
+        function runNotesSave() {
+            notesSaveTimeout = null;
+            const textarea = document.getElementById('notesTextarea');
+            notesContent = textarea.innerHTML;
+            syncActiveFreeNotesPageData();
+            safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
+            safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
+            queueSync();
+            if (typeof stickyMemoOnTabSaved === 'function') stickyMemoOnTabSaved(currentFreeNotesPageId); // 같은 메모를 띄운 스티커도 맞춤
+            const indicator = document.getElementById('notesSaveIndicator');
+            indicator.classList.add('show');
+            setTimeout(() => indicator.classList.remove('show'), 1500);
+        }
+
+        // 아직 0.5초 대기 중인 탭 메모 저장이 있으면 바로 저장함(스티커 메모로 옮겨 입력하기 직전 등)
+        function flushNotesSave() {
+            if (!notesSaveTimeout) return;
+            clearTimeout(notesSaveTimeout);
+            runNotesSave();
         }
 
         function setupNotesAutosave() {

@@ -194,7 +194,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 label: '📝 할일 & 메모',
                 features: {
                     todoList: '해야 할 일',
-                    freeNotes: '📝 메모장'
+                    freeNotes: '📝 메모장',
+                    stickyMemo: '🗒️ 스티커 메모(어느 탭에서나 띄우기, Alt+M)'
                 }
             },
             {
@@ -756,6 +757,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
 
             applyPersonalApiKeyGate();
+            if (typeof updateStickyMemoAvailability === 'function') updateStickyMemoAvailability();
         }
 
         // 공용 API 키가 없으므로, 개인 AI API 키를 설정하지 않았으면 AI 도우미(일일 업무 요약/
@@ -1713,6 +1715,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
             setupTabsOverflowHint();
             scrollActiveTabIntoView();
+            if (typeof updateStickyMemoAvailability === 'function') updateStickyMemoAvailability(); // '할일 & 메모' 탭을 끄면 스티커 메모도 숨김
         }
 
         // 휴대폰에서는 탭 줄이 가로 스크롤인데, 가려진 탭이 있는지 알 수 없어서 스크롤 가능한 쪽 가장자리를
@@ -2169,7 +2172,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // ===== 키보드 단축키 =====
         // Ctrl(⌘)+S 저장 / Alt+←·→ 전날·다음날 / Ctrl(⌘)+K 통합 검색 / ? 단축키 안내
         const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
-        const SHORTCUT_HELP_TEXT = `단축키 · ${IS_MAC ? '⌘' : 'Ctrl'}+S 저장 · Alt+←/→ 전날/다음날(달력) · ${IS_MAC ? '⌘' : 'Ctrl'}+K 통합 검색 · ? 이 안내`;
+        const SHORTCUT_HELP_TEXT = `단축키 · ${IS_MAC ? '⌘' : 'Ctrl'}+S 저장 · Alt+←/→ 전날/다음날(달력) · ${IS_MAC ? '⌘' : 'Ctrl'}+K 통합 검색 · Alt+M 스티커 메모 · ? 이 안내`;
 
         function isTypingInField(el) {
             if (!el) return false;
@@ -2223,6 +2226,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     if (IS_MAC && isTypingInField(document.activeElement)) return;
                     e.preventDefault(); // Windows의 Alt+← "뒤로 가기"로 페이지를 벗어나는 것도 막음
                     moveSelectedDateBy(e.key === 'ArrowLeft' ? -1 : 1);
+                    return;
+                }
+                if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyM') {
+                    // Alt+M 스티커 메모 열기/닫기 (Mac Option+M이 특수문자를 입력하지 않게 막음)
+                    e.preventDefault();
+                    if (typeof toggleStickyMemo === 'function') toggleStickyMemo();
                     return;
                 }
                 if (e.key === '?' && !mod && !isTypingInField(document.activeElement)) {
@@ -2920,7 +2929,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
             'tabOrder', 'disabledTabIds', 'hiddenFeatures', 'layoutWidth', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate', 'dailySummaryFixedFirstItem',
             // categoryImages(사진 링크)·monthlyFeedbacks(월별 평가)는 빠져 있어서 로그아웃 뒤에도 남았음(보안 감사 지적)
-            'categoryImages', 'monthlyFeedbacks', 'waterFlowBlocks', 'waterFlowConnections', 'cacheOwnerId',
+            'categoryImages', 'monthlyFeedbacks', 'waterFlowBlocks', 'waterFlowConnections', 'cacheOwnerId', 'stickyMemoPageId',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'inventoryItems', 'inventoryCategories', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment',
             'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory',
@@ -2989,6 +2998,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
 
             applyFormLockState();
+            if (typeof updateStickyMemoAvailability === 'function') updateStickyMemoAvailability();
         }
         
         // 잠긴 상태에서는 화면 전체의 버튼/입력창/날짜칸 클릭을 여기서 한 번에 차단함.

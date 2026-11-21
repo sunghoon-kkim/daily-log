@@ -31,6 +31,7 @@
     --color-success-strong: #047857;
     /* 겹침 순서: 내용 < 고정 탭 줄 < 떠 있는 메뉴 < 팝업 < 팝업 위 확인창 < 토스트 */
     --z-sticky: 50;
+    --z-floating: 150; /* 스티커 메모: 고정 탭 줄 위, 페이지 드롭다운·팝업·토스트 아래 */
     --z-dropdown: 200;
     --z-modal: 1000;
     --z-modal-raised: 2000;
@@ -8342,3 +8343,180 @@ body.admin-mode .cmdk-trigger { display: none; }
     .maint-timeline { --mt-label: 150px; min-width: calc(var(--mt-label) + 12 * 44px); }
 }
 @media (prefers-reduced-motion: reduce) { .mt-item.maint-just-done { animation: none; } .mt-group-toggle .ui-icon { transition: none; } }
+
+
+/* ===== 플로팅 스티커 메모 (js/sticky-memo.js) ===== */
+:root {
+    --sticky-yellow: #FFF3B0;
+    --sticky-mint: #CDF3E1;
+    --sticky-sky: #D3E8FF;
+    --sticky-pink: #FFD6E3;
+    --sticky-lavender: #E4DCFF;
+    --sticky-ink: #1F2937;          /* 파스텔 위 글자색: 다크 모드에서도 그대로 */
+    --sticky-ink-muted: #4B5563;
+    --sticky-ink-line: rgba(31, 41, 55, 0.16);
+}
+.sticky-toggle-btn .ui-icon { width: 14px; height: 14px; margin: 0 4px 0 0; vertical-align: -2px; }
+.sticky-toggle-btn.active { background: var(--color-primary); color: #FFFFFF; }
+.sticky-memo {
+    --sticky-bg: var(--sticky-yellow);
+    --sticky-fg: var(--sticky-ink);
+    --sticky-fg-muted: var(--sticky-ink-muted);
+    --sticky-line: var(--sticky-ink-line);
+    --sticky-alpha: 100%;
+    --sticky-font: 14px;
+    position: fixed;
+    z-index: var(--z-floating);
+    display: flex;
+    flex-direction: column;
+    min-width: 240px;
+    min-height: 0;
+    border: 1px solid var(--sticky-line);
+    border-radius: var(--radius-md);
+    /* 투명도는 배경색에만 적용 — 글자·버튼은 항상 100% 선명 */
+    background: color-mix(in srgb, var(--sticky-bg) var(--sticky-alpha), transparent);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    box-shadow: var(--shadow-md);
+    color: var(--sticky-fg);
+    overflow: hidden;
+}
+.sticky-memo[hidden] { display: none; }
+.sticky-memo[data-color="mint"] { --sticky-bg: var(--sticky-mint); }
+.sticky-memo[data-color="sky"] { --sticky-bg: var(--sticky-sky); }
+.sticky-memo[data-color="pink"] { --sticky-bg: var(--sticky-pink); }
+.sticky-memo[data-color="lavender"] { --sticky-bg: var(--sticky-lavender); }
+.sticky-memo[data-color="default"] {
+    --sticky-bg: var(--color-surface-raised, var(--color-surface));
+    --sticky-fg: var(--color-text);
+    --sticky-fg-muted: var(--color-text-tertiary);
+    --sticky-line: var(--color-border);
+}
+.sticky-memo.is-snapped-left { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.sticky-memo.is-snapped-right { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.sticky-memo.is-dragging, .sticky-memo.is-resizing { user-select: none; box-shadow: var(--shadow-overlay, var(--shadow-md)); }
+.sticky-titlebar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 40px;
+    padding: 0 var(--space-1) 0 var(--space-2);
+    border-bottom: 1px solid var(--sticky-line);
+    cursor: grab;
+    touch-action: none;
+}
+.sticky-memo.is-dragging .sticky-titlebar { cursor: grabbing; }
+.sticky-grip {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 16px;
+    background-image: radial-gradient(currentColor 1px, transparent 1.5px);
+    background-size: 4px 4px;
+    color: var(--sticky-fg-muted);
+    opacity: 0.7;
+}
+.sticky-page-select {
+    flex: 0 1 auto;
+    max-width: 100%;
+    min-width: 0;
+    height: 28px;
+    padding: 0 var(--space-1);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--sticky-fg);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+}
+.sticky-page-select:hover { border-color: var(--sticky-line); }
+.sticky-page-select:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.sticky-page-select option, .sticky-page-select optgroup { color: var(--color-text); background: var(--color-surface); }
+.sticky-saved { flex: 1 0 auto; font-size: 11px; color: var(--sticky-fg-muted); opacity: 0; transition: opacity var(--duration) var(--ease); }
+.sticky-saved.show { opacity: 1; }
+.sticky-icon-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--sticky-fg-muted);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    cursor: pointer;
+}
+.sticky-icon-btn .ui-icon { width: 16px; height: 16px; margin: 0; }
+.sticky-icon-btn:hover { background: color-mix(in srgb, var(--sticky-fg) 10%, transparent); color: var(--sticky-fg); }
+.sticky-icon-btn:focus-visible, .sticky-swatch:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.sticky-collapse-btn .ui-icon { transform: rotate(90deg); transition: transform var(--duration) var(--ease); }
+.sticky-memo.is-collapsed .sticky-collapse-btn .ui-icon { transform: rotate(0deg); }
+.sticky-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--sticky-line);
+}
+.sticky-swatches { display: flex; gap: 4px; }
+.sticky-swatch {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid var(--sticky-line);
+    border-radius: 50%;
+    cursor: pointer;
+}
+.sticky-swatch[data-color="yellow"] { background: var(--sticky-yellow); }
+.sticky-swatch[data-color="mint"] { background: var(--sticky-mint); }
+.sticky-swatch[data-color="sky"] { background: var(--sticky-sky); }
+.sticky-swatch[data-color="pink"] { background: var(--sticky-pink); }
+.sticky-swatch[data-color="lavender"] { background: var(--sticky-lavender); }
+.sticky-swatch[data-color="default"] { background: linear-gradient(135deg, var(--color-surface) 50%, var(--color-page) 50%); border-color: var(--color-border-strong); }
+.sticky-swatch.selected { box-shadow: 0 0 0 2px var(--sticky-fg); }
+.sticky-alpha { display: inline-flex; align-items: center; gap: var(--space-1); flex: 1 1 72px; min-width: 72px; max-width: 160px; }
+.sticky-alpha input { flex: 1 1 auto; min-width: 0; accent-color: var(--sticky-fg); cursor: pointer; }
+.sticky-alpha-value { flex: 0 0 30px; font-size: 11px; color: var(--sticky-fg-muted); text-align: right; font-variant-numeric: tabular-nums; }
+.sticky-font { display: flex; gap: 0; margin-left: auto; }
+.sticky-font .sticky-icon-btn { min-width: 26px; }
+.sticky-editor {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: var(--space-2) var(--space-3);
+    overflow-y: auto;
+    color: var(--sticky-fg);
+    font-size: var(--sticky-font);
+    line-height: 1.6;
+    word-break: break-word;
+    outline: none;
+    cursor: text;
+}
+.sticky-editor:empty::before { content: attr(data-placeholder); color: var(--sticky-fg-muted); pointer-events: none; }
+.sticky-editor img.note-image { max-width: 100%; height: auto !important; border-radius: var(--radius-sm); cursor: zoom-in; }
+.sticky-memo.is-collapsed .sticky-tools,
+.sticky-memo.is-collapsed .sticky-editor,
+.sticky-memo.is-collapsed .sticky-resize { display: none; }
+.sticky-memo.is-collapsed .sticky-titlebar { border-bottom: 0; }
+.sticky-resize { position: absolute; z-index: 1; touch-action: none; }
+.sticky-resize[data-dir="e"] { top: 0; right: 0; bottom: 12px; width: 6px; cursor: ew-resize; }
+.sticky-resize[data-dir="s"] { left: 0; right: 12px; bottom: 0; height: 6px; cursor: ns-resize; }
+.sticky-resize[data-dir="se"] {
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 50%, var(--sticky-line) 50%, var(--sticky-line) 60%, transparent 60%, transparent 72%, var(--sticky-line) 72%, var(--sticky-line) 82%, transparent 82%);
+}
+.dark-mode .sticky-memo:not([data-color="default"]) { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+@media (max-width: 767px) {
+    .sticky-memo, .sticky-toggle-btn { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { .sticky-collapse-btn .ui-icon, .sticky-saved { transition: none; } }
+@media print { .sticky-memo { display: none !important; } }
+.sticky-toggle-btn[hidden] { display: none !important; }
