@@ -46,7 +46,6 @@
             </div>
             <span class="theme-toggle-btn" id="currentUserLabel" style="display:none; cursor:pointer;" onclick="openAccountModal()" title="개인 정보 수정" aria-label="개인 정보 수정"></span>
             <button class="theme-toggle-btn" id="logoutBtn" onclick="logout()" style="display:none;"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>로그아웃</button>
-            <button class="theme-toggle-btn cmdk-trigger" id="cmdkTriggerBtn" onclick="openCommandPalette()" title="명령 팔레트: 탭 이동·날짜 이동·기록 검색" aria-label="명령 팔레트 열기"><span data-icon="search"></span>빠른 이동 <kbd class="cmdk-kbd" id="cmdkKbd">Ctrl K</kbd></button>
             <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()">다크모드</button>
             <span class="sync-status" id="syncStatus">대기 중</span>
         </div>
@@ -58,16 +57,6 @@
 
             <div data-feature="activityRecord">
             <div class="today-summary" id="todaySummary" data-feature="todaySummary"></div>
-            <div class="activity-heatmap-wrap" id="activityHeatmapWrap" data-feature="activityHeatmap">
-                <div class="upcoming-widget-header">
-                    <span class="upcoming-widget-title">기록 현황 <span class="activity-heatmap-summary" id="activityHeatmapSummary"></span></span>
-                    <button class="upcoming-toggle-btn" id="activityHeatmapToggle" onclick="toggleActivityHeatmap()">숨기기</button>
-                </div>
-                <div class="activity-heatmap-scroll">
-                    <div class="activity-heatmap" id="activityHeatmap" aria-label="최근 1년 활동기록 작성 현황"></div>
-                    <div class="hm-legend" aria-hidden="true">적음 <span class="hm-cell hm-l0"></span><span class="hm-cell hm-l1"></span><span class="hm-cell hm-l2"></span><span class="hm-cell hm-l3"></span><span class="hm-cell hm-l4"></span> 많음</div>
-                </div>
-            </div>
             <div class="upcoming-widget-header">
                 <span class="upcoming-widget-title">다가오는 일정</span>
                 <button class="upcoming-toggle-btn" id="upcomingToggleBtn" onclick="toggleUpcomingWidget()">숨기기</button>
@@ -120,6 +109,16 @@
                             <button class="save-btn" id="saveAllBtn" onclick="saveAllRecords()" title="단축키: Ctrl(⌘)+S · 전날/다음날: Alt+←/→ · 단축키 안내: ?"><span data-icon="save"></span>저장하기</button>
                         </div>
                     </div>
+                </div>
+            </div>
+            <div class="activity-heatmap-wrap" id="activityHeatmapWrap" data-feature="activityHeatmap">
+                <div class="upcoming-widget-header">
+                    <span class="upcoming-widget-title">기록 현황 <span class="activity-heatmap-summary" id="activityHeatmapSummary"></span></span>
+                    <button class="upcoming-toggle-btn" id="activityHeatmapToggle" onclick="toggleActivityHeatmap()">숨기기</button>
+                </div>
+                <div class="activity-heatmap-scroll">
+                    <div class="activity-heatmap" id="activityHeatmap" aria-label="최근 1년 활동기록 작성 현황"></div>
+                    <div class="hm-legend" aria-hidden="true">적음 <span class="hm-cell hm-l0"></span><span class="hm-cell hm-l1"></span><span class="hm-cell hm-l2"></span><span class="hm-cell hm-l3"></span><span class="hm-cell hm-l4"></span> 많음</div>
                 </div>
             </div>
             </div>

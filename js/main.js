@@ -2210,10 +2210,12 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     return;
                 }
                 if (mod && !e.altKey && key === 'k') {
+                    // 명령 팔레트(js/quick-actions.js)는 사용자 요청으로 비활성화함 - Ctrl/⌘+K는 예전처럼 통합 검색으로 이동
                     e.preventDefault();
-                    // 명령 팔레트: 탭 이동·날짜 이동·동작·기록 미리보기를 한 창에서 (통합 검색도 그 안에서 이어짐)
-                    if (typeof cmdkIsOpen === 'function' && cmdkIsOpen()) closeCommandPalette();
-                    else if (typeof openCommandPalette === 'function') openCommandPalette();
+                    switchTab('query');
+                    if (typeof showQuerySection === 'function') showQuerySection('search');
+                    const input = document.getElementById('searchKeywordInput');
+                    if (input) { input.focus(); input.select(); }
                     return;
                 }
                 if (e.altKey && !mod && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && activeTabId === 'calendar' && selectedDate) {

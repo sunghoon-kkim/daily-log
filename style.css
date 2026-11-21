@@ -7941,7 +7941,7 @@ a,
 }
 
 /* ---- 기록 현황(활동 히트맵) ---- */
-.activity-heatmap-wrap { margin-bottom: var(--space-4); }
+.activity-heatmap-wrap { margin-top: var(--space-5); }
 .activity-heatmap-summary { margin-left: var(--space-2); font-weight: 500; color: var(--color-text-tertiary); font-size: var(--text-xs); }
 .activity-heatmap-scroll { overflow-x: auto; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
 /* 칸 크기는 가로 폭에 맞춰 늘어나되(최소 10px, 최대 약 17px) 정사각형 유지. 좁은 화면에서는 가로 스크롤 */

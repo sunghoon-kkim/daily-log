@@ -279,7 +279,12 @@
             item.run();
         }
 
+        // 명령 팔레트는 비활성화 상태(사용자 요청). 다시 켜려면 이 값을 true로 바꾸고 index.html 상단 바에
+        // '빠른 이동' 버튼을, main.js의 Ctrl/⌘+K 처리에 openCommandPalette() 호출을 되살리면 됨
+        const COMMAND_PALETTE_ENABLED = false;
+
         function openCommandPalette() {
+            if (!COMMAND_PALETTE_ENABLED) return;
             if (!editUnlocked || document.body.classList.contains('admin-mode')) return;
             const st = ensureCommandPalette();
             st.lastFocus = document.activeElement;
