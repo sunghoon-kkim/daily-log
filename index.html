@@ -699,7 +699,7 @@
                     <h3>정비계획 관리</h3>
                     <button class="add-category-btn" onclick="openMaintenanceModal(null)"><span data-icon="plus"></span>새 일정 추가</button>
                 </div>
-                <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">설비별 정비/점검 일정을 등록해두세요. 설비 단위로 묶여서 표시되며, 주기를 적어두면 그 해의 예정월이 카드 안에 자동으로 계산되어 표시됩니다. 항목을 클릭하면 상세 내용을 보거나 수정할 수 있습니다.</p>
+                <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">설비별 정비/점검 일정을 등록해두세요. 주기를 적어두면 그 해의 예정월이 자동으로 계산되고, [카드]와 [타임라인] 중 편한 보기로 볼 수 있습니다. 항목을 클릭하면 상세 내용을 보거나 수정할 수 있습니다.</p>
 
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
                     <button class="category-prev-btn" onclick="changeMaintenanceViewYear(-1)"><span data-icon="chevron-left"></span>이전 해</button>
@@ -714,9 +714,15 @@
                         <button type="button" class="quick-preset-btn" data-filter="완료" onclick="setMaintenanceStatusFilter('완료')">완료</button>
                         <button type="button" class="quick-preset-btn" data-filter="보류" onclick="setMaintenanceStatusFilter('보류')">보류</button>
                     </div>
+                    <div class="maint-view-switch">
+                    <div class="quick-preset-row" id="maintenanceLayoutRow" role="tablist" aria-label="정비계획 보기 방식">
+                        <button type="button" class="quick-preset-btn selected" data-layout="cards" role="tab" onclick="setMaintenanceLayout('cards')"><span data-icon="clipboard-list"></span>카드</button>
+                        <button type="button" class="quick-preset-btn" data-layout="timeline" role="tab" onclick="setMaintenanceLayout('timeline')"><span data-icon="calendar-range"></span>타임라인</button>
+                    </div>
                     <div class="quick-preset-row" id="maintenanceViewModeRow">
                         <button type="button" class="quick-preset-btn selected" data-mode="detail" onclick="setMaintenanceViewMode('detail')">자세히 보기</button>
                         <button type="button" class="quick-preset-btn" data-mode="simple" onclick="setMaintenanceViewMode('simple')">간단히 보기</button>
+                    </div>
                     </div>
                 </div>
 

@@ -8067,3 +8067,179 @@ body.admin-mode .cmdk-trigger { display: none; }
 
 /* 키보드가 없는 터치 기기에서는 단축키 표시를 숨김 */
 @media (hover: none) { .cmdk-trigger kbd, .cmdk-footer { display: none; } }
+
+/* ===== 정비계획 타임라인 보기 ([카드 / 타임라인] 전환) ===== */
+.maint-view-switch { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.maint-timeline-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+}
+.maint-timeline {
+    --mt-label: 260px;
+    position: relative;
+    min-width: calc(var(--mt-label) + 12 * 56px);
+}
+.mt-row { display: grid; grid-template-columns: var(--mt-label) 1fr; border-bottom: 1px solid var(--color-border); }
+.mt-row:last-of-type { border-bottom: none; }
+.mt-label {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface);
+    border-right: 1px solid var(--color-border);
+}
+.mt-months { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.mt-head { position: sticky; top: 0; z-index: 3; }
+.mt-head .mt-label { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-tertiary); background: var(--color-surface-subtle); }
+.mt-month-head {
+    padding: var(--space-2) 0;
+    text-align: center;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    background: var(--color-surface-subtle);
+    border-left: 1px solid var(--color-border);
+}
+.mt-month-head.is-current { color: var(--color-primary-text); background: var(--color-primary-soft); }
+.mt-group { background: var(--color-surface-subtle); }
+.mt-group .mt-label { background: var(--color-surface-subtle); padding: 0; }
+.mt-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: 34px;
+    padding: 0 var(--space-3);
+    border: 0;
+    background: transparent;
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+.mt-group-toggle .ui-icon { width: 14px; height: 14px; margin: 0; color: var(--color-text-tertiary); transition: transform var(--duration) var(--ease); }
+.mt-group-toggle[aria-expanded="true"] .ui-icon { transform: rotate(90deg); }
+.mt-group-toggle:hover { background: var(--color-surface-muted); }
+.mt-group-toggle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.mt-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-group-count { margin-left: auto; font-size: var(--text-xs); font-weight: 500; color: var(--color-text-tertiary); }
+.mt-group.has-overdue .mt-group-name::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--color-danger); vertical-align: middle; }
+.mt-item-name {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+.mt-item-name:hover { color: var(--color-primary-text); text-decoration: underline; }
+.mt-item-meta { flex: 0 1 auto; min-width: 0; font-size: 11px; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-badge { font-weight: 600; }
+.mt-badge-overdue { color: var(--color-danger-text); }
+.mt-badge-urgent { color: color-mix(in srgb, var(--color-urgent) 70%, var(--color-text)); }
+.mt-badge-notice { color: color-mix(in srgb, var(--color-warning) 65%, var(--color-text)); }
+.mt-complete-btn {
+    flex: 0 0 auto;
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+}
+.mt-complete-btn .ui-icon { width: 14px; height: 14px; margin: 0; }
+.mt-complete-btn:hover { border-color: var(--color-success); color: var(--color-success); }
+.mt-complete-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.mt-item.is-overdue,
+.mt-item.is-overdue .mt-label { background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface)); }
+.mt-cell { position: relative; min-height: 40px; border-left: 1px solid var(--color-border); display: flex; align-items: center; padding: 0 4px; }
+.mt-bar {
+    display: block;
+    width: 100%;
+    height: 14px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: filter var(--duration-fast) var(--ease);
+}
+.mt-bar:hover { filter: brightness(0.92); }
+.mt-bar:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.mt-bar-planned { background: color-mix(in srgb, var(--color-primary) 22%, var(--color-surface)); border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-surface)); }
+.mt-bar-past { background: var(--color-surface-muted); border-color: var(--color-border-strong); border-style: dashed; }
+.mt-bar-done { background: color-mix(in srgb, var(--color-success) 22%, var(--color-surface)); border-color: color-mix(in srgb, var(--color-success) 50%, var(--color-surface)); }
+.mt-bar-notice { background: color-mix(in srgb, var(--color-warning) 35%, var(--color-surface)); border-color: var(--color-warning); }
+.mt-bar-urgent { background: color-mix(in srgb, var(--color-urgent) 40%, var(--color-surface)); border-color: var(--color-urgent); }
+.mt-bar-overdue { background: var(--color-danger); border-color: var(--color-danger); }
+.mt-done-dot {
+    position: absolute;
+    top: 50%;
+    left: calc(4px + var(--d, 0.5) * (100% - 8px));
+    transform: translate(-50%, -50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-success);
+    color: #FFFFFF;
+    box-shadow: 0 0 0 2px var(--color-surface);
+    pointer-events: auto;
+}
+.mt-done-dot .ui-icon { width: 10px; height: 10px; margin: 0; stroke-width: 3; }
+.mt-today-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--mt-label) + (100% - var(--mt-label)) * var(--today));
+    width: 2px;
+    margin-left: -1px;
+    background: var(--color-primary-text);
+    z-index: 4; /* 고정된 월 머리줄 위로 지나가 '오늘' 표시가 보이게 */
+    pointer-events: none;
+}
+.mt-today-line::before {
+    content: "오늘";
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    padding: 0 4px;
+    border-radius: var(--radius-sm);
+    background: var(--color-primary);
+    color: #FFFFFF;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+}
+.mt-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin-top: var(--space-3); font-size: var(--text-xs); color: var(--color-text-secondary); }
+.mt-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.mt-legend .mt-bar { width: 22px; height: 10px; cursor: default; }
+.mt-legend .mt-done-dot-legend { position: static; transform: none; width: 14px; height: 14px; box-shadow: none; }
+.mt-today-legend { display: inline-block; width: 2px; height: 12px; background: var(--color-primary-text); }
+@keyframes mtJustDone { 0%, 40% { background: color-mix(in srgb, var(--color-success) 18%, var(--color-surface)); } 100% { background: transparent; } }
+.mt-item.maint-just-done { animation: mtJustDone 1.6s var(--ease); }
+@media (max-width: 768px) {
+    .maint-timeline { --mt-label: 150px; min-width: calc(var(--mt-label) + 12 * 44px); }
+    .mt-item-meta { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .mt-item.maint-just-done { animation: none; } .mt-group-toggle .ui-icon { transition: none; } }
