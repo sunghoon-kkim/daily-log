@@ -2929,7 +2929,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             'hiddenCategoriesByDate', 'dateCategoryOrder', 'collapsedUpcomingCardIds',
             'tabOrder', 'disabledTabIds', 'hiddenFeatures', 'layoutWidth', 'personalAiApiKey', 'disabledFeatures', 'freeNotes', 'freeNotesPages', 'currentFreeNotesPageId', 'todoItems', 'todoNotes', 'aiTemplate', 'dailySummaryFixedFirstItem',
             // categoryImages(사진 링크)·monthlyFeedbacks(월별 평가)는 빠져 있어서 로그아웃 뒤에도 남았음(보안 감사 지적)
-            'categoryImages', 'monthlyFeedbacks', 'waterFlowBlocks', 'waterFlowConnections', 'cacheOwnerId', 'stickyMemoPageId',
+            'categoryImages', 'monthlyFeedbacks', 'waterFlowBlocks', 'waterFlowConnections', 'cacheOwnerId', 'stickyMemoWindows', 'stickyMemoPageId', 'stickyMemoUI',
             'savingsProjects', 'trendSubject', 'trendSpec', 'maintenanceSchedule', 'inventoryItems', 'inventoryCategories', 'waterFlowDiagrams', 'currentWaterFlowDiagramId',
             'accountName', 'accountDepartment',
             'archivedCategories', 'recordSnippets', 'weekdayTemplates', 'recordRevisions', 'maintCompleteCategory',
