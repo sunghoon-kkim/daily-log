@@ -7841,6 +7841,7 @@ a,
 /* [13] 토스트: 위험·성공 토큰 색 */
 .app-toast { background: var(--color-danger-strong); z-index: var(--z-toast); }
 .app-toast.success { background: var(--color-success-strong); }
+.app-toast.info { background: var(--color-primary); color: #FFFFFF; } /* 옅은 배경 + 흰 글자로 안 보이던 안내 토스트 */
 
 /* ===== 빠른 조작·표시 레이어 (명령 팔레트·기록 현황·'/' 빠른 입력·빈 화면·스켈레톤·완료 애니메이션) ===== */
 
