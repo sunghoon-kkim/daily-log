@@ -756,13 +756,14 @@
                 const typing = Array.from(document.querySelectorAll('.category-record textarea[data-dirty]')).some(ta =>
                     normalizeRecordInput(ta.value) !== (((records[ta.dataset.date] || {})[ta.dataset.category]) || '').trim());
                 const syncEl = document.getElementById('syncStatus');
-                if (typing) state = 'dirty';
+                if (recordsHeld) state = 'held';
+                else if (typing) state = 'dirty';
                 else if (hasUnsyncedRecords()) {
                     if (syncEl.classList.contains('syncing')) state = 'saving';
                     else state = lastSyncFailed ? 'error' : 'dirty';
                 } else if (recordEditedInSession) state = 'saved';
             }
-            const text = { dirty: '미저장', saving: '저장 중', saved: '저장됨', error: '저장 실패' }[state] || '';
+            const text = { dirty: '미저장', saving: '저장 중', saved: '저장됨', error: '저장 실패', held: '저장 보류' }[state] || '';
             if (badge.textContent !== text) badge.textContent = text;
             badge.dataset.state = state;
         }
@@ -1270,7 +1271,7 @@
             renderCalendar();
 
             // 자동저장이 먼저 돌았으면 changed는 false여도 서버에는 아직 없을 수 있으므로 서버 기준으로 판정
-            const needsSync = changed || !lastSyncedSnapshot || diffSyncStates(lastSyncedSnapshot, snapshotSyncState()).count > 0;
+            const needsSync = changed || recordsHeld || !lastSyncedSnapshot || diffSyncStates(lastSyncedSnapshot, snapshotSyncState()).count > 0;
             if (!needsSync) {
                 showStatus('이미 저장되어 있습니다', 'success');
                 return;
@@ -1283,8 +1284,8 @@
             const saveBtn = document.getElementById('saveAllBtn');
             if (saveBtn) saveBtn.disabled = true;
             try {
-                const ok = await syncToServer();
-                showStatus(ok ? '저장되었습니다!' : '서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
+                const ok = await saveNow();
+                showStatus(ok ? '저장되었습니다!' : (recordsHeld ? RECORDS_HELD_MESSAGE : '서버 저장에 실패했습니다. 다시 시도해주세요.'), ok ? 'success' : 'error');
                 if (ok && typeof flashButtonSuccess === 'function') flashButtonSuccess(saveBtn);
             } finally {
                 if (saveBtn) saveBtn.disabled = false;

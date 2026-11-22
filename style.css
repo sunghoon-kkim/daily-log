@@ -8723,7 +8723,7 @@ body.admin-mode .cmdk-trigger { display: none; }
     white-space: nowrap;
 }
 .record-save-badge[data-state=""] { visibility: hidden; }
-.record-save-badge[data-state="dirty"] { --save-tone: var(--color-warning); }
+.record-save-badge:is([data-state="dirty"], [data-state="held"]) { --save-tone: var(--color-warning); }
 .record-save-badge[data-state="saving"] { --save-tone: var(--color-primary-muted); }
 .record-save-badge[data-state="saved"] { --save-tone: var(--color-success); }
 .record-save-badge[data-state="error"] { --save-tone: var(--color-danger); }
@@ -8796,6 +8796,8 @@ body.admin-mode .cmdk-trigger { display: none; }
     textarea,
     .notes-textarea { font-size: var(--text-md) !important; }
 
+    /* 상단 바: 긴 저장 실패 문구가 화면 밖으로 나가지 않게 말줄임 */
+    .sync-status-bar .sync-status { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     /* 상단 바: 메모 버튼은 아이콘만 */
     .sticky-toggle-label { display: none; }
     .sync-status-bar .sticky-toggle-btn { min-width: 36px; justify-content: center; }

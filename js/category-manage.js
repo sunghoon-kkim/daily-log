@@ -33,6 +33,7 @@
 
             confirmModal(message, () => {
                 categories = categories.filter(c => c !== name);
+                confirmedDeletedCategories.add(name); // 이 카테고리 기록이 한꺼번에 비는 것은 저장 보류 대상이 아님
                 const wasArchived = archivedCategories.includes(name);
                 archivedCategories = archivedCategories.filter(c => c !== name);
                 delete categoryColors[name];

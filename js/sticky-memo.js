@@ -82,6 +82,11 @@
         }
 
         function getStickyPageId(win) { const p = getStickyPage(win); return p ? p.id : null; }
+        // 위의 getStickyPage는 "보여줄" 메모(대체 포함). 편집·저장 대상은 칸에 실제로 그려 둔 메모
+        function getShownStickyPageId(win) {
+            const bound = noteBindings.get(win.id);
+            return bound ? bound.id : getStickyPageId(win);
+        }
 
         // ---- 보이기/숨기기 ----
         function updateStickyMemoAvailability() {
@@ -166,6 +171,7 @@
         // 창 하나만 완전히 닫기(목록에서 지움)
         function closeStickyWindow(id) {
             flushStickySave(id);
+            noteBindings.delete(id);
             stickyStore.wins = stickyStore.wins.filter(w => w.id !== id);
             saveStickyStore();
             const el = getStickyEl(id);
@@ -227,8 +233,8 @@
                     el = holder.firstElementChild;
                     document.body.appendChild(el);
                     setupStickyWindowEl(el, win.id);
-                    renderStickyPageSelect(win.id);
                     renderStickyContent(win.id, true);
+                    renderStickyPageSelect(win.id);
                 }
                 el.style.zIndex = String(STICKY_Z_BASE + i);
                 el.classList.toggle('is-front', i === stickyStore.wins.length - 1);
@@ -437,12 +443,19 @@
         function wireStickyEditor(editor, select, id) {
             editor.addEventListener('input', () => scheduleStickySave(id));
             editor.addEventListener('paste', (e) => handleStickyImagePaste(e, id));
-            editor.addEventListener('blur', () => flushStickySave(id));
+            editor.addEventListener('blur', () => {
+                flushStickySave(id);
+                if (document.activeElement === editor) return; // 앱 전환: 돌아와서 이어 쓰므로 그대로 둠
+                // 삭제된 메모를 띄운 채 칸을 떠나면 대체 메모로 바꿈
+                const bound = noteBindings.get(id);
+                if (!bound || findNotePage(bound.id)) return;
+                renderStickyContent(id, false);
+                renderStickyPageSelect(id);
+            });
             // 다른 편집 칸에 덜 저장된 내용이 있으면 먼저 저장한 뒤, 이 칸을 최신 내용으로 맞춤
             editor.addEventListener('focus', () => {
                 flushOtherEditorSaves(id);
-                const page = getStickyPage(getStickyWin(id));
-                if (page && editor.innerHTML !== toDisplayNotesHtml(page.content)) renderStickyContent(id, true);
+                renderStickyContent(id, false);
             });
             select.addEventListener('change', () => selectStickyPage(id, select.value));
         }
@@ -453,8 +466,8 @@
             flushOtherEditorSaves(MOBILE_MEMO_ID);
             ensureActiveFreeNotesPage();
             if (!freeNotesPages.some(p => p.id === mobileMemoWin.pageId)) mobileMemoWin.pageId = currentFreeNotesPageId;
-            renderStickyPageSelect(MOBILE_MEMO_ID);
             renderStickyContent(MOBILE_MEMO_ID, true);
+            renderStickyPageSelect(MOBILE_MEMO_ID);
             fitMobileMemoSheet();
             const el = getStickyEl(MOBILE_MEMO_ID);
             el.classList.add('active');
@@ -487,7 +500,9 @@
             const el = getStickyEl(id);
             if (!el) return;
             const select = el.querySelector('.sticky-page-select');
-            const current = getStickyPage(getStickyWin(id));
+            const bound = noteBindings.get(id);
+            const current = bound ? findNotePage(bound.id) : getStickyPage(getStickyWin(id));
+            const deleted = bound && !current ? `<option value="" selected disabled>(삭제됨) ${escapeHtml(bound.name)}</option>` : '';
             const folders = new Map();
             (freeNotesPages || []).forEach(p => {
                 const f = p.folder || '';
@@ -495,7 +510,7 @@
                 folders.get(f).push(p);
             });
             const opt = p => `<option value="${escapeHtml(p.id)}"${current && p.id === current.id ? ' selected' : ''}>${escapeHtml(p.name || '메모장')}</option>`;
-            select.innerHTML = Array.from(folders, ([folder, pages]) => folder
+            select.innerHTML = deleted + Array.from(folders, ([folder, pages]) => folder
                 ? `<optgroup label="${escapeHtml(folder)}">${pages.map(opt).join('')}</optgroup>`
                 : pages.map(opt).join('')).join('');
         }
@@ -507,16 +522,37 @@
             });
         }
 
-        // force가 아니면 그 창에서 입력 중일 때는 다시 그리지 않음(커서·입력 보호)
+        // force(메모 선택·새로 열기)가 아니면:
+        //  - 저장 대기 중인 입력이 있으면 그대로 둠
+        //  - 커서가 있으면 같은 메모 ID의 내용이 바뀐 때만 갱신. 삭제됐으면 다른 메모를 끼워 넣지 않음
         function renderStickyContent(id, force) {
             const editor = getStickyEditor(id);
             if (!editor) return;
-            if (!force && document.activeElement === editor) return;
-            const page = getStickyPage(getStickyWin(id));
+            const focused = document.activeElement === editor;
+            const bound = noteBindings.get(id);
+            let page = null;
+            if (!force && bound) {
+                if (stickySaveTimers.has(id)) return;
+                if (focused) {
+                    page = findNotePage(bound.id);
+                    if (!page && !locallyDeletedNoteIds.has(bound.id)) return;
+                    if (page && (page.content || '') === bound.content) return;
+                } else {
+                    page = getStickyPage(getStickyWin(id));
+                    // 바뀐 게 없으면 다시 그리지 않음(업로드 중인 이미지 자리 보호)
+                    if (page && page.id === bound.id && (page.content || '') === bound.content) {
+                        editor.contentEditable = editUnlocked ? 'true' : 'false';
+                        return;
+                    }
+                }
+            }
+            if (!page) page = getStickyPage(getStickyWin(id));
+            bindNote(id, page);
             const html = toDisplayNotesHtml(page ? page.content : ''); // sanitizeNotesHtml로 위험한 태그를 걸러서 표시
             if (editor.innerHTML !== html) {
                 editor.innerHTML = html;
                 wireStickyImages(editor, id);
+                if (focused) placeCaretAtEnd(editor);
             }
             editor.contentEditable = editUnlocked ? 'true' : 'false';
         }
@@ -529,8 +565,9 @@
             saveStickyStore();
             const el = getStickyEl(id);
             const select = el && el.querySelector('.sticky-page-select');
-            if (select && select.value !== pageId) select.value = pageId;
             renderStickyContent(id, true);
+            renderStickyPageSelect(id);
+            if (select && select.value !== pageId) select.value = pageId;
         }
 
         function addStickyPage(id) {
@@ -553,12 +590,14 @@
             queueSync();
             renderFreeNotesPageTabs(); // 탭의 메모 목록에도 바로 보이게(이 함수가 스티커 목록도 다시 그림)
             renderStickyContent(id, true);
+            renderStickyPageSelect(id);
             focusStickyEditor(id);
         }
 
         function openStickyPageInTab(id) {
             flushStickySave(id);
-            const page = getStickyPage(getStickyWin(id));
+            const win = getStickyWin(id);
+            const page = win && (findNotePage(getShownStickyPageId(win)) || getStickyPage(win));
             if (!page) return;
             switchTab('notes');
             if (typeof switchFreeNotesPage === 'function') switchFreeNotesPage(page.id);
@@ -589,9 +628,16 @@
         function runStickySave(id) {
             stickySaveTimers.delete(id);
             const editor = getStickyEditor(id);
-            const page = getStickyPage(getStickyWin(id));
-            if (!editor || !page) return;
-            page.content = editor.innerHTML;
+            const win = getStickyWin(id);
+            if (!editor || !win) return;
+            const saved = saveBoundNote(id, editor.innerHTML);
+            if (!saved) { renderStickyContent(id, true); renderStickyPageSelect(id); return; } // 이 기기에서 직접 지운 메모
+            const page = saved.page;
+            if (saved.recovered) {
+                win.pageId = page.id;
+                saveStickyStore();
+                renderFreeNotesPageTabs();
+            }
             // 탭에서 같은 메모를 보고 있으면 탭 쪽 변수·화면도 맞춤(탭에서 입력 중이면 화면은 건드리지 않음)
             if (page.id === currentFreeNotesPageId) {
                 notesContent = page.content;
@@ -599,6 +645,7 @@
                 if (ta && document.activeElement !== ta) {
                     ta.innerHTML = toDisplayNotesHtml(page.content);
                     wireUpNoteImages();
+                    bindNote('tab', page);
                 }
             }
             refreshStickyWindowsForPage(page.id, id);
@@ -612,7 +659,7 @@
         function refreshStickyWindowsForPage(pageId, exceptId) {
             const open = isMobileMemoOpen() ? stickyStore.wins.concat(mobileMemoWin) : stickyStore.wins;
             open.forEach(w => {
-                if (w.id !== exceptId && getStickyPageId(w) === pageId) renderStickyContent(w.id, false);
+                if (w.id !== exceptId && getShownStickyPageId(w) === pageId) renderStickyContent(w.id, false);
             });
         }
 
@@ -621,15 +668,19 @@
 
         // 메모 목록이 바뀌었을 때(추가·이름 변경·삭제·서버에서 새로 받음) 호출됨. 삭제된 메모를 띄운 창은 다른 메모로 바뀜
         function stickyMemoOnPagesChanged() {
-            stickyStore.wins.forEach(w => {
+            const open = isMobileMemoOpen() ? stickyStore.wins.concat(mobileMemoWin) : stickyStore.wins;
+            let moved = false;
+            open.forEach(w => {
+                // 같은 메모를 띄웠던 다른 창도 복구본을 따라감
+                if (!findNotePage(w.pageId) && findNotePage(recoveredNoteIds.get(w.pageId))) {
+                    w.pageId = recoveredNoteIds.get(w.pageId);
+                    moved = true;
+                }
                 if (!getStickyEl(w.id)) return;
-                renderStickyPageSelect(w.id);
                 renderStickyContent(w.id, false);
+                renderStickyPageSelect(w.id);
             });
-            if (!isMobileMemoOpen()) return;
-            renderStickyPageSelect(MOBILE_MEMO_ID);
-            // 앱으로 돌아오면 커서가 남은 채 다른 기기 내용을 받게 되므로, 저장 대기 중인 입력이 없으면 입력 칸이어도 갱신
-            renderStickyContent(MOBILE_MEMO_ID, !stickySaveTimers.has(MOBILE_MEMO_ID));
+            if (moved) saveStickyStore();
         }
 
         async function handleStickyImagePaste(e, id) {
@@ -665,11 +716,7 @@
             const ta = document.getElementById('notesTextarea');
             if (ta) ta.addEventListener('focus', () => {
                 flushOtherEditorSaves('tab');
-                const page = freeNotesPages.find(p => p.id === currentFreeNotesPageId);
-                if (page && ta.innerHTML !== toDisplayNotesHtml(page.content)) {
-                    ta.innerHTML = toDisplayNotesHtml(page.content);
-                    wireUpNoteImages();
-                }
+                onNotesEditorFocus();
             });
             const sheet = getStickyEl(MOBILE_MEMO_ID);
             if (sheet) wireStickyEditor(sheet.querySelector('.sticky-editor'), sheet.querySelector('.sticky-page-select'), MOBILE_MEMO_ID);

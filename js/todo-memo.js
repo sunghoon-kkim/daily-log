@@ -28,6 +28,67 @@
             notesContent = current.content;
         }
 
+        // ---- 편집 칸 ↔ 메모 ID ----
+        // 저장은 "지금 선택된 메모"가 아니라 그 칸에 실제로 그려 둔 메모 ID로만 함(탭·스티커·모바일 시트 공통).
+        // content는 그릴 때·저장할 때의 원문: 다른 기기가 고쳤는지 판단하는 기준
+        const noteBindings = new Map();          // 'tab' 또는 스티커 창 id → { id, name, folder, content }
+        const locallyDeletedNoteIds = new Set(); // 이 기기에서 직접 지운 메모(복구하지 않음)
+        const recoveredNoteIds = new Map();      // 삭제된 메모 id → 복구본 id(한 번만 만들기 위함)
+
+        function findNotePage(id) {
+            return freeNotesPages.find(p => p.id === id) || null;
+        }
+
+        function bindNote(key, page) {
+            if (page) noteBindings.set(key, { id: page.id, name: page.name || '메모장', folder: page.folder || '', content: page.content || '' });
+            else noteBindings.delete(key);
+        }
+
+        function saveBoundNote(key, html) {
+            const bound = noteBindings.get(key);
+            if (!bound) return null;
+            let page = findNotePage(bound.id);
+            let recovered = false;
+            if (!page) {
+                if (locallyDeletedNoteIds.has(bound.id)) return null;
+                recovered = true;
+                page = findNotePage(recoveredNoteIds.get(bound.id));
+                if (!page) {
+                    page = {
+                        id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+                        name: bound.name.startsWith('(복구) ') ? bound.name : '(복구) ' + bound.name,
+                        content: '',
+                        folder: bound.folder
+                    };
+                    freeNotesPages.push(page);
+                    recoveredNoteIds.set(bound.id, page.id);
+                    showAppToast(`다른 기기에서 삭제된 메모라 쓰던 내용을 "${page.name}"(으)로 보존했습니다`, 'info');
+                }
+            }
+            page.content = html;
+            bindNote(key, page);
+            return { page, recovered };
+        }
+
+        function placeCaretAtEnd(el) {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+
+        function isNotesEditing() {
+            return !!notesSaveTimeout || document.activeElement === document.getElementById('notesTextarea');
+        }
+
+        // 서버 내용을 받을 때: 탭에서 쓰던 메모가 남아 있으면 선택을 그 메모로 유지
+        function keepEditingNotePage() {
+            const bound = noteBindings.get('tab');
+            if (bound && isNotesEditing() && findNotePage(bound.id)) currentFreeNotesPageId = bound.id;
+        }
+
         const collapsedFreeNotesFolders = new Set();
 
         function toggleFreeNotesFolder(folder, open) {
@@ -61,6 +122,7 @@
         }
 
         function switchFreeNotesPage(pageId) {
+            flushNotesSave(); // 쓰던 내용은 원래 메모에 먼저 저장
             if (pageId === currentFreeNotesPageId) return;
             syncActiveFreeNotesPageData(); // 나가기 전에 지금 보던 메모장 내용을 확실히 반영해둠
             currentFreeNotesPageId = pageId;
@@ -73,6 +135,7 @@
 
         function addFreeNotesPage() {
             if (!checkEditPermission()) return;
+            flushNotesSave();
             syncActiveFreeNotesPageData();
             const newPage = {
                 id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
@@ -133,6 +196,9 @@
             if (freeNotesPages.length <= 1) return; // 메모장이 하나뿐일 때는 지울 수 없음
             const targetId = editingFreeNotesPageId;
             confirmModal('이 메모장을 삭제하시겠습니까? 안에 있는 내용이 모두 함께 사라집니다.', () => {
+                flushNotesSave();
+                if (typeof flushAllStickySaves === 'function') flushAllStickySaves();
+                locallyDeletedNoteIds.add(targetId);
                 freeNotesPages = freeNotesPages.filter(p => p.id !== targetId);
                 if (currentFreeNotesPageId === targetId) currentFreeNotesPageId = freeNotesPages[0].id;
                 ensureActiveFreeNotesPage();
@@ -201,11 +267,41 @@
             return escaped.replace(/\n/g, '<br>');
         }
 
-        function applyNotesContent() {
+        function applyNotesContent(options) {
             renderFreeNotesPageTabs();
-            document.getElementById('notesTextarea').innerHTML = toDisplayNotesHtml(notesContent);
-            wireUpNoteImages(); // innerHTML로 새로 그린 내용 안의 이미지는 이벤트 리스너가 붙어있지 않으므로 다시 연결해줌
             renderTodoList();
+            const textarea = document.getElementById('notesTextarea');
+            const bound = noteBindings.get('tab');
+            if (options && options.fromSync && bound && isNotesEditing()) {
+                if (notesSaveTimeout) return; // 저장 대기 중인 입력이 우선
+                const page = findNotePage(bound.id);
+                // 삭제됨: 다른 메모를 끼워 넣지 않고 그대로 둠(이어 쓰면 복구본으로 저장)
+                if (!page && !locallyDeletedNoteIds.has(bound.id)) return;
+                if (page && (page.content || '') === bound.content) return; // 그대로면 커서를 건드리지 않음
+            }
+            textarea.innerHTML = toDisplayNotesHtml(notesContent);
+            wireUpNoteImages(); // innerHTML로 새로 그린 내용 안의 이미지는 이벤트 리스너가 붙어있지 않으므로 다시 연결해줌
+            bindNote('tab', findNotePage(currentFreeNotesPageId));
+            if (document.activeElement === textarea) placeCaretAtEnd(textarea);
+        }
+
+        function onNotesEditorFocus() {
+            const bound = noteBindings.get('tab');
+            if (!bound || notesSaveTimeout) return;
+            const page = findNotePage(bound.id);
+            if (!page || page.id !== currentFreeNotesPageId || (page.content || '') === bound.content) return;
+            notesContent = page.content;
+            applyNotesContent();
+        }
+
+        // 삭제된 메모를 띄운 채 칸을 떠나면 선택된 메모로 바꿈. 앱 전환은 포커스가 남으므로 제외
+        function onNotesEditorBlur() {
+            const textarea = document.getElementById('notesTextarea');
+            const bound = noteBindings.get('tab');
+            if (!bound || document.activeElement === textarea) return;
+            if (findNotePage(bound.id) && bound.id === currentFreeNotesPageId) return;
+            flushNotesSave();
+            applyNotesContent();
         }
 
         let notesSaveTimeout = null;
@@ -218,12 +314,15 @@
         function runNotesSave() {
             notesSaveTimeout = null;
             const textarea = document.getElementById('notesTextarea');
-            notesContent = textarea.innerHTML;
-            syncActiveFreeNotesPageData();
+            const saved = saveBoundNote('tab', textarea.innerHTML);
+            if (!saved) return;
+            if (saved.recovered) currentFreeNotesPageId = saved.page.id;
+            if (saved.page.id === currentFreeNotesPageId) notesContent = saved.page.content;
+            if (saved.recovered) renderFreeNotesPageTabs();
             safeSetItem('freeNotesPages', JSON.stringify(freeNotesPages));
             safeSetItem('currentFreeNotesPageId', currentFreeNotesPageId || '');
             queueSync();
-            if (typeof stickyMemoOnTabSaved === 'function') stickyMemoOnTabSaved(currentFreeNotesPageId); // 같은 메모를 띄운 스티커도 맞춤
+            if (typeof stickyMemoOnTabSaved === 'function') stickyMemoOnTabSaved(saved.page.id); // 같은 메모를 띄운 스티커도 맞춤
             const indicator = document.getElementById('notesSaveIndicator');
             indicator.classList.add('show');
             setTimeout(() => indicator.classList.remove('show'), 1500);
@@ -241,6 +340,7 @@
             document.execCommand('defaultParagraphSeparator', false, 'br'); // 브라우저마다 다른 줄바꿈 태그(div/p)를 <br>로 통일
             textarea.addEventListener('input', scheduleNotesSave);
             textarea.addEventListener('paste', handleNotesImagePaste);
+            textarea.addEventListener('blur', onNotesEditorBlur);
         }
 
         // 메모장에 이미지를 붙여넣으면(스크린샷, 복사한 이미지 등) 커서 위치에 삽입함.

@@ -1069,6 +1069,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         // 예전 버전(메모장이 하나뿐이던 시절) 계정에서 넘어온 데이터를 그대로 살려서 마이그레이션함
                         notesContent = (typeof data.notes === 'string') ? data.notes : '';
                     }
+                    keepEditingNotePage(); // 다른 기기가 보던 메모로 바뀌어 쓰던 글이 섞이지 않게
                     ensureActiveFreeNotesPage();
                     if (Array.isArray(data.todo)) {
                         todoItems = data.todo;
@@ -1115,7 +1116,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                     renderCategories();
                     renderCategorySelector();
                     renderCalendar();
-                    applyNotesContent();
+                    applyNotesContent({ fromSync: true });
                     applyAITemplate();
                     applyDailySummarySettings();
                     if (typeof renderSettingsTab === 'function') renderSettingsTab();
@@ -1319,6 +1320,79 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return result;
         }
 
+        // ===== 활동기록 저장 보류 =====
+        // 서버는 "날짜 키가 0개"인 저장만 보류하므로, 보류된 내용을 그대로 재전송·보관하면 빈 날짜 키가 하나만
+        // 붙어도 안전장치를 통과해 기록 전체가 지워짐. 그래서 보류 중에는
+        //  - 활동기록을 보내지 않고(다른 항목은 저장), 기준점은 서버 기록으로 유지
+        //  - 보관함·합치기에는 새로 쓴 내용만 남기고 삭제는 넣지 않음
+        //  - [저장하기]나 다시 로그인할 때 서버 기록 위에 새로 쓴 내용만 합치고 풀림
+        const RECORDS_HELD_MESSAGE = '활동기록 저장 보류 · [저장하기]를 누르면 서버 기록과 합쳐 저장';
+        const RECORDS_HELD_STATUS = '활동기록 저장 보류'; // 상단 상태 배지용(짧게)
+        let recordsHeld = false;
+        // 확인창을 거쳐 지운 카테고리. 이 칸들이 비는 것은 사고로 보지 않음(서버 저장에 성공하면 비움)
+        const confirmedDeletedCategories = new Set();
+
+        function writtenRecordDates(recs, ignoreCategories) {
+            return Object.keys(recs || {}).filter(d => Object.keys(recs[d] || {}).some(c =>
+                !(ignoreCategories && ignoreCategories.has(c)) && String(recs[d][c] || '').trim() !== ''));
+        }
+
+        // 기록이 있던 2일 이상이 한 번에 모두 비었는지. 빈 화면이 된 뒤 보고 있던 날짜에만 새로 쓴 경우도 포함
+        function isMassRecordErase(before, after) {
+            const dates = writtenRecordDates(before, confirmedDeletedCategories);
+            if (dates.length < 2) return false;
+            const kept = new Set(writtenRecordDates(after));
+            if (dates.every(d => !kept.has(d))) return true;
+            const others = dates.filter(d => d !== selectedDate);
+            return others.length >= 2 && others.every(d => !kept.has(d));
+        }
+
+        function shouldHoldRecords(baseRecords, localRecords) {
+            if (recordsHeld) return true;
+            const noKeys = Object.keys(localRecords || {}).length === 0 && writtenRecordDates(baseRecords).length > 0; // 서버가 보류하는 조건
+            return noKeys || isMassRecordErase(baseRecords, localRecords);
+        }
+
+        // before 위에 after에서 쓴 내용만 얹음. 삭제는 확인을 거친 카테고리만 반영
+        function withoutRecordErasures(before, after) {
+            const out = JSON.parse(JSON.stringify(before || {}));
+            const src = after || {};
+            for (const d of new Set(Object.keys(out).concat(Object.keys(src)))) {
+                const day = src[d] || {};
+                for (const c of new Set(Object.keys(out[d] || {}).concat(Object.keys(day)))) {
+                    if (String(day[c] || '').trim() !== '') (out[d] = out[d] || {})[c] = day[c];
+                    else if (confirmedDeletedCategories.has(c) && out[d]) delete out[d][c];
+                }
+            }
+            return out;
+        }
+
+        function releaseRecordsHold() {
+            recordsHeld = false;
+            if (typeof updateRecordSaveBadge === 'function') updateRecordSaveBadge();
+        }
+
+        // 저장하기·Ctrl+S. 보류 중이면 서버 최신 기록과 합친 뒤 보류를 풀고 저장
+        function saveNow() {
+            if (!recordsHeld) return syncToServer();
+            const run = syncQueueTail.then(async () => {
+                if (recordsHeld) {
+                    showSyncStatus('서버 기록과 합치는 중...', 'syncing');
+                    try {
+                        if (await resolveSyncConflict() === undefined) return false; // 다른 합치기가 진행 중
+                    } catch (err) {
+                        console.error('보류된 활동기록 합치기 실패:', err);
+                        showSyncStatus(RECORDS_HELD_STATUS, 'error');
+                        return false;
+                    }
+                    releaseRecordsHold();
+                }
+                return syncToServerOnce();
+            });
+            syncQueueTail = run.catch(() => {});
+            return run;
+        }
+
         // ===== 아직 서버에 못 올라간 변경분 보관함 (outbox) =====
         // 이 앱은 새로고침할 때마다 로그아웃 상태로 시작하고, 다시 로그인하면 서버 데이터로 화면과 로컬
         // 캐시를 통째로 덮어씀. 그래서 와이파이가 끊겨 저장이 실패한 채 창을 닫으면 그 변경분이 그대로
@@ -1376,11 +1450,15 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 지금 상태(snapshot)가 마지막으로 서버와 맞춘 상태와 다르면 그 차이를 보관하고, 같으면 보관함을 비움
         function writePendingOutbox(snapshot) {
             if (!currentEmployeeId || !initialLoadDone || !lastSyncedSnapshot) return;
-            const diff = diffSyncStates(lastSyncedSnapshot, snapshot || snapshotSyncState());
-            if (diff.count === 0) { clearPendingOutbox(); return; }
-            safeSetItem(pendingOutboxKey(currentEmployeeId), JSON.stringify({
-                v: 1, savedAt: Date.now(), baseUpdatedAt: serverBaseUpdatedAt, count: diff.count, base: diff.base, local: diff.local
-            }));
+            let state = snapshot || snapshotSyncState();
+            const held = shouldHoldRecords(lastSyncedSnapshot.records, state.records);
+            // 보류 중에는 삭제를 보관하지 않음: held를 모르는 예전 버전이 되살려도 기록이 지워지지 않게
+            if (held) state = Object.assign({}, state, { records: withoutRecordErasures(lastSyncedSnapshot.records, state.records) });
+            const diff = diffSyncStates(lastSyncedSnapshot, state);
+            if (diff.count === 0 && !held) { clearPendingOutbox(); return; }
+            const box = { v: 1, savedAt: Date.now(), baseUpdatedAt: serverBaseUpdatedAt, count: diff.count, base: diff.base, local: diff.local };
+            if (held) box.held = true;
+            safeSetItem(pendingOutboxKey(currentEmployeeId), JSON.stringify(box));
         }
 
         function hasPendingOutbox() {
@@ -1415,12 +1493,30 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const outbox = readPendingOutbox(currentEmployeeId);
             if (!outbox || !lastSyncedSnapshot) return;
             try {
-                const result = await applyLocalChangesOnServerState(outbox.base, outbox.local, serverData);
+                let local = outbox.local;
+                let erasureDropped = outbox.held === true;
+                if (local.records || erasureDropped) {
+                    // 보관함에 담긴 카테고리 삭제는 확인창을 거친 것이므로 그대로 반영
+                    if (Array.isArray(outbox.base.categories) && Array.isArray(local.categories)) {
+                        const stillThere = new Set(local.categories.concat(local.archivedCategories || archivedCategories));
+                        outbox.base.categories.forEach(c => { if (!stillThere.has(c)) confirmedDeletedCategories.add(c); });
+                    }
+                    if (!erasureDropped) {
+                        const merged = mergeSyncStates(outbox.base, local, lastSyncedSnapshot).merged.records;
+                        erasureDropped = !!merged && isMassRecordErase(lastSyncedSnapshot.records, merged);
+                    }
+                    if (erasureDropped) local = Object.assign({}, local, { records: withoutRecordErasures(outbox.base.records, local.records) });
+                }
+                const result = await applyLocalChangesOnServerState(outbox.base, local, serverData);
+                if (erasureDropped) releaseRecordsHold();
                 if (result.keptLocal.length === 0 && !result.merged.recordRevisions) {
                     clearPendingOutbox(); // 이미 서버에 반영돼 있었음(예: 창을 닫을 때 보낸 마지막 저장이 도착함)
+                    if (erasureDropped) showAppToast('지난번에 보류된 저장이 있어 서버의 활동기록을 그대로 불러왔습니다', 'info');
                     return;
                 }
-                showAppToast(describeMergeResult(result, '지난번에 서버에 저장되지 못한 변경 내용을 되살려 다시 저장합니다'), 'info');
+                showAppToast(describeMergeResult(result, erasureDropped
+                    ? '보류됐던 저장에서 새로 쓴 내용만 서버 기록에 합쳐 저장합니다'
+                    : '지난번에 서버에 저장되지 못한 변경 내용을 되살려 다시 저장합니다'), 'info');
                 queueSync();
             } catch (err) {
                 console.error('미전송 변경분 복원 실패:', err);
@@ -1447,6 +1543,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (typeof flushNotesSave === 'function') flushNotesSave();
                 clearTimeout(syncTimeout);
                 const localState = snapshotSyncState();
+                if (base && shouldHoldRecords(base.records, localState.records)) {
+                    recordsHeld = true; // 합친 뒤에도 [저장하기] 전까지는 활동기록을 보내지 않음
+                    localState.records = withoutRecordErasures(base.records, localState.records);
+                }
                 const caret = typeof getRecordCaret === 'function' ? getRecordCaret() : null;
                 await loadAllFromServer(serverData); // 화면 = 서버 최신 내용, 기준점도 서버 버전으로 갱신
                 const result = await applyLocalChangesOnServerState(base, localState, serverData);
@@ -1512,8 +1612,13 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         // 보냄(partial) - 예전에는 글자 하나만 고쳐도 몇 년치 기록 전체를 매번 올려서, 기록이 쌓일수록 저장이
         // 느려지고 서버 잠금을 오래 잡아 다른 사람 저장까지 밀렸음. 기준점이 없으면 예전처럼 전체를 보냄
         function buildSyncPayload(fullState, snapshot) {
-            if (!serverSupportsPartialSave || !lastSyncedSnapshot || !fullState.baseUpdatedAt) return fullState;
             const base = lastSyncedSnapshot;
+            const held = shouldHoldRecords(base && base.records, snapshot.records);
+            if (!serverSupportsPartialSave || !base || !fullState.baseUpdatedAt) {
+                if (!held) return fullState;
+                // 전체 저장만 되는 서버: 기준 버전이 같을 때만 서버 기록을 그대로 실어 보냄. 확인할 수 없으면 보내지 않음(null)
+                return (base && fullState.baseUpdatedAt) ? Object.assign({}, fullState, { records: base.records }) : null;
+            }
             const payload = {
                 employeeId: fullState.employeeId,
                 passwordHash: fullState.passwordHash,
@@ -1528,7 +1633,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             const baseMonths = groupRecordsByMonth(base.records);
             const months = Array.from(new Set(Object.keys(localMonths).concat(Object.keys(baseMonths))))
                 .filter(ym => !syncSame(localMonths[ym], baseMonths[ym]));
-            if (months.length) {
+            if (months.length && !held) {
                 payload.recordsMonths = months;
                 payload.records = {};
                 months.forEach(ym => Object.assign(payload.records, localMonths[ym] || {}));
@@ -1579,7 +1684,15 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 try {
                     const fullState = getFullState();
                     const snapshot = stripSyncCredentials(JSON.parse(JSON.stringify(fullState)));
+                    if (lastSyncedSnapshot && shouldHoldRecords(lastSyncedSnapshot.records, snapshot.records)) recordsHeld = true;
+                    const sentWithoutRecords = recordsHeld; // 응답을 기다리는 사이 바뀔 수 있어 보낸 시점 값을 기억
+                    const deletedBeforeSend = Array.from(confirmedDeletedCategories);
                     const payload = buildSyncPayload(fullState, snapshot);
+                    if (recordsHeld && (!payload || isEmptyPartialPayload(payload))) {
+                        writePendingOutbox(snapshot);
+                        showSyncStatus(RECORDS_HELD_STATUS, 'error');
+                        return false;
+                    }
                     if (isEmptyPartialPayload(payload)) { // 서버와 달라진 게 없음
                         clearPendingOutbox();
                         showSyncStatus('저장됨', 'ok');
@@ -1610,12 +1723,20 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                         return false;
                     }
                     if (resultData && resultData.serverUpdatedAt) serverBaseUpdatedAt = resultData.serverUpdatedAt;
-                    lastSyncedSnapshot = snapshot; // 방금 서버에 올린 내용이 새 기준점
-                    writePendingOutbox(); // 보내는 사이 새로 바뀐 게 없으면 보관함이 비워짐
-                    if (resultData && resultData.recordsSkipped) {
+                    const skipped = !!(resultData && resultData.recordsSkipped);
+                    if (skipped) {
                         console.warn('서버가 활동기록 저장을 보류함(다른 항목은 저장됨):', resultData.message);
-                        showSyncStatus('활동기록 저장 보류됨 (다른 변경사항은 저장됨)', 'error');
-                        return true;
+                        recordsHeld = true;
+                    }
+                    // 방금 서버에 올린 내용이 새 기준점. 활동기록을 보내지 않았거나 보류됐으면 그 부분만 이전 기준점 유지
+                    const recordsStored = !skipped && !sentWithoutRecords;
+                    lastSyncedSnapshot = recordsStored ? snapshot
+                        : Object.assign({}, snapshot, { records: lastSyncedSnapshot ? lastSyncedSnapshot.records : {} });
+                    if (recordsStored) deletedBeforeSend.forEach(c => confirmedDeletedCategories.delete(c));
+                    writePendingOutbox(); // 보내는 사이 새로 바뀐 게 없으면 보관함이 비워짐
+                    if (recordsHeld) {
+                        showSyncStatus(RECORDS_HELD_STATUS, 'error');
+                        return false;
                     }
                     showSyncStatus('저장됨', 'ok');
                     return true;
@@ -1673,6 +1794,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         let lastSyncFailed = false; // 재시도 중에도 유지되고, 저장에 성공해야 풀림
         
         function showSyncStatus(text, state) {
+            // 다른 항목이 저장·동기화돼도 활동기록 보류 표시는 풀리지 않음
+            if (state === 'ok' && recordsHeld) { text = RECORDS_HELD_STATUS; state = 'error'; }
             if (state === 'error') lastSyncFailed = true;
             else if (state === 'ok') lastSyncFailed = false;
             const el = document.getElementById('syncStatus');
@@ -1683,6 +1806,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             el.textContent = String(text).replace(/^(?:[\u2600-\u27BF\u{1F300}-\u{1FAFF}]\uFE0F?\s*)+/u, '');
             const wasOk = el.classList.contains('ok');
             el.className = 'sync-status ' + (state || '');
+            el.title = el.textContent; // 좁은 화면에서는 말줄임되므로
             // 저장 중 → 동기화됨으로 바뀌는 순간만 짧게 강조 (계속 '동기화됨'일 땐 조용히)
             if (state === 'ok' && !wasOk) playMotion(el, 'motion-sync-done');
             el.style.visibility = 'visible';
@@ -2251,7 +2375,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 writePendingOutbox(snapshot);
                 if (!sendBeaconToo) return;
                 const payload = buildSyncPayload(fullState, snapshot);
-                if (isEmptyPartialPayload(payload)) return;
+                if (!payload || isEmptyPartialPayload(payload)) return;
                 const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain' });
                 if (blob.size <= BEACON_MAX_BYTES) navigator.sendBeacon(GOOGLE_APPS_SCRIPT_URL, blob);
             } catch (e) { /* 무시 */ }
@@ -2259,7 +2383,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         window.addEventListener('beforeunload', (e) => {
             flushPendingChangesOnExit(true);
             // 평소에는 자동저장되므로 묻지 않고, 서버 저장에 실패한 내용이 남아 있을 때만 경고
-            if (lastSyncFailed && currentEmployeeId && hasPendingOutbox()) {
+            if ((lastSyncFailed || recordsHeld) && currentEmployeeId && hasPendingOutbox()) {
                 e.preventDefault();
                 e.returnValue = '';
             }
@@ -2311,8 +2435,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (selectedDate && typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
             if (typeof syncActiveFreeNotesPageData === 'function') syncActiveFreeNotesPageData();
             clearTimeout(syncTimeout);
-            const ok = await syncToServer();
-            showAppToast(ok ? '저장했습니다' : '서버 저장에 실패했습니다. 다시 시도해주세요.', ok ? 'success' : 'error');
+            const ok = await saveNow();
+            showAppToast(ok ? '저장했습니다' : (recordsHeld ? RECORDS_HELD_MESSAGE : '서버 저장에 실패했습니다. 다시 시도해주세요.'), ok ? 'success' : 'error');
         }
 
         function setupAppKeyboardShortcuts() {
