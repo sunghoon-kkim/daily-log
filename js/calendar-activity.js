@@ -699,8 +699,10 @@
                 // 영구적으로 사라지는 버그가 있었음
                 if (!textarea) continue;
                 
-                const val = textarea.value.trim();
-                if (records[selectedDate][category] !== val) {
+                delete textarea.dataset.dirty;
+                const val = normalizeRecordInput(textarea.value);
+                // 한 번도 안 쓴 빈 칸(값 없음)과 빈 문자열은 같은 것으로 봄
+                if ((records[selectedDate][category] || '') !== val) {
                     pushRecordRevision(selectedDate, category, records[selectedDate][category]); // 덮어쓰기 전 내용 보관 (편집 세션당 1회)
                     records[selectedDate][category] = val;
                     changed = true;
@@ -708,7 +710,61 @@
             }
             
             if (changed) saveRecordsToStorage();
+            updateRecordSaveBadge();
             return changed;
+        }
+
+        // 빈 칸을 누를 때 자동으로 들어가는 "1. "만 있는 값은 쓴 내용으로 보지 않음
+        function normalizeRecordInput(value) {
+            const val = value.trim();
+            return /^\d+\.$/.test(val) ? '' : val;
+        }
+
+        function discardRecordInputDrafts() {
+            document.querySelectorAll('.category-record textarea[data-dirty]').forEach(ta => { delete ta.dataset.dirty; });
+        }
+
+        // 폼을 다시 그리기 직전: 자동저장(0.8초)을 기다리던 칸만, 그 칸이 그려졌던 날짜로 확정함.
+        // 모든 칸을 확정하면 방금 다른 화면에서 고친 기록(검색 결과 수정·이력 되돌리기 등)을 옛 화면 값으로 덮게 됨
+        function commitDirtyRecordInputs() {
+            let changed = false;
+            document.querySelectorAll('.category-record textarea[data-dirty]').forEach(ta => {
+                delete ta.dataset.dirty;
+                const { date, category } = ta.dataset;
+                if (!date || !(categories.includes(category) || archivedCategories.includes(category))) return; // 삭제된 카테고리
+                if (!records[date]) records[date] = {};
+                const val = normalizeRecordInput(ta.value);
+                if ((records[date][category] || '') === val) return;
+                pushRecordRevision(date, category, records[date][category]);
+                records[date][category] = val;
+                changed = true;
+            });
+            if (changed) saveRecordsToStorage();
+        }
+
+        // ---- 저장 버튼 옆 상태 배지 ----
+        let recordEditedInSession = false;
+        function hasUnsyncedRecords() {
+            if (!lastSyncedSnapshot) return recordEditedInSession;
+            return diffSyncStates({ records: lastSyncedSnapshot.records }, { records }).count > 0;
+        }
+        function updateRecordSaveBadge() {
+            const badge = document.getElementById('recordSaveBadge');
+            if (!badge) return;
+            let state = '';
+            if (currentEmployeeId && editUnlocked) {
+                const typing = Array.from(document.querySelectorAll('.category-record textarea[data-dirty]')).some(ta =>
+                    normalizeRecordInput(ta.value) !== (((records[ta.dataset.date] || {})[ta.dataset.category]) || '').trim());
+                const syncEl = document.getElementById('syncStatus');
+                if (typing) state = 'dirty';
+                else if (hasUnsyncedRecords()) {
+                    if (syncEl.classList.contains('syncing')) state = 'saving';
+                    else state = lastSyncFailed ? 'error' : 'dirty';
+                } else if (recordEditedInSession) state = 'saved';
+            }
+            const text = { dirty: '미저장', saving: '저장 중', saved: '저장됨', error: '저장 실패' }[state] || '';
+            if (badge.textContent !== text) badge.textContent = text;
+            badge.dataset.state = state;
         }
         
         // 활동기록 카테고리 박스 하단에 표시할 이미지 썸네일 하나를 만듦 (클릭하면 확대, 모서리
@@ -796,6 +852,7 @@
 
         function renderRecordForm() {
             const container = document.getElementById('recordContent');
+            commitDirtyRecordInputs();
             
             if (!selectedDate) {
                 container.innerHTML = '<div style="text-align: center; color: var(--color-text-tertiary); padding: 20px;">날짜를 선택해주세요</div>';
@@ -865,7 +922,7 @@
                                 ${typeof buildRecordToolButtons === 'function' ? buildRecordToolButtons(selectedDate, category, categoryArg) : ''}
                             </div>
                         </div>
-                        <textarea id="category-${categoryHtml}" data-category="${categoryHtml}" placeholder="활동 내용을 입력하세요...">${escapeHtml(content)}</textarea>
+                        <textarea id="category-${categoryHtml}" data-category="${categoryHtml}" data-date="${escapeHtml(selectedDate)}" placeholder="활동 내용을 입력하세요...">${escapeHtml(content)}</textarea>
                         <div class="category-images" data-category="${categoryHtml}"></div>
                     </div>
                 `;
@@ -940,6 +997,9 @@
                 textarea.addEventListener('input', () => {
                     // 워드 자동 번호 매기기처럼, 줄이 추가/삭제될 때마다 번호를 항상 1부터 순서대로 다시 매김
                     renumberListLines(textarea);
+                    textarea.dataset.dirty = '1';
+                    if (normalizeRecordInput(textarea.value)) recordEditedInSession = true;
+                    updateRecordSaveBadge();
 
                     clearTimeout(recordAutosaveTimeout);
                     recordAutosaveTimeout = setTimeout(() => {
@@ -1022,6 +1082,22 @@
             document.querySelectorAll('.category-record textarea').forEach(ta => {
                 ta.readOnly = !editUnlocked;
             });
+
+            updateRecordSaveBadge();
+        }
+
+        // 다른 기기 내용과 합치는 동안 폼이 두 번 다시 그려지므로, 그 전체의 앞뒤에서 커서를 기억·복원함
+        function getRecordCaret() {
+            const el = document.activeElement;
+            if (!el || !el.matches('.category-record textarea')) return null;
+            return { date: el.dataset.date, category: el.dataset.category, start: el.selectionStart, end: el.selectionEnd };
+        }
+        function restoreRecordCaret(caret) {
+            if (!caret || caret.date !== selectedDate) return;
+            const ta = document.getElementById(`category-${caret.category}`);
+            if (!ta || document.activeElement === ta) return;
+            ta.focus({ preventScroll: true });
+            ta.setSelectionRange(caret.start, caret.end);
         }
         
         // 이 날짜에 저장된 순서가 있으면 그걸 쓰고, 없으면 기본 카테고리 순서를 씀.
@@ -1193,8 +1269,10 @@
             const changed = captureCurrentFormToRecords();
             renderCalendar();
 
-            if (!changed) {
-                showStatus('변경된 내용이 없습니다', 'success');
+            // 자동저장이 먼저 돌았으면 changed는 false여도 서버에는 아직 없을 수 있으므로 서버 기준으로 판정
+            const needsSync = changed || !lastSyncedSnapshot || diffSyncStates(lastSyncedSnapshot, snapshotSyncState()).count > 0;
+            if (!needsSync) {
+                showStatus('이미 저장되어 있습니다', 'success');
                 return;
             }
 

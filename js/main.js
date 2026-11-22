@@ -1037,6 +1037,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (data && typeof data === 'object') {
                     currentUserName = (typeof data.name === 'string') ? data.name : '';
                     currentUserDepartment = (typeof data.department === 'string') ? data.department : '';
+                    // 서버 내용으로 통째로 바꾸는 시점(백업 되돌리기 포함). 이전 화면의 입력이 새 내용을 덮지 않게 함
+                    if (typeof discardRecordInputDrafts === 'function') discardRecordInputDrafts();
                     records = data.records || {};
                     categoryImages = (data.categoryImages && typeof data.categoryImages === 'object') ? data.categoryImages : {};
                     events = data.events || [];
@@ -1432,16 +1434,22 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (conflictResolveInProgress) return;
             conflictResolveInProgress = true;
             try {
-                if (selectedDate && typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
-                clearTimeout(syncTimeout);
                 const base = lastSyncedSnapshot;
-                const localState = snapshotSyncState();
                 const serverData = preloadedServerData || await fetchLoadDataWithRetry();
                 if (!serverData || serverData.status === 'error') throw new Error((serverData && serverData.message) || '서버 최신 내용을 받지 못했습니다');
 
+                // 응답을 기다리는 동안에도 입력이 이어지므로, 이 기기 내용은 반드시 응답을 받은 뒤에 뜸.
+                // 여기부터 loadAllFromServer가 화면을 바꿀 때까지는 await가 없어야 함
+                if (selectedDate && typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
+                if (typeof flushAllStickySaves === 'function') flushAllStickySaves();
+                if (typeof flushNotesSave === 'function') flushNotesSave();
+                clearTimeout(syncTimeout);
+                const localState = snapshotSyncState();
+                const caret = typeof getRecordCaret === 'function' ? getRecordCaret() : null;
                 await loadAllFromServer(serverData); // 화면 = 서버 최신 내용, 기준점도 서버 버전으로 갱신
                 const result = await applyLocalChangesOnServerState(base, localState, serverData);
                 const keptLocal = result.keptLocal.length > 0;
+                if (typeof restoreRecordCaret === 'function') restoreRecordCaret(caret);
                 showAppToast(describeMergeResult(result, keptLocal
                     ? '다른 기기에서 저장한 내용을 받아와 이 기기의 변경 내용과 합쳤습니다'
                     : '다른 기기에서 저장한 최신 내용으로 갱신했습니다'), 'info');
@@ -1660,8 +1668,11 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         }
 
         let syncStatusHideTimeout = null;
+        let lastSyncFailed = false; // 재시도 중에도 유지되고, 저장에 성공해야 풀림
         
         function showSyncStatus(text, state) {
+            if (state === 'error') lastSyncFailed = true;
+            else if (state === 'ok') lastSyncFailed = false;
             const el = document.getElementById('syncStatus');
             if (!el) return;
             
@@ -1674,6 +1685,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (state === 'ok' && !wasOk) playMotion(el, 'motion-sync-done');
             el.style.visibility = 'visible';
             el.style.opacity = '1';
+            if (typeof updateRecordSaveBadge === 'function') updateRecordSaveBadge();
         }
         
         // ===== 탭 렌더링 & 전환 =====
@@ -2179,7 +2191,14 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (blob.size <= BEACON_MAX_BYTES) navigator.sendBeacon(GOOGLE_APPS_SCRIPT_URL, blob);
             } catch (e) { /* 무시 */ }
         }
-        window.addEventListener('beforeunload', () => flushPendingChangesOnExit(true));
+        window.addEventListener('beforeunload', (e) => {
+            flushPendingChangesOnExit(true);
+            // 평소에는 자동저장되므로 묻지 않고, 서버 저장에 실패한 내용이 남아 있을 때만 경고
+            if (lastSyncFailed && currentEmployeeId && hasPendingOutbox()) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
         // 모바일 브라우저는 앱 전환/탭 종료 때 beforeunload를 안 부르는 경우가 많아서, 화면이 가려질 때도 보관함을 갱신함
         window.addEventListener('pagehide', () => flushPendingChangesOnExit(false));
         document.addEventListener('visibilitychange', () => {
@@ -2978,11 +2997,28 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
         }
 
+        // 입력 대기 중인 내용(활동기록·메모)을 모두 확정하고 미전송 보관함에 남김
+        function stashUnsavedChanges() {
+            try {
+                if (typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
+                if (typeof flushAllStickySaves === 'function') flushAllStickySaves();
+                if (typeof flushNotesSave === 'function') flushNotesSave();
+                writePendingOutbox();
+            } catch (e) { console.warn('미저장 내용 보관 실패:', e); }
+        }
+
         function logout() {
+            stashUnsavedChanges();
             const pendingNotice = hasPendingOutbox()
                 ? '\n\n아직 서버에 저장되지 못한 변경 내용이 있습니다. 이 기기에 보관해두었다가 다음에 이 기기에서 로그인하면 다시 저장합니다.'
                 : '';
             confirmModal('로그아웃할까요? 다시 사번과 비밀번호를 입력해야 합니다.' + pendingNotice, () => {
+                // 보관 → 저장 중단 → 삭제 순서. 사번을 비워야 새로고침 때의 종료 저장이 지운 캐시를 되살리지 않음
+                stashUnsavedChanges();
+                clearTimeout(syncTimeout);
+                if (typeof recordAutosaveTimeout !== 'undefined') clearTimeout(recordAutosaveTimeout);
+                currentEmployeeId = '';
+                editUnlocked = false;
                 localStorage.removeItem('employeeId');
                 localStorage.removeItem('passwordHash');
                 clearRememberedLogin();

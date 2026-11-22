@@ -8698,3 +8698,26 @@ body.admin-mode .cmdk-trigger { display: none; }
 .scroll-top-btn .ui-icon { width: 20px; height: 20px; }
 .scroll-top-btn:hover { border-color: var(--color-primary); }
 @media (min-width: 769px) { .scroll-top-btn { display: none; } }
+
+/* ===== 활동기록 저장 상태 배지 ===== */
+.record-save-row { flex-direction: row; align-items: center; gap: var(--space-2); }
+.record-save-row .save-btn { min-width: 0; }
+.record-save-badge {
+    --save-tone: var(--color-text-tertiary);
+    flex: 0 0 auto;
+    min-width: 68px; /* 문구가 바뀌어도 저장 버튼이 흔들리지 않게 자리를 유지 */
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid color-mix(in srgb, var(--save-tone) var(--tint-border), transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--save-tone) var(--tint-bg), transparent);
+    color: color-mix(in srgb, var(--save-tone) var(--tint-text-mix), var(--color-text));
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+}
+.record-save-badge[data-state=""] { visibility: hidden; }
+.record-save-badge[data-state="dirty"] { --save-tone: var(--color-warning); }
+.record-save-badge[data-state="saving"] { --save-tone: var(--color-primary-muted); }
+.record-save-badge[data-state="saved"] { --save-tone: var(--color-success); }
+.record-save-badge[data-state="error"] { --save-tone: var(--color-danger); }

@@ -123,6 +123,7 @@
 
             const idx = categories.indexOf(oldName);
             if (idx === -1) { closeCategoryRenameModal(); return; }
+            if (selectedDate) captureCurrentFormToRecords(); // 옛 이름 칸에 쓰던 내용을 먼저 확정
             categories[idx] = newName;
 
             if (Object.prototype.hasOwnProperty.call(categoryColors, oldName)) {
