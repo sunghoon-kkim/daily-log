@@ -311,24 +311,6 @@
             return first;
         }
 
-        // 드래그·스와이프에 딸려 오는 click만 막음. 그 click은 pointerup과 같은 작업에서 오지만, 다시 그려 원래
-        // 요소가 사라졌거나 터치로 많이 움직였으면 아예 안 오므로 { once: true }만으로는 다음 클릭까지 막게 됨.
-        // 그래서 click이 오거나, 이번 작업이 끝나거나, 새로 누르기 시작하면 바로 해제함
-        function suppressDragClick(target) {
-            const release = () => {
-                clearTimeout(timer);
-                target.removeEventListener('click', block, true);
-                document.removeEventListener('pointerdown', release, true);
-            };
-            const block = (ev) => {
-                ev.stopPropagation();
-                release();
-            };
-            target.addEventListener('click', block, true);
-            document.addEventListener('pointerdown', release, true);
-            const timer = setTimeout(release, 0);
-        }
-
         // 캘린더 영역을 좌우로 드래그(마우스)/스와이프(터치)하면 이전달·다음달로 이동
         function setupCalendarSwipe() {
             const calendarEl = document.querySelector('#calendar .calendar');

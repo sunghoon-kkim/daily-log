@@ -502,9 +502,7 @@
 
             if (moved) {
                 // 실제로 화면을 옮긴 경우엔 뒤이어 발생하는 click이 연결 모드를 취소하지 않도록 한 번 막음
-                document.addEventListener('click', function suppressClick(ev) {
-                    ev.stopPropagation();
-                }, { capture: true, once: true });
+                suppressDragClick(document);
             }
         }
 
@@ -667,9 +665,7 @@
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우엔 아무 것도 하지 않음
 
             // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 다른 동작(캔버스 이동 등)을 트리거하지 않도록 한 번 막음
-            document.addEventListener('click', function suppressClick(ev) {
-                ev.stopPropagation();
-            }, { capture: true, once: true });
+            suppressDragClick(document);
 
             saveWaterFlowBlocksToStorage();
             renderWaterFlowAlignRails();
@@ -1195,9 +1191,7 @@
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 별도 onclick이 처리하도록 둠
 
             // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 연결선을 삭제하지 않도록 한 번 막음
-            document.addEventListener('click', function suppressClick(ev) {
-                ev.stopPropagation();
-            }, { capture: true, once: true });
+            suppressDragClick(document);
 
             saveWaterFlowConnectionsToStorage();
         }
@@ -1428,9 +1422,7 @@
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 별도 onclick이 펼치기/접기를 처리하도록 둠
 
             // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 펼치기/접기를 토글하지 않도록 한 번 막음
-            document.addEventListener('click', function suppressClick(ev) {
-                ev.stopPropagation();
-            }, { capture: true, once: true });
+            suppressDragClick(document);
 
             const block = waterFlowBlocks.find(b => b.id === state.blockId);
             if (!block) return;

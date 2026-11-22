@@ -1759,6 +1759,24 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
         }
 
+        // 드래그·스와이프(달력, 흐름도)에 딸려 오는 click만 막음. 그 click은 pointerup과 같은 작업에서 오지만, 다시 그려 원래
+        // 요소가 사라졌거나 터치로 많이 움직였으면 아예 안 오므로 { once: true }만으로는 다음 클릭까지 막게 됨.
+        // 그래서 click이 오거나, 이번 작업이 끝나거나, 새로 누르기 시작하면 바로 해제함
+        function suppressDragClick(target) {
+            const release = () => {
+                clearTimeout(timer);
+                target.removeEventListener('click', block, true);
+                document.removeEventListener('pointerdown', release, true);
+            };
+            const block = (ev) => {
+                ev.stopPropagation();
+                release();
+            };
+            target.addEventListener('click', block, true);
+            document.addEventListener('pointerdown', release, true);
+            const timer = setTimeout(release, 0);
+        }
+
         // 같은 애니메이션 클래스를 다시 붙여도 처음부터 재생되게 함 (끝나면 클래스를 떼서 transform이 남지 않게)
         function playMotion(el, className) {
             if (!el || prefersReducedMotion()) return;
