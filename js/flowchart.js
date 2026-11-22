@@ -664,6 +664,12 @@
             waterFlowAlignDragState = null;
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우엔 아무 것도 하지 않음
 
+            // 터치가 취소된 경우는 '놓기'가 아니므로 드래그 시작 전 상태로 되돌리고 저장하지 않음
+            if (e.type === 'pointercancel') {
+                restoreWaterFlowSnapshot(waterFlowUndoStack.pop());
+                return;
+            }
+
             // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 다른 동작(캔버스 이동 등)을 트리거하지 않도록 한 번 막음
             suppressDragClick(document);
 
@@ -1190,6 +1196,12 @@
             waterFlowScalarDragState = null;
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 별도 onclick이 처리하도록 둠
 
+            // 터치가 취소된 경우는 '놓기'가 아니므로 드래그 시작 전 상태로 되돌리고 저장하지 않음
+            if (e.type === 'pointercancel') {
+                restoreWaterFlowSnapshot(waterFlowUndoStack.pop());
+                return;
+            }
+
             // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 연결선을 삭제하지 않도록 한 번 막음
             suppressDragClick(document);
 
@@ -1420,6 +1432,13 @@
             clearWaterFlowSnapGuides();
 
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 별도 onclick이 펼치기/접기를 처리하도록 둠
+
+            // 터치가 취소된 경우(전화 수신·시스템 제스처 등)는 '놓기'가 아니므로 위치를 확정하지 않고 되돌림
+            if (e.type === 'pointercancel') {
+                waterFlowUndoStack.pop(); // 드래그가 시작될 때 남긴 되돌리기 기록은 더 이상 필요 없음
+                renderWaterFlowCanvas();
+                return;
+            }
 
             // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 펼치기/접기를 토글하지 않도록 한 번 막음
             suppressDragClick(document);
