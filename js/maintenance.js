@@ -5,6 +5,20 @@
         let maintenanceLayout = (function () {
             try { return localStorage.getItem('maintenanceLayout') === 'timeline' ? 'timeline' : 'cards'; } catch (e) { return 'cards'; }
         })();
+        // 768px 이하에서는 정비계획 탭에 들어올 때마다 카드 보기로 시작하고, 거기서 바꾼 값은 저장하지 않음(PC에서 고른 보기 유지)
+        const maintMobileQuery = window.matchMedia('(max-width: 768px)');
+        let maintMobileLayout = 'cards';
+        function getMaintenanceLayout() { return maintMobileQuery.matches ? maintMobileLayout : maintenanceLayout; }
+        function resetMaintenanceMobileLayout() {
+            if (!maintMobileQuery.matches || maintMobileLayout === 'cards') return;
+            maintMobileLayout = 'cards';
+            renderMaintenanceSchedule();
+        }
+        maintMobileQuery.addEventListener('change', () => {
+            maintMobileLayout = 'cards';
+            closeMaintQuickMenu();
+            renderMaintenanceSchedule();
+        });
         const maintTimelineCollapsed = new Set(); // 카드·타임라인에서 접어 둔 설비 이름 (두 보기 공통, 화면 상태값이라 저장하지 않음)
         let maintenanceSearchQuery = ''; // 툴바 검색어(항목명·설비명·SOP). 화면 상태값이라 저장하지 않음
 
@@ -27,6 +41,15 @@
         function formatMaintShortageText(shortages) {
             const fmt = typeof formatInventoryQty === 'function' ? formatInventoryQty : String;
             return shortages.map(n => `${n.item.name} ${fmt(n.qty)}${n.item.unit || ''} (현재 ${fmt(n.current)})`).join(', ');
+        }
+
+        // 툴팁·막대 메뉴의 재고 현황(부족하지 않은 품목 포함). 연동이 없으면 ''
+        function formatMaintStockText(m) {
+            if (typeof isInventoryFeatureOn !== 'function' || !isInventoryFeatureOn() || m.status === '완료') return '';
+            return getInventoryNeedsForMaintenance(m.id).map(n => {
+                const unit = n.item.unit || '';
+                return `${n.item.name} 현재 ${formatInventoryQty(n.current)}${unit} / 필요 ${formatInventoryQty(n.qty)}${unit}`;
+            }).join(', ');
         }
 
         function maintEquipmentHistoryBtn(equipmentName, cls) {
@@ -234,20 +257,25 @@
 
         // [카드 / 타임라인] 보기 전환. 같은 데이터·필터·연도를 그대로 쓰고 그리는 방식만 바꿈
         function setMaintenanceLayout(layout) {
-            maintenanceLayout = layout === 'timeline' ? 'timeline' : 'cards';
-            safeSetItem('maintenanceLayout', maintenanceLayout);
+            const next = layout === 'timeline' ? 'timeline' : 'cards';
+            if (maintMobileQuery.matches) maintMobileLayout = next;
+            else {
+                maintenanceLayout = next;
+                safeSetItem('maintenanceLayout', next);
+            }
             renderMaintenanceSchedule();
         }
 
         function syncMaintenanceLayoutButtons() {
+            const layout = getMaintenanceLayout();
             document.querySelectorAll('#maintenanceLayoutRow .quick-preset-btn').forEach(btn => {
-                const on = btn.dataset.layout === maintenanceLayout;
+                const on = btn.dataset.layout === layout;
                 btn.classList.toggle('selected', on);
                 btn.setAttribute('aria-selected', on ? 'true' : 'false');
             });
             // 자세히/간단히는 카드 보기에서만 의미가 있음
             const modeRow = document.getElementById('maintenanceViewModeRow');
-            if (modeRow) modeRow.style.display = maintenanceLayout === 'timeline' ? 'none' : '';
+            if (modeRow) modeRow.style.display = layout === 'timeline' ? 'none' : '';
         }
 
         function toggleMaintGroup(name) {
@@ -338,7 +366,7 @@
                     const latestDone = getLatestMaintenanceDoneDate(m);
                     const days = getDaysUntilDue(m.nextDue);
                     const doneMonths = new Set(m._doneDates.map(d => Number(d.slice(5, 7))));
-                    const tipBase = { name: m.item || '(항목명 없음)', equipment: m.equipment || '', cycle: m.cycle || '주기 미정', due: isValidNextDue(m.nextDue) ? formatMaintDateDisplay(m.nextDue) + (days !== null && m.status !== '완료' ? ` (${formatDday(days)})` : '') : '미정', done: latestDone ? formatMaintDateDisplay(latestDone) : '없음', status: m.status || '예정', inv: formatMaintShortageText(m._invShort) };
+                    const tipBase = { name: m.item || '(항목명 없음)', equipment: m.equipment || '', cycle: m.cycle || '주기 미정', due: isValidNextDue(m.nextDue) ? formatMaintDateDisplay(m.nextDue) + (days !== null && m.status !== '완료' ? ` (${formatDday(days)})` : '') : '미정', done: latestDone ? formatMaintDateDisplay(latestDone) : '없음', status: m.status || '예정', inv: formatMaintShortageText(m._invShort), stock: formatMaintStockText(m) };
                     const cells = Array.from({ length: 12 }, (_, i) => {
                         const month = i + 1;
                         const key = `${maintenanceViewYear}-${String(month).padStart(2, '0')}`;
@@ -403,7 +431,7 @@
         function restoreMaintTimelineScroll() {
             const sc = document.querySelector('#maintenanceList .maint-timeline-scroll');
             if (!sc) return;
-            sc.addEventListener('scroll', () => { maintTimelineScroll = { year: maintenanceViewYear, left: sc.scrollLeft, top: sc.scrollTop }; hideMaintTooltip(); }, { passive: true });
+            sc.addEventListener('scroll', () => { maintTimelineScroll = { year: maintenanceViewYear, left: sc.scrollLeft, top: sc.scrollTop }; hideMaintTooltip(); closeMaintQuickMenuIfMoved(); }, { passive: true });
             if (maintTimelineScroll && maintTimelineScroll.year === maintenanceViewYear) {
                 sc.scrollLeft = maintTimelineScroll.left;
                 sc.scrollTop = maintTimelineScroll.top;
@@ -417,7 +445,14 @@
 
         // ---- 막대 툴팁 카드 ----
         let maintTooltipEl = null;
+        // 호버 툴팁과 막대 메뉴가 같이 쓰는 정보 본문
+        function maintTipHtml(data) {
+            return `<div class="mt-tooltip-title">${escapeHtml(data.name)}</div>
+                <div class="mt-tooltip-sub">${escapeHtml(data.equipment)} · ${escapeHtml(data.month)}</div>
+                <dl><dt>차기 예정</dt><dd>${escapeHtml(data.due)}</dd><dt>최근 완료</dt><dd>${escapeHtml(data.done)}</dd><dt>주기</dt><dd>${escapeHtml(data.cycle)}</dd><dt>상태</dt><dd>${escapeHtml(data.status)}</dd>${data.stock ? `<dt>${data.inv ? '재고 부족' : '재고 현황'}</dt><dd class="${data.inv ? 'mt-tip-short' : ''}">${escapeHtml(data.stock)}</dd>` : ''}</dl>`;
+        }
         function showMaintTooltip(bar) {
+            if (maintQuickMenuEl && maintQuickMenuEl.classList.contains('open')) return; // 메뉴에 같은 정보가 있음
             let data;
             try { data = JSON.parse(bar.dataset.tip || '{}'); } catch (e) { return; }
             if (!maintTooltipEl) {
@@ -426,9 +461,7 @@
                 maintTooltipEl.setAttribute('role', 'tooltip');
                 document.body.appendChild(maintTooltipEl);
             }
-            maintTooltipEl.innerHTML = `<div class="mt-tooltip-title">${escapeHtml(data.name)}</div>
-                <div class="mt-tooltip-sub">${escapeHtml(data.equipment)} · ${escapeHtml(data.month)}</div>
-                <dl><dt>차기 예정</dt><dd>${escapeHtml(data.due)}</dd><dt>최근 완료</dt><dd>${escapeHtml(data.done)}</dd><dt>주기</dt><dd>${escapeHtml(data.cycle)}</dd><dt>상태</dt><dd>${escapeHtml(data.status)}</dd>${data.inv ? `<dt>재고 부족</dt><dd>${escapeHtml(data.inv)}</dd>` : ''}</dl>`;
+            maintTooltipEl.innerHTML = maintTipHtml(data);
             maintTooltipEl.classList.add('open');
             const r = bar.getBoundingClientRect();
             const w = maintTooltipEl.offsetWidth, h = maintTooltipEl.offsetHeight;
@@ -445,6 +478,7 @@
 
         // ---- 막대 클릭 빠른 메뉴: [완료 처리] [수정] ----
         let maintQuickMenuEl = null;
+        let maintQuickMenuAnchor = null; // 메뉴를 연 막대와 그때의 화면 위치
         function openMaintQuickMenu(event, itemId) {
             event.stopPropagation();
             hideMaintTooltip();
@@ -453,7 +487,6 @@
             if (!maintQuickMenuEl) {
                 maintQuickMenuEl = document.createElement('div');
                 maintQuickMenuEl.className = 'mt-quick-menu';
-                maintQuickMenuEl.setAttribute('role', 'menu');
                 document.body.appendChild(maintQuickMenuEl);
             }
             const idArg = escapeForOnclickArg(itemId);
@@ -461,22 +494,36 @@
             const showAck = ['overdue', 'urgent', 'notice'].includes(getMaintenanceUrgency(m).level);
             const acked = m.ackFor && m.ackFor === m.nextDue;
             const ackBtn = showAck ? `<button type="button" role="menuitemcheckbox" aria-checked="${acked ? 'true' : 'false'}" onclick="closeMaintQuickMenu(); toggleMaintenanceAck('${idArg}')">${icon(acked ? 'x' : 'check')}${acked ? '사전 인지 취소' : '사전 인지 완료'}</button>` : '';
-            maintQuickMenuEl.innerHTML = `<div class="mt-quick-menu-title">${escapeHtml(m.item || '(항목명 없음)')}</div>
+            let info = `<div class="mt-tooltip-title">${escapeHtml(m.item || '(항목명 없음)')}</div>`;
+            try { info = maintTipHtml(JSON.parse(event.currentTarget.dataset.tip)); } catch (e) { /* 항목명만 표시 */ }
+            maintQuickMenuEl.innerHTML = `<div class="mt-quick-menu-info">${info}</div><div role="menu">
                 ${m.status !== '완료' ? `<button type="button" role="menuitem" onclick="closeMaintQuickMenu(); openMaintenanceCompleteModal('${idArg}')">${icon('check')}완료 처리</button>` : ''}
                 ${ackBtn}
-                <button type="button" role="menuitem" onclick="closeMaintQuickMenu(); openMaintenanceModal('${idArg}')">${icon('pencil')}수정</button>`;
+                <button type="button" role="menuitem" onclick="closeMaintQuickMenu(); openMaintenanceModal('${idArg}')">${icon('pencil')}수정</button></div>`;
             maintQuickMenuEl.classList.add('open');
             const r = event.currentTarget.getBoundingClientRect();
             const w = maintQuickMenuEl.offsetWidth, h = maintQuickMenuEl.offsetHeight;
             maintQuickMenuEl.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
-            maintQuickMenuEl.style.top = (r.bottom + h + 8 > window.innerHeight ? r.top - h - 6 : r.bottom + 6) + 'px';
+            const top = r.bottom + h + 8 > window.innerHeight ? r.top - h - 6 : r.bottom + 6;
+            maintQuickMenuEl.style.top = Math.max(8, Math.min(top, window.innerHeight - h - 8)) + 'px';
+            maintQuickMenuAnchor = { el: event.currentTarget, top: r.top, left: r.left };
             const first = maintQuickMenuEl.querySelector('button');
-            if (first) first.focus();
+            if (first) first.focus({ preventScroll: true });
         }
-        function closeMaintQuickMenu() { if (maintQuickMenuEl) maintQuickMenuEl.classList.remove('open'); }
+        function closeMaintQuickMenu() {
+            if (maintQuickMenuEl) maintQuickMenuEl.classList.remove('open');
+            maintQuickMenuAnchor = null;
+        }
+        // 스크롤 이벤트는 한 박자 늦게 오므로(누르는 순간의 자동 스크롤 등), 막대가 실제로 움직였을 때만 닫음
+        function closeMaintQuickMenuIfMoved() {
+            const a = maintQuickMenuAnchor;
+            if (!a) return;
+            const r = a.el.getBoundingClientRect();
+            if (!a.el.isConnected || Math.abs(r.top - a.top) > 2 || Math.abs(r.left - a.left) > 2) closeMaintQuickMenu();
+        }
         document.addEventListener('click', (e) => { if (maintQuickMenuEl && maintQuickMenuEl.classList.contains('open') && !maintQuickMenuEl.contains(e.target)) closeMaintQuickMenu(); });
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMaintQuickMenu(); hideMaintTooltip(); } });
-        window.addEventListener('scroll', () => { closeMaintQuickMenu(); hideMaintTooltip(); }, { passive: true });
+        window.addEventListener('scroll', () => { closeMaintQuickMenuIfMoved(); hideMaintTooltip(); }, { passive: true });
 
 
         // 지연/임박/인지 필요 항목에 붙는 "사전 인지 완료" 체크박스를 토글함.
@@ -664,10 +711,10 @@
                     <button type="button" class="mt-text-btn" onclick="setAllMaintGroups(false)">모두 펼치기</button>
                     <button type="button" class="mt-text-btn" onclick="setAllMaintGroups(true)">모두 접기</button>
                 </div>` : '';
-            container.innerHTML = groupActions + (maintenanceLayout === 'timeline'
+            container.innerHTML = groupActions + (getMaintenanceLayout() === 'timeline'
                 ? renderMaintenanceTimeline(equipmentNames, groups)
                 : equipmentNames.map(name => renderMaintenanceEquipmentGroup(name, groups[name])).join(''));
-            if (maintenanceLayout === 'timeline') restoreMaintTimelineScroll();
+            if (getMaintenanceLayout() === 'timeline') restoreMaintTimelineScroll();
         }
 
         // 정비계획 상태값은 개선/절감 과제와 이름이 달라서, 배지 색상 클래스(status-계획중/완료/보류)에 맞춰 매핑함

@@ -2048,6 +2048,10 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 showQuerySection(); // 마지막에 보던 화면(또는 켜져 있는 첫 화면)으로
             }
 
+            if (tabName === 'maintenance' && prevTabId !== tabName && typeof resetMaintenanceMobileLayout === 'function') {
+                resetMaintenanceMobileLayout();
+            }
+
             if (tabName === 'teamReport' && typeof initTeamReportTab === 'function') {
                 initTeamReportTab();
             }
@@ -2237,6 +2241,9 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (!initialLoadDone || !currentEmployeeId) return;
             try {
                 if (typeof captureCurrentFormToRecords === 'function') captureCurrentFormToRecords();
+                // 앱 전환·종료 때 0.5초 대기 중인 메모 저장도 보관함에 들어가게 먼저 처리
+                if (typeof flushAllStickySaves === 'function') flushAllStickySaves();
+                if (typeof flushNotesSave === 'function') flushNotesSave();
             } catch (e) { /* 무시 */ }
             try {
                 const fullState = getFullState();
@@ -3175,6 +3182,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             else if (id === 'signupModal') closeSignupModal();
             else if (id === 'adminEditUserModal') closeAdminEditUserModal();
             else if (id === 'confirmActionModal') closeConfirmActionModal();
+            else if (id === 'mobileMemoSheet') closeMobileMemoSheet();
             else document.getElementById(id).classList.remove('active');
         }
 

@@ -46,11 +46,23 @@
             </div>
             <span class="theme-toggle-btn" id="currentUserLabel" style="display:none; cursor:pointer;" onclick="openAccountModal()" title="개인 정보 수정" aria-label="개인 정보 수정"></span>
             <button class="theme-toggle-btn" id="logoutBtn" onclick="logout()" style="display:none;"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>로그아웃</button>
-            <button type="button" class="theme-toggle-btn sticky-toggle-btn" id="stickyMemoToggleBtn" onclick="toggleStickyMemo()" title="스티커 메모 열기/닫기 (Alt+M)" aria-pressed="false" hidden><span data-icon="sticky-note"></span>스티커 메모</button>
+            <button type="button" class="theme-toggle-btn sticky-toggle-btn" id="stickyMemoToggleBtn" aria-label="스티커 메모" onclick="toggleStickyMemo()" title="스티커 메모 열기/닫기 (Alt+M)" aria-pressed="false" hidden><span data-icon="sticky-note"></span><span class="sticky-toggle-label">스티커 메모</span></button>
             <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()">다크모드</button>
             <span class="sync-status" id="syncStatus">대기 중</span>
         </div>
         <div class="tabs-container" id="tabsContainer"></div>
+        <!-- 모바일 빠른 메모 시트(768px 이하에서 스티커 메모 버튼). 데이터·저장은 js/sticky-memo.js와 공유 -->
+        <div class="modal-overlay mobile-memo-sheet" id="mobileMemoSheet" role="dialog" aria-modal="true" aria-label="빠른 메모">
+            <div class="modal-box mobile-memo-box">
+                <div class="mobile-memo-bar">
+                    <select class="sticky-page-select" aria-label="메모 선택"></select>
+                    <span class="sticky-saved" aria-live="polite">저장됨</span>
+                    <button type="button" class="sticky-icon-btn" onclick="addStickyPage(MOBILE_MEMO_ID)" title="새 메모" aria-label="새 메모"><span data-icon="file-plus"></span></button>
+                    <button type="button" class="sticky-icon-btn mobile-memo-close" onclick="closeMobileMemoSheet()" title="닫기" aria-label="메모 닫기"><span data-icon="x"></span></button>
+                </div>
+                <div class="sticky-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="메모 내용" data-placeholder="여기에 메모하면 할일 & 메모 탭에도 저장됩니다"></div>
+            </div>
+        </div>
         
         <!-- 탭 1 -->
         <div id="calendar" class="tab-content active">
@@ -105,7 +117,7 @@
                         <div style="text-align: center; color: var(--color-text-tertiary); padding: 20px;">날짜를 선택해주세요</div>
                     </div>
                     
-                    <div style="padding: 20px; border-top: 1px solid var(--color-border);">
+                    <div class="record-save-bar">
                         <div class="button-group record-save-row">
                             <span class="record-save-badge" id="recordSaveBadge" role="status" data-state=""></span>
                             <button class="save-btn" id="saveAllBtn" onclick="saveAllRecords()" title="단축키: Ctrl(⌘)+S · 전날/다음날: Alt+←/→ · 단축키 안내: ?"><span data-icon="save"></span>저장하기</button>

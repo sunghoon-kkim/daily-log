@@ -60,8 +60,17 @@
             safeSetItem('stickyMemoWindows', JSON.stringify(stickyStore));
         }
 
-        function getStickyWin(id) { return stickyStore.wins.find(w => w.id === id) || null; }
-        function getStickyEl(id) { return document.querySelector(`.sticky-memo[data-sid="${id}"]`); }
+        // 768px 이하에서는 창 대신 하단 시트 1장. 저장되는 창 목록(stickyStore)에는 넣지 않아 PC 배치가 그대로 유지됨
+        const MOBILE_MEMO_ID = 'mobileMemo';
+        const mobileMemoQuery = window.matchMedia('(max-width: 768px)');
+        const mobileMemoWin = { id: MOBILE_MEMO_ID, pageId: null };
+        function isMobileMemoOpen() {
+            const el = document.getElementById('mobileMemoSheet');
+            return !!el && el.classList.contains('active');
+        }
+
+        function getStickyWin(id) { return id === MOBILE_MEMO_ID ? mobileMemoWin : (stickyStore.wins.find(w => w.id === id) || null); }
+        function getStickyEl(id) { return id === MOBILE_MEMO_ID ? document.getElementById('mobileMemoSheet') : document.querySelector(`.sticky-memo[data-sid="${id}"]`); }
         function getStickyEditor(id) { const el = getStickyEl(id); return el ? el.querySelector('.sticky-editor') : null; }
 
         // 창이 띄운 메모 페이지. 없으면(삭제됐거나 서버 데이터를 아직 못 받음) 탭에서 보던 메모 → 첫 메모를 대신 보여줌.
@@ -82,11 +91,19 @@
                 && !isFeatureDisabled('freeNotes') && !isFeatureDisabled('stickyMemo')
                 && !(Array.isArray(disabledTabIds) && disabledTabIds.includes('notes'));
             btn.hidden = !stickyAvailable;
+            if (!stickyAvailable && isMobileMemoOpen()) closeMobileMemoSheet();
             const show = stickyAvailable && stickyStore.visible && stickyStore.wins.length > 0;
             if (show) renderAllStickyWindows();
             else removeAllStickyWindowEls();
             btn.classList.toggle('active', show);
             btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+            if (mobileMemoQuery.matches) {
+                const open = isMobileMemoOpen();
+                btn.classList.toggle('active', open);
+                btn.setAttribute('aria-pressed', open ? 'true' : 'false');
+                btn.title = '빠른 메모 열기';
+                return;
+            }
             const count = stickyStore.wins.length;
             btn.title = count === 0 ? '스티커 메모 열기 (Alt+M)'
                 : (show ? `스티커 메모 ${count}장 모두 숨기기 (Alt+M)` : `스티커 메모 ${count}장 다시 보이기 (Alt+M)`);
@@ -95,7 +112,11 @@
         // 상단 바 버튼·Alt+M: 띄운 창이 없으면 1장 열고, 있으면 배치를 그대로 둔 채 전부 숨기기/다시 보이기
         function toggleStickyMemo() {
             if (!stickyAvailable) return;
-            if (window.innerWidth < 768) { showAppToast('좁은 화면에서는 할일 & 메모 탭을 이용해주세요', 'info'); return; }
+            if (mobileMemoQuery.matches) {
+                if (isMobileMemoOpen()) closeMobileMemoSheet();
+                else openMobileMemoSheet();
+                return;
+            }
             if (stickyStore.wins.length === 0) {
                 const win = normalizeStickyWin({ id: newStickyWinId() });
                 win.pageId = getStickyPageId(win);
@@ -407,6 +428,13 @@
                 });
             });
 
+            wireStickyEditor(editor, select, id);
+            const slider = el.querySelector('.sticky-alpha-input');
+            slider.addEventListener('input', () => setStickyAlpha(id, slider.value));
+        }
+
+        // 스티커 창과 모바일 시트가 같이 쓰는 편집 칸 연결
+        function wireStickyEditor(editor, select, id) {
             editor.addEventListener('input', () => scheduleStickySave(id));
             editor.addEventListener('paste', (e) => handleStickyImagePaste(e, id));
             editor.addEventListener('blur', () => flushStickySave(id));
@@ -417,8 +445,39 @@
                 if (page && editor.innerHTML !== toDisplayNotesHtml(page.content)) renderStickyContent(id, true);
             });
             select.addEventListener('change', () => selectStickyPage(id, select.value));
-            const slider = el.querySelector('.sticky-alpha-input');
-            slider.addEventListener('input', () => setStickyAlpha(id, slider.value));
+        }
+
+        // ---- 모바일 빠른 메모 시트 ----
+        function openMobileMemoSheet() {
+            if (!stickyAvailable || document.querySelector('.modal-overlay.active')) return;
+            flushOtherEditorSaves(MOBILE_MEMO_ID);
+            ensureActiveFreeNotesPage();
+            if (!freeNotesPages.some(p => p.id === mobileMemoWin.pageId)) mobileMemoWin.pageId = currentFreeNotesPageId;
+            renderStickyPageSelect(MOBILE_MEMO_ID);
+            renderStickyContent(MOBILE_MEMO_ID, true);
+            fitMobileMemoSheet();
+            const el = getStickyEl(MOBILE_MEMO_ID);
+            el.classList.add('active');
+            updateStickyMemoAvailability();
+            el.querySelector('.mobile-memo-close').focus({ preventScroll: true }); // 열자마자 키보드가 올라오지 않게
+        }
+
+        function closeMobileMemoSheet() {
+            const el = getStickyEl(MOBILE_MEMO_ID);
+            flushStickySave(MOBILE_MEMO_ID);
+            if (el.contains(document.activeElement)) document.activeElement.blur();
+            el.classList.remove('active');
+            updateStickyMemoAvailability();
+            const btn = document.getElementById('stickyMemoToggleBtn');
+            if (btn && !btn.hidden) btn.focus({ preventScroll: true });
+        }
+
+        // 화면 키보드가 올라오면 실제로 보이는 영역 안에 시트를 맞춤
+        function fitMobileMemoSheet() {
+            const el = getStickyEl(MOBILE_MEMO_ID), vv = window.visualViewport;
+            if (!el || !vv) return;
+            el.style.setProperty('--sheet-top', vv.offsetTop + 'px');
+            el.style.setProperty('--sheet-height', vv.height + 'px');
         }
 
         window.addEventListener('resize', () => { stickyStore.wins.forEach(w => applyStickyGeometry(w.id)); });
@@ -551,7 +610,8 @@
 
         // 같은 메모를 띄운 다른 스티커 창들을 새 내용으로(입력 중인 창은 제외)
         function refreshStickyWindowsForPage(pageId, exceptId) {
-            stickyStore.wins.forEach(w => {
+            const open = isMobileMemoOpen() ? stickyStore.wins.concat(mobileMemoWin) : stickyStore.wins;
+            open.forEach(w => {
                 if (w.id !== exceptId && getStickyPageId(w) === pageId) renderStickyContent(w.id, false);
             });
         }
@@ -566,6 +626,10 @@
                 renderStickyPageSelect(w.id);
                 renderStickyContent(w.id, false);
             });
+            if (!isMobileMemoOpen()) return;
+            renderStickyPageSelect(MOBILE_MEMO_ID);
+            // 앱으로 돌아오면 커서가 남은 채 다른 기기 내용을 받게 되므로, 저장 대기 중인 입력이 없으면 입력 칸이어도 갱신
+            renderStickyContent(MOBILE_MEMO_ID, !stickySaveTimers.has(MOBILE_MEMO_ID));
         }
 
         async function handleStickyImagePaste(e, id) {
@@ -607,5 +671,14 @@
                     wireUpNoteImages();
                 }
             });
-            window.addEventListener('beforeunload', flushAllStickySaves);
+            const sheet = getStickyEl(MOBILE_MEMO_ID);
+            if (sheet) wireStickyEditor(sheet.querySelector('.sticky-editor'), sheet.querySelector('.sticky-page-select'), MOBILE_MEMO_ID);
+            if (window.visualViewport) {
+                ['resize', 'scroll'].forEach(type => window.visualViewport.addEventListener(type, () => { if (isMobileMemoOpen()) fitMobileMemoSheet(); }));
+            }
+            mobileMemoQuery.addEventListener('change', () => {
+                flushAllStickySaves();
+                if (!mobileMemoQuery.matches && isMobileMemoOpen()) closeMobileMemoSheet();
+                updateStickyMemoAvailability();
+            });
         })();

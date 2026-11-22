@@ -8313,7 +8313,12 @@ body.admin-mode .cmdk-trigger { display: none; }
 .mt-tooltip dt { color: var(--color-text-tertiary); }
 .mt-tooltip dd { margin: 0; font-weight: 500; }
 .mt-quick-menu { display: none; min-width: 168px; padding: var(--space-1); }
-.mt-quick-menu-title { padding: var(--space-1) var(--space-2) var(--space-2); max-width: 220px; font-size: var(--text-xs); color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-quick-menu-info { max-width: 260px; margin-bottom: var(--space-1); padding: var(--space-2); border-bottom: 1px solid var(--color-border); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.mt-quick-menu dl { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-3); margin: var(--space-2) 0 0; }
+.mt-quick-menu dt { color: var(--color-text-tertiary); white-space: nowrap; }
+.mt-quick-menu dd { margin: 0; font-weight: 500; }
+.mt-tip-short { color: var(--color-danger-text); }
+.mt-quick-menu { max-height: calc(100vh - var(--space-4)); overflow-y: auto; }
 .mt-quick-menu button {
     display: flex;
     align-items: center;
@@ -8587,8 +8592,8 @@ body.admin-mode .cmdk-trigger { display: none; }
     background: linear-gradient(135deg, transparent 50%, var(--sticky-line) 50%, var(--sticky-line) 60%, transparent 60%, transparent 72%, var(--sticky-line) 72%, var(--sticky-line) 82%, transparent 82%);
 }
 .dark-mode .sticky-memo:not([data-color="default"]) { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
-@media (max-width: 767px) {
-    .sticky-memo, .sticky-toggle-btn { display: none !important; }
+@media (max-width: 768px) {
+    .sticky-memo { display: none !important; }
 }
 @media (prefers-reduced-motion: reduce) { .sticky-collapse-btn .ui-icon, .sticky-saved { transition: none; } }
 @media print { .sticky-memo { display: none !important; } }
@@ -8763,3 +8768,92 @@ body.admin-mode .cmdk-trigger { display: none; }
     }
     .calendar-box .calendar-header { position: sticky; top: 0; z-index: 2; }
 }
+
+/* ===== 모바일(768px 이하) 현장 사용성 ===== */
+.record-save-bar { padding: var(--space-5); border-top: 1px solid var(--color-border); }
+.mobile-memo-sheet {
+    --sticky-fg: var(--color-text);
+    --sticky-fg-muted: var(--color-text-secondary);
+    --sticky-line: var(--color-border);
+    --sticky-font: var(--text-md);
+}
+@media (max-width: 768px) {
+    /* 저장 버튼·상태: 기록칸을 보는 동안 화면 아래에 고정 (overflow:hidden은 sticky를 막으므로 clip) */
+    .record-box { overflow: clip; }
+    .record-save-bar {
+        position: sticky;
+        bottom: 0;
+        z-index: 3;
+        padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom));
+        background: var(--color-surface);
+    }
+    .record-save-row { flex-direction: row; margin-top: 0; }
+    body:has(#calendar.active) .scroll-top-btn { bottom: calc(var(--space-7) + var(--space-5) + env(safe-area-inset-bottom)); }
+
+    /* 16px 미만이면 iOS가 누를 때 화면을 확대함. 화면별·인라인 크기보다 우선해야 해서 !important */
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="button"]),
+    select,
+    textarea,
+    .notes-textarea { font-size: var(--text-md) !important; }
+
+    /* 상단 바: 메모 버튼은 아이콘만 */
+    .sticky-toggle-label { display: none; }
+    .sync-status-bar .sticky-toggle-btn { min-width: 36px; justify-content: center; }
+    .sync-status-bar button.sticky-toggle-btn > [data-icon] > .ui-icon { margin: 0; }
+
+    /* 빠른 메모 하단 시트 */
+    .mobile-memo-sheet {
+        top: var(--sheet-top, 0px);
+        bottom: auto;
+        height: var(--sheet-height, 100dvh);
+        align-items: flex-end;
+    }
+    .mobile-memo-sheet > .mobile-memo-box {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: none;
+        height: 80%;
+        max-height: none;
+        padding: 0;
+        overflow: hidden;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        border-bottom: 0;
+    }
+    .mobile-memo-bar {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+        padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+        border-bottom: 1px solid var(--color-border);
+    }
+    .mobile-memo-bar .sticky-page-select { height: 40px; }
+    .mobile-memo-bar .sticky-icon-btn { min-width: 40px; height: 40px; }
+    .mobile-memo-bar .sticky-icon-btn .ui-icon { width: 20px; height: 20px; }
+    .mobile-memo-box .sticky-editor {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: var(--space-4) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom));
+        font-size: var(--text-md);
+    }
+
+    /* 타임라인 설비 그룹: 1줄 설비명 / 2줄 개수·설비 이력 */
+    .mt-group .mt-label { min-height: 64px; }
+    .mt-group-toggle {
+        display: grid;
+        grid-template-columns: 14px minmax(0, 1fr);
+        grid-template-rows: 32px 32px;
+        column-gap: var(--space-1);
+        row-gap: 0;
+        align-items: center;
+        min-height: 64px;
+        padding: 0 var(--space-2);
+    }
+    .mt-group-name { max-width: 100%; }
+    .mt-group-count { grid-column: 2; justify-self: start; margin-left: 0; }
+    .mt-group-history { position: absolute; right: 0; bottom: var(--space-1); }
+}
+@media (min-width: 769px) { .mobile-memo-sheet.active { display: none; } }
