@@ -1912,8 +1912,37 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             tabDragReorder.keyDown(e, tabId);
         }
         
+        // 탭별 세로 스크롤 위치(메모리에만 보관, 새로고침하면 초기화)
+        const tabScrollY = {};
+        function restoreTabScroll(tabName) {
+            const y = tabScrollY[tabName] || 0;
+            window.scrollTo(0, y);
+            if (!y) return;
+            // 렌더가 한 박자 늦어 문서가 아직 짧으면 한 번만 다시 맞춤(그 사이 다른 스크롤이 일어났으면 건드리지 않음)
+            const after = window.scrollY;
+            requestAnimationFrame(() => {
+                if (activeTabId === tabName && window.scrollY === after && after < y) window.scrollTo(0, y);
+            });
+        }
+        function setupScrollTopButton() {
+            const btn = document.getElementById('scrollTopBtn');
+            if (!btn) return;
+            btn.innerHTML = icon('arrow-up');
+            const mq = window.matchMedia('(max-width: 768px)');
+            const update = () => { btn.hidden = !(mq.matches && window.scrollY > 400); };
+            window.addEventListener('scroll', update, { passive: true });
+            mq.addEventListener('change', update);
+            btn.addEventListener('click', () => {
+                const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+            });
+            update();
+        }
+        document.addEventListener('DOMContentLoaded', setupScrollTopButton);
+
         function switchTab(tabName, options) {
             options = options || {};
+            if (activeTabId) tabScrollY[activeTabId] = window.scrollY;
             // 탭 목록에서 오른쪽 탭으로 가면 새 화면이 오른쪽에서, 왼쪽 탭으로 가면 왼쪽에서 흐려졌다 들어옴
             const prevTabId = activeTabId;
             const prevIndex = tabOrder.indexOf(prevTabId);
@@ -1952,6 +1981,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             if (tabName === 'teamReport' && typeof initTeamReportTab === 'function') {
                 initTeamReportTab();
             }
+
+            if (prevTabId !== tabName) restoreTabScroll(tabName);
         }
 
         function computePresetDateRange(preset) {
@@ -3125,6 +3156,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 if (e.target.closest('#passwordResetRequestModal')) return;
                 if (e.target.closest('#logoutBtn')) return;
                 if (e.target.closest('#tabsContainer')) return;
+                if (e.target.closest('#scrollTopBtn')) return;
 
                 const blocked = e.target.closest(
                     'button, [onclick], select, input:not(#loginPasswordInput):not(#loginEmployeeIdInput), .day, .upcoming-card, .upcoming-card-mini, .result-item.clickable, .color-swatch'

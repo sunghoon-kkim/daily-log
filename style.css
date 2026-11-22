@@ -8665,3 +8665,35 @@ body.admin-mode .cmdk-trigger { display: none; }
     .upcoming-card:hover, .org-card:hover, .project-card:not(.inv-card):hover { transform: none; }
     .tab-content.motion-tab-from-right > *, .tab-content.motion-tab-from-left > * { animation-delay: 0s !important; }
 }
+
+/* ===== 긴 목록 렌더 최적화 + 맨 위로 버튼 ===== */
+.project-card, .inv-log-item, .timeline-entry {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 96px;
+}
+.inv-log-item { contain-intrinsic-size: auto 40px; }
+.timeline-entry { contain-intrinsic-size: auto 64px; }
+
+.scroll-top-btn {
+    position: fixed;
+    right: var(--space-4);
+    bottom: var(--space-4);
+    z-index: var(--z-floating);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: var(--shadow-md);
+    cursor: pointer;
+    animation: motionFadeIn var(--duration) var(--ease);
+}
+.scroll-top-btn[hidden] { display: none; }
+.scroll-top-btn .ui-icon { width: 20px; height: 20px; }
+.scroll-top-btn:hover { border-color: var(--color-primary); }
+@media (min-width: 769px) { .scroll-top-btn { display: none; } }
