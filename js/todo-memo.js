@@ -52,7 +52,7 @@
             });
             container.innerHTML = Array.from(folders, ([folder, pages]) => folder
                 ? `<details class="free-notes-folder"${collapsedFreeNotesFolders.has(folder) ? '' : ' open'} ontoggle="toggleFreeNotesFolder('${escapeForOnclickArg(folder)}', this.open)">
-                    <summary>📁 ${escapeHtml(folder)} <span>(${pages.length})</span></summary>
+                    <summary>${icon('folder', 'ui-icon-em label-icon')}${escapeHtml(folder)} <span>(${pages.length})</span></summary>
                     <div class="free-notes-folder-pages">${pages.map(tab).join('')}</div>
                    </details>`
                 : `<div class="free-notes-folder-pages free-notes-ungrouped">${pages.map(tab).join('')}</div>`
@@ -253,7 +253,7 @@
 
             const textarea = document.getElementById('notesTextarea');
             const placeholder = document.createElement('span');
-            placeholder.textContent = '🖼️ 이미지 업로드 중...';
+            placeholder.textContent = '이미지 업로드 중...';
             placeholder.className = 'note-image-uploading';
             insertNodeAtCaret(textarea, placeholder);
 

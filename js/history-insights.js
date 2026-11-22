@@ -80,7 +80,7 @@
 
             let html = '';
             if (matchedPlans.length > 0) {
-                html += '<div class="equipment-plan-summary"><div class="equipment-plan-summary-title">🔧 등록된 정비계획</div>' + matchedPlans.map(m => {
+                html += '<div class="equipment-plan-summary"><div class="equipment-plan-summary-title">' + icon('wrench', 'ui-icon-em label-icon') + '등록된 정비계획</div>' + matchedPlans.map(m => {
                     const completions = getMaintenanceCompletions(m);
                     return `<div class="equipment-plan-row" onclick="switchTab('maintenance'); openMaintenanceModal('${m.id}')">
                         <b>${escapeHtml(m.equipment || '')}</b> · ${escapeHtml(m.item || '점검')}
@@ -118,7 +118,7 @@
                             <span class="timeline-date">${escapeHtml(e.date.length === 7 ? e.date + ' (월)' : e.date)}</span>
                             <span class="timeline-source">${escapeHtml(e.source)}</span>
                             ${e.tag ? `<span class="search-result-tag">[${escapeHtml(e.tag)}]</span>` : ''}
-                            <button class="result-action-btn" onclick="openSearchTimelineEntry(${idx})">↗ 열기</button>
+                            <button class="result-action-btn" onclick="openSearchTimelineEntry(${idx})">열기</button>
                         </div>
                         ${e.text ? `<div class="result-content">${highlightSearchTerms(escapeHtml(e.text), query.terms)}</div>` : ''}
                     </div>`;
@@ -411,7 +411,7 @@
                     <div><b>${escapeHtml(file.name)}</b></div>
                     <div>기간: ${dates[0]} ~ ${dates[dates.length - 1]} · ${dates.length}일 · ${entries.length}칸</div>
                     <div>카테고리: ${usedCategories.map(c => escapeHtml(c) + (newCategories.includes(c) ? ' <span class="import-new-badge">새로 추가</span>' : (archivedCategories.includes(c) ? ' (보관됨)' : ''))).join(', ')}</div>
-                    ${overlapCount ? `<div class="import-warn">⚠️ 이미 다른 내용이 적힌 칸 ${overlapCount}개 - 아래에서 처리 방법을 골라주세요</div>` : '<div>✅ 기존 기록과 겹치는 칸이 없습니다</div>'}
+                    ${overlapCount ? `<div class="import-warn">${icon('triangle-alert', 'ui-icon-em label-icon')}이미 다른 내용이 적힌 칸 ${overlapCount}개 - 아래에서 처리 방법을 골라주세요</div>` : '<div>' + icon('circle-check', 'ui-icon-em label-icon') + '기존 기록과 겹치는 칸이 없습니다</div>'}
                     ${skippedRows ? `<div class="import-warn">날짜를 알아볼 수 없어 건너뛴 줄 ${skippedRows}개</div>` : ''}`;
                 document.getElementById('recordImportPolicyField').style.display = overlapCount ? '' : 'none';
                 document.getElementById('recordImportModal').classList.add('active');
@@ -459,7 +459,7 @@
             if (selectedDate) renderRecordForm();
             const parts = [`새로 ${added}칸`];
             if (appended) parts.push(`이어 붙임 ${appended}칸`);
-            if (overwritten) parts.push(`덮어씀 ${overwritten}칸(이전 내용은 🕘 수정 이력에 보관)`);
+            if (overwritten) parts.push(`덮어씀 ${overwritten}칸(이전 내용은 수정 이력에 보관)`);
             if (skipped) parts.push(`건너뜀 ${skipped}칸`);
             if (plan.newCategories.length) parts.push(`새 카테고리 ${plan.newCategories.length}개`);
             showAppToast('가져오기 완료: ' + parts.join(' · '), 'success');

@@ -159,91 +159,91 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
         const FEATURE_GROUPS = [
             {
                 key: 'calendar',
-                label: '📅 달력 & 활동기록',
+                label: '달력 & 활동기록',
                 features: {
-                    activityRecord: '📅 달력 & 활동기록',
-                    todaySummary: '🌅 오늘 요약 카드',
-                    missingRecordIndicator: '🟥 작성 누락 표시 & 작성률',
-                    recordRevisions: '🕘 수정 이력 & 되돌리기',
-                    rotationSchedule: '🔁 교대 운전 일정 등록',
-                    eventGroupFilter: '👁️ 일정 분류별 보이기/숨기기',
-                    rotationStatusChips: '🟢 교대 설비 가동/대기 표시',
-                    recordImport: '⬆️ 과거 일지 가져오기(CSV, 환경설정 탭)',
-                    activityHeatmap: '🟩 기록 현황(활동 히트맵)',
-                    quickInsert: '⚡ 활동기록 / 빠른 입력'
+                    activityRecord: '달력 & 활동기록',
+                    todaySummary: '오늘 요약 카드',
+                    missingRecordIndicator: '작성 누락 표시 & 작성률',
+                    recordRevisions: '수정 이력 & 되돌리기',
+                    rotationSchedule: '교대 운전 일정 등록',
+                    eventGroupFilter: '일정 분류별 보이기/숨기기',
+                    rotationStatusChips: '교대 설비 가동/대기 표시',
+                    recordImport: '과거 일지 가져오기(CSV, 환경설정 탭)',
+                    activityHeatmap: '기록 현황(활동 히트맵)',
+                    quickInsert: '활동기록 / 빠른 입력'
                 }
             },
             {
                 key: 'category',
-                label: '⚙️ 카테고리 관리',
+                label: '카테고리 관리',
                 features: {
-                    categoryManage: '⚙️ 카테고리 관리'
+                    categoryManage: '카테고리 관리'
                 }
             },
             {
                 key: 'query',
-                label: '🔍 검색 & 조회',
+                label: '검색 & 조회',
                 features: {
-                    keywordSearch: '🔎 통합 검색 (시간순 설비 이력 포함)',
-                    periodQuery: '📆 기간별 카테고리 조회',
-                    keywordStats: '📊 키워드 발생 통계'
+                    keywordSearch: '통합 검색 (시간순 설비 이력 포함)',
+                    periodQuery: '기간별 카테고리 조회',
+                    keywordStats: '키워드 발생 통계'
                 }
             },
             {
                 key: 'notes',
-                label: '📝 할일 & 메모',
+                label: '할일 & 메모',
                 features: {
                     todoList: '해야 할 일',
-                    freeNotes: '📝 메모장',
-                    stickyMemo: '🗒️ 스티커 메모(어느 탭에서나 띄우기, Alt+M)'
+                    freeNotes: '메모장',
+                    stickyMemo: '스티커 메모(어느 탭에서나 띄우기, Alt+M)'
                 }
             },
             {
                 key: 'ai',
-                label: '🤖 AI 도우미',
+                label: 'AI 도우미',
                 features: {
-                    askMyLog: '💬 내 기록에게 물어보기',
-                    dailySummary: '📝 일일 업무 요약',
-                    weeklySummary: '🗓️ 이번주 업무 요약',
-                    monthlyFeedback: '🤖 AI 월별 피드백',
-                    monthlyFeedbackHistory: '🗂️ 월별 피드백 & 평가 이력 관리',
-                    goalSetting: '🎯 목표수립'
+                    askMyLog: '내 기록에게 물어보기',
+                    dailySummary: '일일 업무 요약',
+                    weeklySummary: '이번주 업무 요약',
+                    monthlyFeedback: 'AI 월별 피드백',
+                    monthlyFeedbackHistory: '월별 피드백 & 평가 이력 관리',
+                    goalSetting: '목표수립'
                 }
             },
             {
                 key: 'improvement',
-                label: '💡 개선/절감 과제',
+                label: '개선/절감 과제',
                 features: {
-                    savingsProjects: '💡 개선/절감 과제 관리'
+                    savingsProjects: '개선/절감 과제 관리'
                 }
             },
             {
                 key: 'trend',
-                label: '📈 설비 데이터 분석',
+                label: '설비 데이터 분석',
                 features: {
-                    gaugePhotoReading: '📷 계기판 사진 판독',
-                    trendAnalysis: '📈 설비 데이터 경향 분석'
+                    gaugePhotoReading: '계기판 사진 판독',
+                    trendAnalysis: '설비 데이터 경향 분석'
                 }
             },
             {
                 key: 'maintenance',
-                label: '🔧 정비계획',
+                label: '정비계획',
                 features: {
-                    maintenanceSchedule: '🔧 정비계획 관리'
+                    maintenanceSchedule: '정비계획 관리'
                 }
             },
             {
                 key: 'inventory',
-                label: '📦 재고 관리',
+                label: '재고 관리',
                 features: {
-                    inventoryManage: '📦 재고 관리 (입출고·소진 예측)'
+                    inventoryManage: '재고 관리 (입출고·소진 예측)'
                 }
             },
             {
                 key: 'waterFlow',
-                label: '🔀 흐름도',
+                label: '흐름도',
                 features: {
-                    waterFlowDiagram: '🔀 흐름도'
+                    waterFlowDiagram: '흐름도'
                 }
             },
             {
@@ -1404,7 +1404,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
 
         function describeMergeResult(result, prefix) {
             let msg = prefix;
-            if (result.recordConflicts.length) msg += ` · 같은 칸을 양쪽에서 고친 ${result.recordConflicts.length}건은 이 기기 내용으로 저장(다른 기기 내용은 🕘 수정 이력에 보관)`;
+            if (result.recordConflicts.length) msg += ` · 같은 칸을 양쪽에서 고친 ${result.recordConflicts.length}건은 이 기기 내용으로 저장(다른 기기 내용은 수정 이력에 보관)`;
             const labels = result.conflicted.map(k => SYNC_FIELD_LABELS[k]).filter(Boolean);
             if (labels.length) msg += ` · [${labels.join(', ')}]은 양쪽에서 같은 부분을 고쳐 이 기기 내용을 우선 적용함`;
             return msg;

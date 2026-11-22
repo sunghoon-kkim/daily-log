@@ -184,12 +184,12 @@
             if (groups.length === 0) { el.innerHTML = ''; return; }
             let html = '<span class="event-group-filter-label">일정 분류</span>' + groups.map(g => {
                 const hidden = hiddenEventGroups.includes(g);
-                return `<button type="button" class="event-group-chip${hidden ? ' off' : ''}" aria-pressed="${!hidden}" title="${hidden ? '달력에 보이기' : '달력에서 숨기기'} (${counts[g]}건)" onclick="toggleEventGroupVisibility('${escapeForOnclickArg(g)}')">${hidden ? '☐' : '✔'} ${escapeHtml(g)}</button>`;
+                return `<button type="button" class="event-group-chip${hidden ? ' off' : ''}" aria-pressed="${!hidden}" title="${hidden ? '달력에 보이기' : '달력에서 숨기기'} (${counts[g]}건)" onclick="toggleEventGroupVisibility('${escapeForOnclickArg(g)}')">${hidden ? '' : icon('check')}${escapeHtml(g)}</button>`;
             }).join('');
             // 짝 설비(소프트너 A/B 등) 백워시 일정이 있을 때만 가동/대기 표시 스위치를 보여줌
             if (!isFeatureDisabled('rotationStatusChips') && collectRotationPairs().length > 0) {
                 const on = isRotationStatusEnabled();
-                html += `<button type="button" class="event-group-chip rot-toggle${on ? '' : ' off'}" aria-pressed="${on}" title="교대 설비의 가동/대기 상태를 날짜 칸에 작게 표시 (이 기기·이 계정에만 적용)" onclick="toggleRotationStatusChips()">${on ? '✔' : '☐'} 가동/대기</button>`;
+                html += `<button type="button" class="event-group-chip rot-toggle${on ? '' : ' off'}" aria-pressed="${on}" title="교대 설비의 가동/대기 상태를 날짜 칸에 작게 표시 (이 기기·이 계정에만 적용)" onclick="toggleRotationStatusChips()">${on ? icon('check') : ''}가동/대기</button>`;
                 if (on) html += '<span class="rot-legend" aria-hidden="true"><span class="rot-chip rot-run">A</span>가동<span class="rot-chip rot-idle">A</span>대기<span class="rot-chip rot-bw">A</span>백워시</span>';
             }
             el.innerHTML = html;
@@ -454,7 +454,7 @@
             saveEventsToStorage();
             renderCalendar();
             if (selectedDate) renderRecordForm();
-            showStatus('📅 일정 날짜를 옮겼습니다', 'success');
+            showStatus('일정 날짜를 옮겼습니다', 'success');
         }
 
         // 오늘 기준으로 아직 끝나지 않은 예정 작업들을 D-day와 함께 가로 스크롤 카드로 표시.
@@ -826,7 +826,7 @@
 
             const placeholder = document.createElement('div');
             placeholder.className = 'category-image-thumb category-image-uploading';
-            placeholder.textContent = '🖼️ 업로드 중...';
+            placeholder.textContent = '업로드 중...';
             if (gallery) gallery.appendChild(placeholder);
 
             try {
@@ -867,7 +867,7 @@
             const dayEvents = events.filter(ev => selectedDate >= ev.start && selectedDate <= ev.end);
             const dayRotation = isRotationStatusEnabled() ? getRotationStatusesForDate(collectRotationPairs(), selectedDate) : [];
             if (dayRotation.length > 0) {
-                html += `<div class="rot-day-status${dayRotation.some(st => st.conflict) ? ' rot-conflict' : ''}">🔁 ${dayRotation.map(st => escapeHtml(describeRotationStatus(st))).join('<br>')}</div>`;
+                html += `<div class="rot-day-status${dayRotation.some(st => st.conflict) ? ' rot-conflict' : ''}">${icon('repeat', 'ui-icon-em label-icon')}${dayRotation.map(st => escapeHtml(describeRotationStatus(st))).join('<br>')}</div>`;
             }
             if (dayEvents.length > 0) {
                 html += '<div class="day-events-preview"><h4>이 날의 일정</h4>';
@@ -934,7 +934,7 @@
             if (collapsedChipsHtml) {
                 html += `
                     <div class="collapsed-categories-area">
-                        <div class="collapsed-categories-label">📁 접어둔 카테고리</div>
+                        <div class="collapsed-categories-label">${icon('folder', 'ui-icon-em label-icon')}접어둔 카테고리</div>
                         <div class="collapsed-categories-grid">${collapsedChipsHtml}</div>
                     </div>
                 `;

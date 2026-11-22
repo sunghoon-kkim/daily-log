@@ -310,7 +310,7 @@
             if (!counts) { el.innerHTML = ''; return; }
             const chip = (kind, label) => `<button type="button" class="mt-summary-chip mt-summary-${kind}${maintQuickFilter === kind ? ' active' : ''}" onclick="setMaintQuickFilter('${kind}')" aria-pressed="${maintQuickFilter === kind}">${label} <b>${counts[kind]}</b></button>`;
             const invOn = typeof isInventoryFeatureOn === 'function' && isInventoryFeatureOn();
-            el.innerHTML = chip('overdue', '지연') + chip('urgent', '임박') + chip('thisMonth', '이번 달') + (invOn ? chip('invShort', '📦 재고 부족') : '');
+            el.innerHTML = chip('overdue', '지연') + chip('urgent', '임박') + chip('thisMonth', '이번 달') + (invOn ? chip('invShort', icon('package', 'ui-icon-em label-icon') + '재고 부족') : '');
         }
 
         function setAllMaintGroups(collapse) {
@@ -397,7 +397,7 @@
                     const badge = maintTimelineBadge(m);
                     const canComplete = m.status !== '완료';
                     const acked = ['overdue', 'urgent', 'notice'].includes(m._urgency.level) && m.ackFor && m.ackFor === m.nextDue;
-                    const invBadge = m._invShort.length ? `<span class="mt-badge mt-badge-inv" title="${escapeHtml('재고 부족: ' + tipBase.inv)}">📦 부족</span> · ` : '';
+                    const invBadge = m._invShort.length ? `<span class="mt-badge mt-badge-inv" title="${escapeHtml('재고 부족: ' + tipBase.inv)}">${icon('package', 'ui-icon-em label-icon')}부족</span> · ` : '';
                     return `<div class="mt-row mt-item${level === 'overdue' ? ' is-overdue' : ''}${level === 'hold' ? ' is-hold' : ''}" data-maint-id="${escapeHtml(m.id)}">
                         <div class="mt-label">
                             <div class="mt-label-text">
@@ -590,7 +590,7 @@
                     dueParts.push(`<b>차기</b> ${escapeHtml(formatMaintDateDisplay(m.nextDue))}${m.nextDue.length === 7 ? ' (날짜 미지정)' : ''}${ddayText}`);
                 }
                 if (m.cycle) dueParts.push(cycleUnknown
-                    ? `<span class="maint-cycle-warning" title="주기 표현을 자동으로 인식하지 못해, 등록된 차기 점검월만 표시돼요. (&quot;3개월&quot;, &quot;격월&quot;, &quot;분기&quot;, &quot;반기&quot;, &quot;매년&quot; 등으로 적으면 반복월이 자동 계산됩니다)">⚠️ ${escapeHtml(m.cycle)} (주기 인식 불가)</span>`
+                    ? `<span class="maint-cycle-warning" title="주기 표현을 자동으로 인식하지 못해, 등록된 차기 점검월만 표시돼요. (&quot;3개월&quot;, &quot;격월&quot;, &quot;분기&quot;, &quot;반기&quot;, &quot;매년&quot; 등으로 적으면 반복월이 자동 계산됩니다)">${icon('triangle-alert', 'ui-icon-em label-icon')}${escapeHtml(m.cycle)} (주기 인식 불가)</span>`
                     : `${escapeHtml(m.cycle)} 주기`);
 
                 return `
@@ -620,7 +620,7 @@
                 <div class="maintenance-equipment-group${collapsed ? ' is-collapsed' : ''}" data-group="${escapeHtml(equipmentName)}" style="margin-bottom:24px;">
                     <div class="result-date maint-group-title">
                         <button type="button" class="maint-group-toggle${hasOverdue ? ' has-overdue' : ''}" onclick="toggleMaintGroup('${escapeForOnclickArg(equipmentName)}')" aria-expanded="${collapsed ? 'false' : 'true'}">
-                            ${icon('chevron-right')}<span class="maint-group-name">🔧 ${escapeHtml(equipmentName)}</span><span class="maint-group-count">${items.length}</span>
+                            ${icon('chevron-right')}<span class="maint-group-name">${escapeHtml(equipmentName)}</span><span class="maint-group-count">${items.length}</span>
                         </button>
                         ${maintEquipmentHistoryBtn(equipmentName, 'result-action-btn')}
                     </div>
@@ -758,7 +758,7 @@
             if (itemId) {
                 const m = maintenanceSchedule.find(x => x.id === itemId);
                 if (!m) return;
-                title.textContent = '🔧 정비계획 수정';
+                title.textContent = '정비계획 수정';
                 document.getElementById('maintEquipmentInput').value = m.equipment || '';
                 document.getElementById('maintItemInput').value = m.item || '';
                 document.getElementById('maintSopInput').value = m.sop || '';
@@ -770,7 +770,7 @@
                 deleteBtn.style.display = 'inline-block';
                 renderMaintenanceCompletionHistory(m);
             } else {
-                title.textContent = '🔧 정비계획 추가';
+                title.textContent = '정비계획 추가';
                 document.getElementById('maintEquipmentInput').value = '';
                 document.getElementById('maintItemInput').value = '';
                 document.getElementById('maintSopInput').value = '';

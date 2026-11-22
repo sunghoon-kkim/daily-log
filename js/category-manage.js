@@ -28,7 +28,7 @@
                 return val && val.toString().trim() !== '';
             }).length;
             const message = affectedDateCount > 0
-                ? `'${name}' 카테고리를 삭제하시겠습니까?\n\n이 카테고리로 기록된 ${affectedDateCount}일치 내용이 함께 영구 삭제됩니다.${archivedCategories.includes(name) ? '' : '\n(기록을 남겨두려면 삭제 대신 📦 보관을 사용하세요)'}`
+                ? `'${name}' 카테고리를 삭제하시겠습니까?\n\n이 카테고리로 기록된 ${affectedDateCount}일치 내용이 함께 영구 삭제됩니다.${archivedCategories.includes(name) ? '' : '\n(기록을 남겨두려면 삭제 대신 보관을 사용하세요)'}`
                 : `'${name}' 카테고리를 삭제하시겠습니까?`;
 
             confirmModal(message, () => {
@@ -300,11 +300,11 @@
                 return `
                 <div class="category-tag archived-category-tag">
                     <div class="category-tag-left">
-                        <span class="category-tag-name">📦 ${escapeHtml(category)}</span>
+                        <span class="category-tag-name">${icon('package', 'ui-icon-em label-icon')}${escapeHtml(category)}</span>
                         <span class="archived-category-count">기록 ${count}일</span>
                     </div>
                     <div class="category-tag-actions">
-                        <button class="category-default-collapse-toggle" onclick="restoreArchivedCategory('${escapeForOnclickArg(category)}')">↩ 복원</button>
+                        <button class="category-default-collapse-toggle" onclick="restoreArchivedCategory('${escapeForOnclickArg(category)}')">복원</button>
                         <button class="category-tag-delete" onclick="deleteCategory('${escapeForOnclickArg(category)}')" aria-label="${escapeHtml(category)} 카테고리 영구 삭제" title="기록까지 영구 삭제">${icon('x', 'ui-icon-em')}</button>
                     </div>
                 </div>`;
@@ -347,7 +347,7 @@
             const container = document.getElementById('categorySelector');
             // 보관한 카테고리도 과거 기록 조회 대상이므로 함께 보여줌(📦 표시)
             container.innerHTML = getAllRecordCategories().map(category => `
-                <button class="category-select-btn${archivedCategories.includes(category) ? ' archived' : ''}" data-category="${escapeHtml(category)}" onclick="selectCategoryForQuery('${escapeForOnclickArg(category)}')">${archivedCategories.includes(category) ? '📦 ' : ''}${escapeHtml(category)}</button>
+                <button class="category-select-btn${archivedCategories.includes(category) ? ' archived' : ''}" data-category="${escapeHtml(category)}" onclick="selectCategoryForQuery('${escapeForOnclickArg(category)}')">${archivedCategories.includes(category) ? icon('package') : ''}${escapeHtml(category)}</button>
             `).join('');
             if (typeof refreshSearchCategoryOptions === 'function') refreshSearchCategoryOptions();
             if (typeof refreshGaugeCategoryOptions === 'function') refreshGaugeCategoryOptions();

@@ -350,12 +350,12 @@
             // 흔들림이 거의 없는 값도 조금만 벗어나면 매번 경고하지 않도록 평균의 5%는 최소 허용폭으로 둠
             const tolerance = Math.max(2 * std, Math.abs(mean) * 0.05);
 
-            if (v > max && v - mean > tolerance) return { level: 'high', text: `⬆️ 평소보다 높음 · ${range}`, label: r.label };
-            if (v < min && mean - v > tolerance) return { level: 'low', text: `⬇️ 평소보다 낮음 · ${range}`, label: r.label };
+            if (v > max && v - mean > tolerance) return { level: 'high', text: `평소보다 높음 · ${range}`, label: r.label };
+            if (v < min && mean - v > tolerance) return { level: 'low', text: `평소보다 낮음 · ${range}`, label: r.label };
             const last3 = vals.slice(-3);
-            if (last3[0] < last3[1] && last3[1] < last3[2] && last3[2] < v) return { level: 'trend', text: `📈 4회 연속 상승 · ${range}`, label: r.label };
-            if (last3[0] > last3[1] && last3[1] > last3[2] && last3[2] > v) return { level: 'trend', text: `📉 4회 연속 하락 · ${range}`, label: r.label };
-            return { level: 'ok', text: `✓ 평소 범위 · ${range}` };
+            if (last3[0] < last3[1] && last3[1] < last3[2] && last3[2] < v) return { level: 'trend', text: `4회 연속 상승 · ${range}`, label: r.label };
+            if (last3[0] > last3[1] && last3[1] > last3[2] && last3[2] > v) return { level: 'trend', text: `4회 연속 하락 · ${range}`, label: r.label };
+            return { level: 'ok', text: `평소 범위 · ${range}` };
         }
 
         function getGaugeHistory() {
@@ -372,20 +372,20 @@
             const equipment = document.getElementById('gaugeEquipmentInput').value.trim();
             if (!equipment) {
                 el.className = 'gauge-anomaly-summary info';
-                el.textContent = '💡 설비명을 적으면 이 설비의 과거 판독값과 비교해 평소와 다른 값을 알려드립니다.';
+                el.textContent = '설비명을 적으면 이 설비의 과거 판독값과 비교해 평소와 다른 값을 알려드립니다.';
                 return;
             }
             const flagged = assessments.filter(a => a.level === 'high' || a.level === 'low' || a.level === 'trend');
             const compared = assessments.filter(a => a.level !== 'none').length;
             if (flagged.length) {
                 el.className = 'gauge-anomaly-summary warn';
-                el.textContent = `평소와 다른 값 ${flagged.length}개: ` + flagged.map(a => `${a.label} (${a.text.split(' · ')[0].replace(/^\S+\s/, '')})`).join(', ');
+                el.textContent = `평소와 다른 값 ${flagged.length}개: ` + flagged.map(a => `${a.label} (${a.text.split(' · ')[0]})`).join(', ');
             } else if (compared) {
                 el.className = 'gauge-anomaly-summary ok';
                 el.textContent = `✓ 과거 기록과 비교한 ${compared}개 값 모두 평소 범위입니다.`;
             } else {
                 el.className = 'gauge-anomaly-summary info';
-                el.textContent = `💡 [${equipment}]의 과거 판독값이 ${GAUGE_MIN_HISTORY}건 이상 쌓이면 평소와 다른 값을 알려드립니다.`;
+                el.textContent = `[${equipment}]의 과거 판독값이 ${GAUGE_MIN_HISTORY}건 이상 쌓이면 평소와 다른 값을 알려드립니다.`;
             }
         }
 

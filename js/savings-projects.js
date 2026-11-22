@@ -67,7 +67,7 @@
             if (projectId) {
                 const p = savingsProjects.find(x => x.id === projectId);
                 if (!p) return;
-                title.textContent = '💡 개선/절감 과제 수정';
+                title.textContent = '개선/절감 과제 수정';
                 document.getElementById('projectTitleInput').value = p.title;
                 document.getElementById('projectCategoryInput').value = p.category;
                 document.getElementById('projectStatusInput').value = p.status;
@@ -77,7 +77,7 @@
                 monthlySection.style.display = '';
                 renderProjectMonthlyLogList(p);
             } else {
-                title.textContent = '💡 개선/절감 과제 추가';
+                title.textContent = '개선/절감 과제 추가';
                 document.getElementById('projectTitleInput').value = '';
                 document.getElementById('projectCategoryInput').value = '에너지절감';
                 document.getElementById('projectStatusInput').value = '계획중';

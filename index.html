@@ -443,7 +443,7 @@
                 <div class="ai-template-block">
                     <div class="ai-block-label-row">
                         <label class="ai-block-label">피드백 양식 (자유롭게 수정 가능)</label>
-                        <button class="ai-copy-btn" onclick="resetAITemplate()">↩️ 기본 양식으로 되돌리기</button>
+                        <button class="ai-copy-btn" onclick="resetAITemplate()"><span data-icon="undo-2"></span>기본 양식으로 되돌리기</button>
                     </div>
                     <textarea id="aiTemplateTextarea" class="ai-template-textarea"></textarea>
                 </div>
@@ -494,9 +494,9 @@
                 <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 20px;">매달 평가 등급과 자가/수신 피드백을 남겨두면, 위 [AI 월별 피드백]을 생성할 때 이 계정의 누적 이력을 함께 참고해서 톤앤매너를 이어가고 과거 개선 요구사항과 실제 수행 여부를 연결해줍니다. 계정별로 저장되며, 과거 달을 선택해 자유롭게 조회·수정할 수 있습니다.</p>
 
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap;">
-                    <button type="button" class="category-prev-btn" onclick="changeFeedbackHistoryMonth(-1)">◀ 이전달</button>
+                    <button type="button" class="category-prev-btn" onclick="changeFeedbackHistoryMonth(-1)"><span data-icon="chevron-left"></span>이전달</button>
                     <span id="feedbackHistoryMonthLabel" style="font-weight:700; font-size:16px; color: var(--color-text);"></span>
-                    <button type="button" class="category-prev-btn" onclick="changeFeedbackHistoryMonth(1)">다음달 ▶</button>
+                    <button type="button" class="category-prev-btn" onclick="changeFeedbackHistoryMonth(1)">다음달<span data-icon="chevron-right" class="icon-trailing"></span></button>
                     <input type="month" id="feedbackHistoryMonthInput" class="category-input" style="max-width:160px; flex:none;" onchange="onFeedbackHistoryMonthInputChange()">
                     <button type="button" class="quick-preset-btn" onclick="jumpFeedbackHistoryMonthToToday()">이번달로</button>
                     <span class="notes-save-indicator" id="feedbackHistorySavedIndicator" style="display:none;"></span>
@@ -782,8 +782,8 @@
                 <div class="project-header-row">
                     <h3>흐름도</h3>
                     <div class="water-flow-toolbar">
-                        <button class="category-prev-btn" onclick="undoWaterFlowChange()" title="되돌리기 (Ctrl+Z)">↩️ 되돌리기</button>
-                        <button class="category-prev-btn" onclick="redoWaterFlowChange()" title="다시 실행 (Ctrl+Shift+Z)">↪️ 다시 실행</button>
+                        <button class="category-prev-btn" onclick="undoWaterFlowChange()" title="되돌리기 (Ctrl+Z)"><span data-icon="undo-2"></span>되돌리기</button>
+                        <button class="category-prev-btn" onclick="redoWaterFlowChange()" title="다시 실행 (Ctrl+Shift+Z)"><span data-icon="redo-2"></span>다시 실행</button>
                         <button class="category-prev-btn" onclick="fitWaterFlowViewToContent()" title="블록이 상하좌우 여백을 두고 화면에 전부 들어오도록 맞춤">화면 초기화</button>
                         <button class="category-prev-btn" onclick="openWaterFlowImportModal()" title="복사해 둔 흐름도 JSON을 붙여넣어 새 흐름도로 추가">흐름도 붙여넣기</button>
                         <button class="add-category-btn" onclick="openAddWaterFlowBlockModalAtViewportCenter()"><span data-icon="plus"></span>블록 추가</button>
@@ -791,12 +791,12 @@
                 </div>
 <details class="help-details">
                     <summary>흐름도 사용 방법</summary>
-                                    <p>블록을 자유롭게 추가하고 드래그해서 원하는 위치에 배치하세요(다른 블록과 가까우면 자동으로 정렬됩니다). 빈 곳을 더블클릭해도 그 자리에 블록을 추가할 수 있습니다. 블록을 클릭하면 세부 내용이 펼쳐지고, 다시 누르면 접힙니다. 🔗 아이콘으로 다른 블록과 선으로 연결할 수 있고(하나에서 여러 개로 갈라지는 연결도 가능, 이미 있는 연결선에 이어붙이는 것도 가능), 📋 아이콘으로 비슷한 블록을 바로 옆에 복제하고, ✏️ 아이콘으로 제목·내용·색상을, 🗑️ 아이콘으로 바로 삭제할 수 있습니다. 연결선을 클릭하면 선 종류·색상을 바꾸거나 삭제할 수 있는 창이 뜹니다. 빈 곳을 드래그하면 화면을 이동할 수 있고, 마우스 휠로 확대·축소할 수 있습니다. 흰색 영역 안에서만 블록을 놓을 수 있습니다. 실수로 옮기거나 지웠다면 되돌리기(Ctrl+Z)로 복구할 수 있습니다.</p>
+                                    <p>블록을 자유롭게 추가하고 드래그해서 원하는 위치에 배치하세요(다른 블록과 가까우면 자동으로 정렬됩니다). 빈 곳을 더블클릭해도 그 자리에 블록을 추가할 수 있습니다. 블록을 클릭하면 세부 내용이 펼쳐지고, 다시 누르면 접힙니다. <span data-icon="link" class="inline-icon"></span> 아이콘으로 다른 블록과 선으로 연결할 수 있고(하나에서 여러 개로 갈라지는 연결도 가능, 이미 있는 연결선에 이어붙이는 것도 가능), <span data-icon="copy" class="inline-icon"></span> 아이콘으로 비슷한 블록을 바로 옆에 복제하고, <span data-icon="pencil" class="inline-icon"></span> 아이콘으로 제목·내용·색상을, <span data-icon="trash-2" class="inline-icon"></span> 아이콘으로 바로 삭제할 수 있습니다. 연결선을 클릭하면 선 종류·색상을 바꾸거나 삭제할 수 있는 창이 뜹니다. 빈 곳을 드래그하면 화면을 이동할 수 있고, 마우스 휠로 확대·축소할 수 있습니다. 흰색 영역 안에서만 블록을 놓을 수 있습니다. 실수로 옮기거나 지웠다면 되돌리기(Ctrl+Z)로 복구할 수 있습니다.</p>
                 </details>
 
                 <div class="water-flow-diagram-tabs" id="waterFlowDiagramTabs"></div>
 
-                <div class="water-flow-connect-hint" id="waterFlowConnectHint">🔗 연결할 블록이나 연결선을 클릭하세요. (취소하려면 출발 블록의 🔗를 다시 누르거나 빈 곳을 클릭하세요)</div>
+                <div class="water-flow-connect-hint" id="waterFlowConnectHint"><span data-icon="link" class="inline-icon"></span> 연결할 블록이나 연결선을 클릭하세요. (취소하려면 출발 블록의 <span data-icon="link" class="inline-icon"></span>를 다시 누르거나 빈 곳을 클릭하세요)</div>
 
                 <div class="water-flow-canvas-wrap" id="waterFlowCanvasWrap" onwheel="waterFlowCanvasWheel(event)" onpointerdown="waterFlowCanvasPointerDown(event)">
                     <div class="water-flow-canvas" id="waterFlowCanvas" onclick="if(event.target===this) cancelWaterFlowConnectMode()" ondblclick="waterFlowCanvasDoubleClick(event)"></div>
@@ -820,9 +820,9 @@
                 </div>
 
                 <div class="quick-preset-row" id="teamReportWeekJumpRow" style="margin-bottom:10px;">
-                    <button type="button" class="quick-preset-btn" onclick="jumpTeamReportWeek(-1)">◀ 이전주</button>
+                    <button type="button" class="quick-preset-btn" onclick="jumpTeamReportWeek(-1)"><span data-icon="chevron-left"></span>이전주</button>
                     <button type="button" class="quick-preset-btn" id="teamReportWeekBtnCurrent" onclick="jumpTeamReportWeekToToday()">이번주로</button>
-                    <button type="button" class="quick-preset-btn" onclick="jumpTeamReportWeek(1)">다음주 ▶</button>
+                    <button type="button" class="quick-preset-btn" onclick="jumpTeamReportWeek(1)">다음주<span data-icon="chevron-right" class="icon-trailing"></span></button>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
                     <span id="teamReportWeekLabel" style="font-weight:700; font-size:15px; color:var(--color-text);"></span>
@@ -1018,7 +1018,7 @@
                 </div>
 
                 <div class="category-manager" style="margin-top:25px;">
-                    <h3>🆕 가입 승인 대기</h3>
+                    <h3>가입 승인 대기</h3>
                     <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">회원가입만 하고 아직 승인받지 못한 계정입니다. 승인 전까지는 로그인을 포함한 모든 기능이 막혀 있습니다. 승인하면 즉시 이용할 수 있고, 거절하면 휴지통으로 이동합니다(7일 안에는 복구 가능).</p>
                     <div class="admin-table-scroll">
                         <table class="admin-user-table" id="adminPendingTable">
@@ -1048,8 +1048,8 @@
                 </div>
 
                 <div class="category-manager" style="margin-top:25px;">
-                    <h3>🆕 신규 가입 기본값</h3>
-                    <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">새로 가입하는 계정이 기본적으로 어떤 기능을 쓸 수 있을지 정합니다. 이미 가입된 계정에는 영향이 없고, 그 계정들은 위 목록에서 "🔧 기능 설정"으로 개별 조정하면 됩니다.</p>
+                    <h3>신규 가입 기본값</h3>
+                    <p style="color: var(--color-text-secondary); font-size: 14px; margin-bottom: 15px;">새로 가입하는 계정이 기본적으로 어떤 기능을 쓸 수 있을지 정합니다. 이미 가입된 계정에는 영향이 없고, 그 계정들은 위 목록에서 "기능 설정"으로 개별 조정하면 됩니다.</p>
                     <div id="adminDefaultFeatureChecklist" class="admin-feature-checklist-groups"></div>
                     <button class="query-btn" style="margin-top:15px;" onclick="saveAdminDefaultFeatures()"><span data-icon="save"></span>기본값 저장</button>
                     <div class="ai-status" id="adminDefaultFeatureStatus"></div>
@@ -1562,7 +1562,7 @@
                 <label>이미 내용이 있는 칸은</label>
                 <label class="search-scope-label"><input type="radio" name="recordImportPolicy" value="skip" checked> 건너뛰기 (기존 내용 유지)</label>
                 <label class="search-scope-label"><input type="radio" name="recordImportPolicy" value="append"> 기존 내용 뒤에 이어 붙이기</label>
-                <label class="search-scope-label"><input type="radio" name="recordImportPolicy" value="overwrite"> 덮어쓰기 (기존 내용은 🕘 수정 이력에 보관)</label>
+                <label class="search-scope-label"><input type="radio" name="recordImportPolicy" value="overwrite"> 덮어쓰기 (기존 내용은 수정 이력에 보관)</label>
             </div>
             <p class="search-help-text" style="margin:0 0 10px 0;">첫 줄은 제목 줄이어야 합니다: <b>날짜, 카테고리1, 카테고리2…</b> (표 형식) 또는 <b>날짜, 카테고리, 내용</b> (목록 형식)</p>
             <div class="modal-buttons">

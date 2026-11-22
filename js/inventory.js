@@ -186,7 +186,7 @@
             const list = getInventoryCategoryList();
             select.innerHTML = `<option value="">미분류</option>`
                 + list.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')
-                + `<option value="${INVENTORY_NEW_CATEGORY}">✏️ 직접 입력</option>`;
+                + `<option value="${INVENTORY_NEW_CATEGORY}">직접 입력</option>`;
             select.value = list.includes(selected) ? selected : '';
             onInventoryCategorySelectChange();
         }
@@ -377,7 +377,7 @@
             editingInventoryItemId = itemId;
             const item = itemId ? inventoryItems.find(x => x.id === itemId) : null;
             if (itemId && !item) return;
-            document.getElementById('inventoryItemModalTitle').textContent = item ? '📦 품목 수정' : '📦 품목 추가';
+            document.getElementById('inventoryItemModalTitle').textContent = item ? '품목 수정' : '품목 추가';
             document.getElementById('inventoryNameInput').value = item ? item.name : '';
             const defaultCategory = getInventoryCategoryList().includes(inventoryCategoryFilter) ? inventoryCategoryFilter : '';
             renderInventoryCategorySelect(item ? (item.category || '') : defaultCategory);
@@ -735,8 +735,8 @@
                 const when = p.due ? `${formatInventoryPlanDate(p.due)}${p.due.length === 10 ? '에' : ''}` : '';
                 const text = p.due ? `${when} ${qty} 사용 예정` : `1회 ${qty} 사용 (차기 일정 미정)`;
                 return `<div class="inv-plan-line${p.short ? ' is-short' : ''}">
-                    <span class="inv-plan-label">🔧 ${label}</span>
-                    <span class="inv-plan-when">${text}${p.short ? ' <span class="inv-plan-warn">⚠️ 재고 확보 필요</span>' : ''}</span>
+                    <span class="inv-plan-label">${icon('wrench', 'ui-icon-em label-icon')}${label}</span>
+                    <span class="inv-plan-when">${text}${p.short ? ' <span class="inv-plan-warn">' + icon('triangle-alert', 'ui-icon-em label-icon') + '재고 확보 필요</span>' : ''}</span>
                 </div>`;
             }).join('');
         }
@@ -823,10 +823,10 @@
             const parts = needs.map(n => {
                 const unit = escapeHtml(n.item.unit || '');
                 return `${escapeHtml(n.item.name)} ${formatInventoryQty(n.qty)}${unit} · ${n.enough
-                    ? `<span class="maint-inv-ok">현재 ${formatInventoryQty(n.current)}${unit} ✅</span>`
-                    : `<span class="maint-inv-short">⚠️ 부족 (현재 ${formatInventoryQty(n.current)}${unit})</span>`}`;
+                    ? `<span class="maint-inv-ok">현재 ${formatInventoryQty(n.current)}${unit}${icon('circle-check', 'ui-icon-em label-icon-after')}</span>`
+                    : `<span class="maint-inv-short">${icon('triangle-alert', 'ui-icon-em label-icon')}부족 (현재 ${formatInventoryQty(n.current)}${unit})</span>`}`;
             });
-            return `<div class="project-card-row maint-inv-row"><b>📦 필요 재고:</b> ${parts.join(' / ')}</div>`;
+            return `<div class="project-card-row maint-inv-row"><b>${icon('package', 'ui-icon-em label-icon')}필요 재고:</b> ${parts.join(' / ')}</div>`;
         }
 
         // ----- 정비 완료 처리 창: 재고 차감 -----

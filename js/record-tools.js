@@ -158,7 +158,7 @@
             revisionTargetCategory = category;
             captureCurrentFormToRecords(); // 지금 화면 내용까지 반영된 상태에서 비교하도록 먼저 확정
             const list = (recordRevisions[selectedDate + '|' + category] || []).slice().reverse();
-            document.getElementById('recordRevisionModalTitle').textContent = `🕘 수정 이력 · ${selectedDate} · ${category}`;
+            document.getElementById('recordRevisionModalTitle').textContent = `수정 이력 · ${selectedDate} · ${category}`;
             const listEl = document.getElementById('recordRevisionList');
             listEl.innerHTML = list.length === 0
                 ? '<div class="maint-completion-empty">보관된 이전 내용이 없습니다.</div>'
@@ -166,7 +166,7 @@
                     <div class="record-revision-item">
                         <div class="record-revision-head">
                             <span>${formatRevisionTime(rev.ts)} 이전 내용</span>
-                            <button class="result-action-btn primary" onclick="restoreRecordRevision(${list.length - 1 - i})">↩ 이 내용으로 되돌리기</button>
+                            <button class="result-action-btn primary" onclick="restoreRecordRevision(${list.length - 1 - i})">${icon('undo-2')}이 내용으로 되돌리기</button>
                         </div>
                         <div class="record-revision-text">${escapeHtml(rev.v)}</div>
                     </div>`).join('');

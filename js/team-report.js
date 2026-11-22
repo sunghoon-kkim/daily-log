@@ -133,7 +133,7 @@
 
             container.innerHTML = teamReportMemberList.map(m => {
                 const selected = teamReportSelectedTargets.includes(m.employeeId);
-                const roleIcon = m.role === 'teamLead' ? '👑 ' : (m.role === 'partLead' ? '🔹 ' : '');
+                const roleIcon = m.role === 'teamLead' ? icon('crown') : (m.role === 'partLead' ? icon('user') : '');
                 return `<button type="button" class="quick-preset-btn${selected ? ' selected' : ''}" onclick="toggleTeamReportTarget('${m.employeeId}')">${roleIcon}${escapeHtml(m.name || m.employeeId)}</button>`;
             }).join('');
             updateTeamReportIntroText();
@@ -225,7 +225,7 @@
             const rows = teamReportRows[section];
 
             if (rows.length === 0) {
-                container.innerHTML = '<p style="color:var(--color-text-tertiary); font-size:13px; padding:4px 0 8px;">➕ 항목 추가 버튼을 눌러 작성해주세요.</p>';
+                container.innerHTML = '<p style="color:var(--color-text-tertiary); font-size:13px; padding:4px 0 8px;">항목 추가 버튼을 눌러 작성해주세요.</p>';
                 return;
             }
 
@@ -706,10 +706,10 @@
 
                 if (data.status === 'success' && data.applicable) {
                     if (data.pending.length === 0) {
-                        el.innerHTML = `<div class="ai-status success">✅ 이번주 전원 제출 완료 (${data.submittedCount}/${data.totalCount}명)</div>`;
+                        el.innerHTML = `<div class="ai-status success">이번주 전원 제출 완료 (${data.submittedCount}/${data.totalCount}명)</div>`;
                     } else {
                         const names = data.pending.map(p => escapeHtml(p.name || p.employeeId)).join(', ');
-                        el.innerHTML = `<div class="ai-status error">⚠️ 이번주 미제출 ${data.pending.length}명 (${data.submittedCount}/${data.totalCount}명 제출) - ${names}</div>`;
+                        el.innerHTML = `<div class="ai-status error">이번주 미제출 ${data.pending.length}명 (${data.submittedCount}/${data.totalCount}명 제출) - ${names}</div>`;
                     }
                 }
             } catch (err) {

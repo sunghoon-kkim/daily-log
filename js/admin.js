@@ -133,7 +133,7 @@
                            placeholder="파트 이름" oninput="updatePartManagerRow(${i}, this.value)">
                     <button type="button" class="admin-action-btn danger" onclick="removePartManagerRow(${i})" title="이 파트 삭제">${icon('x', 'ui-icon-em')}</button>
                 </div>
-            `).join('') || '<p style="color:var(--color-text-tertiary); font-size:13px;">➕ 파트 추가 버튼을 눌러 파트를 만들어주세요.</p>';
+            `).join('') || '<p style="color:var(--color-text-tertiary); font-size:13px;">파트 추가 버튼을 눌러 파트를 만들어주세요.</p>';
         }
 
         function updatePartManagerRow(index, value) {
@@ -271,7 +271,7 @@
 
             let html = '<div class="org-chart">';
             html += '<div class="org-chart-lead-row">';
-            html += slotHtml('teamLead', '', 'org-slot-lead', '👑 팀장', teamLeadUsers, '여기로 드래그해서 팀장 지정');
+            html += slotHtml('teamLead', '', 'org-slot-lead', `${icon('crown', 'ui-icon-em label-icon')}팀장`, teamLeadUsers, '여기로 드래그해서 팀장 지정');
             html += '</div>';
 
             html += '<div class="org-chart-parts-row">';
@@ -279,7 +279,7 @@
                 html += `
                     <div class="org-part-column">
                         <div class="org-part-header">${escapeHtml(part)}</div>
-                        ${slotHtml('partLead', part, 'org-slot-partlead', '🔹 파트장', buckets[part].partLead, '드래그해서 파트장 지정')}
+                        ${slotHtml('partLead', part, 'org-slot-partlead', `${icon('user', 'ui-icon-em label-icon')}파트장`, buckets[part].partLead, '드래그해서 파트장 지정')}
                         ${slotHtml('member', part, 'org-slot-members', '팀원', buckets[part].members, '팀원을 여기로 드래그')}
                     </div>
                 `;
@@ -597,7 +597,7 @@
 
             tbody.innerHTML = list.map(u => `
                 <tr>
-                    <td>${u.disabled ? (u.disabledReason === 'inactive' ? '🚫(자동 비활성화) ' : '🚫 ') : ''}${u.locked ? '' : ''}${escapeHtml(u.employeeId)}</td>
+                    <td>${u.disabled ? icon('ban', 'ui-icon-em label-icon admin-disabled-icon') + (u.disabledReason === 'inactive' ? '(자동 비활성화) ' : '<span class="admin-disabled-text">(비활성화) </span>') : ''}${u.locked ? '' : ''}${escapeHtml(u.employeeId)}</td>
                     <td>${teamReportRoleIcon(u.teamReportRole)}${escapeHtml(u.name)}</td>
                     <td>${escapeHtml(u.department)}</td>
                     <td>${u.isAdmin ? '-' : `
@@ -612,18 +612,18 @@
                     <td>${u.aiApiKey ? `
                         <span>입력됨</span>
                         <button type="button" class="admin-action-btn" style="padding:3px 7px; font-size:11px;" onclick="openAdminApiKeyViewModal('${u.employeeId}')">확인</button>
-                        ${u.duplicateApiKey ? '<div class="admin-apikey-dup">⚠️ 다른 계정과 중복</div>' : ''}
+                        ${u.duplicateApiKey ? `<div class="admin-apikey-dup">${icon('triangle-alert', 'ui-icon-em label-icon')}다른 계정과 중복</div>` : ''}
                     ` : '<span style="color:var(--color-text-tertiary);">미입력</span>'}</td>
                     <td>${escapeHtml(u.lastSaved)}</td>
                     <td>${u.lastLoginAt ? escapeHtml(new Date(u.lastLoginAt).toLocaleString('ko-KR')) : '<span style="color:var(--color-text-tertiary);">기록 없음</span>'}</td>
                     <td class="admin-actions-cell">${u.isAdmin ? '<span style="color:var(--color-text-tertiary);">관리자 계정</span>' : `
                         <div class="admin-more-wrap">
-                            <button type="button" class="admin-more-btn" title="관리 메뉴" onclick="toggleAdminMoreMenu(event, '${u.employeeId}')">⋮${u.passwordResetRequestedAt ? '🔴' : ''}</button>
+                            <button type="button" class="admin-more-btn" title="관리 메뉴" onclick="toggleAdminMoreMenu(event, '${u.employeeId}')">⋮${u.passwordResetRequestedAt ? '<span class="admin-alert-dot" role="img" aria-label="비밀번호 초기화 요청됨"></span>' : ''}</button>
                             <div class="admin-more-menu" id="adminMoreMenu-${u.employeeId}">
                                 <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminEditUserModal('${u.employeeId}')">정보수정</button>
                                 <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); openAdminFeatureModal('${u.employeeId}')">기능 설정</button>
-                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminResetPassword('${u.employeeId}')">비밀번호 초기화${u.passwordResetRequestedAt ? ' 🔴요청됨' : ''}</button>
-                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminToggleUserDisabled('${u.employeeId}', ${u.disabled ? 'false' : 'true'})">${u.disabled ? '활성화' : '🚫 비활성화'}</button>
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminResetPassword('${u.employeeId}')">비밀번호 초기화${u.passwordResetRequestedAt ? ' (요청됨)' : ''}</button>
+                                <button type="button" class="admin-menu-item" onclick="closeAllAdminMoreMenus(); adminToggleUserDisabled('${u.employeeId}', ${u.disabled ? 'false' : 'true'})">${u.disabled ? '활성화' : '비활성화'}</button>
                                 <button type="button" class="admin-menu-item danger" onclick="closeAllAdminMoreMenus(); adminDeleteUser('${u.employeeId}')">삭제</button>
                             </div>
                         </div>`}
@@ -648,8 +648,8 @@
 
         // 관리자 화면 표에서 팀 보고 역할을 이름 앞에 짧게 표시하는 아이콘
         function teamReportRoleIcon(role) {
-            if (role === 'teamLead') return '👑 ';
-            if (role === 'partLead') return '🔹 ';
+            if (role === 'teamLead') return `<span class="role-icon" title="팀장">${icon('crown', 'ui-icon-em label-icon')}</span>`;
+            if (role === 'partLead') return `<span class="role-icon" title="파트장">${icon('user', 'ui-icon-em label-icon')}</span>`;
             return '';
         }
 

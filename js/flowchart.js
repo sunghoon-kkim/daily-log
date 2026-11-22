@@ -80,7 +80,7 @@
             syncActiveWaterFlowDiagramData();
             waterFlowRedoStack.push(JSON.stringify({ diagrams: waterFlowDiagrams, currentId: currentWaterFlowDiagramId }));
             restoreWaterFlowSnapshot(waterFlowUndoStack.pop());
-            showAppToast('↩️ 되돌렸습니다', 'info');
+            showAppToast('되돌렸습니다', 'info');
         }
 
         function redoWaterFlowChange() {
@@ -92,7 +92,7 @@
             syncActiveWaterFlowDiagramData();
             waterFlowUndoStack.push(JSON.stringify({ diagrams: waterFlowDiagrams, currentId: currentWaterFlowDiagramId }));
             restoreWaterFlowSnapshot(waterFlowRedoStack.pop());
-            showAppToast('↪️ 다시 실행했습니다', 'info');
+            showAppToast('다시 실행했습니다', 'info');
         }
 
         // 흐름도 탭을 보고 있을 때만 Ctrl+Z(되돌리기)/Ctrl+Shift+Z 또는 Ctrl+Y(다시 실행)를 가로챔.
@@ -723,7 +723,7 @@
             });
             saveWaterFlowConnectionsToStorage();
             renderWaterFlowConnections();
-            showStatus('🔗 블록을 연결했습니다', 'success');
+            showStatus('블록을 연결했습니다', 'success');
         }
 
         function deleteWaterFlowConnection(connId) {
@@ -855,7 +855,7 @@
             });
             saveWaterFlowConnectionsToStorage();
             renderWaterFlowConnections();
-            showStatus('🔗 연결선에 이어붙였습니다', 'success');
+            showStatus('연결선에 이어붙였습니다', 'success');
         }
 
         // 방향에 따라 블록 테두리의 연결 지점(우/좌 중앙, 하/상 중앙)을 구함
@@ -1457,13 +1457,13 @@
             if (blockId) {
                 const b = waterFlowBlocks.find(x => x.id === blockId);
                 if (!b) return;
-                title.textContent = '🔀 블록 수정';
+                title.textContent = '블록 수정';
                 document.getElementById('waterFlowBlockTitleInput').value = b.title || '';
                 document.getElementById('waterFlowBlockDetailInput').value = b.detail || '';
                 pickWaterFlowBlockColor(b.color || COLOR_PALETTE[0]);
                 deleteBtn.style.display = 'inline-block';
             } else {
-                title.textContent = '🔀 블록 추가';
+                title.textContent = '블록 추가';
                 document.getElementById('waterFlowBlockTitleInput').value = '';
                 document.getElementById('waterFlowBlockDetailInput').value = '';
                 pickWaterFlowBlockColor(COLOR_PALETTE[0]);

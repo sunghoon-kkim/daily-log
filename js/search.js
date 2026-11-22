@@ -152,7 +152,7 @@
                 if (!select) return;
                 const current = select.value;
                 select.innerHTML = '<option value="">전체 카테고리</option>' + all.map(c =>
-                    `<option value="${escapeHtml(c)}">${archivedCategories.includes(c) ? '📦 ' : ''}${escapeHtml(c)}</option>`
+                    `<option value="${escapeHtml(c)}">${escapeHtml(c)}${archivedCategories.includes(c) ? ' (보관됨)' : ''}</option>`
                 ).join('');
                 select.value = all.includes(current) ? current : '';
             });
@@ -292,12 +292,12 @@
 
                 // 활동기록만 인라인 수정을 제공 (나머지는 원래 화면으로 이동해서 수정)
                 const editable = r.kind === 'record';
-                const openLabel = r.kind === 'record' || r.kind === 'event' ? '📅 이 날짜 열기' : '↗ 열기';
+                const openLabel = r.kind === 'record' || r.kind === 'event' ? '이 날짜 열기' : '열기';
 
                 return `
                     <div class="result-item" data-result-idx="${idx}">
                         <div class="result-top">
-                            <div class="result-date">📅 ${dateLabel} <span class="search-result-tag">[${escapeHtml(r.tag)}]</span></div>
+                            <div class="result-date">${icon('calendar-days', 'ui-icon-em label-icon')}${dateLabel} <span class="search-result-tag">[${escapeHtml(r.tag)}]</span></div>
                             <div class="result-actions">
                                 ${editable ? `<button class="result-action-btn" onclick="startInlineEdit(${idx})">수정</button>` : ''}
                                 <button class="result-action-btn" onclick="openSearchResult(${idx})">${openLabel}</button>
@@ -476,7 +476,7 @@
 
                 return `
                     <div class="result-item">
-                        <div class="result-date">📅 ${dateLabel}</div>
+                        <div class="result-date">${icon('calendar-days', 'ui-icon-em label-icon')}${dateLabel}</div>
                         ${categoriesHtml}
                     </div>
                 `;

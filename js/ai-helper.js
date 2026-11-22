@@ -898,11 +898,11 @@
                         <span class="goal-area-title">${area.label}</span>
                         <span class="goal-area-hint">${area.hint}</span>
                     </div>
-                    <div class="ai-loading" id="goalLoading-${area.id}" style="display:none;">🤖 작성 중...</div>
+                    <div class="ai-loading" id="goalLoading-${area.id}" style="display:none;">작성 중...</div>
 
                     <div class="goal-result-block" id="goalResultBlock-${area.id}" style="display:none;">
                         <div class="ai-block-label-row">
-                            <label class="ai-block-label">✅ 생성된 초안</label>
+                            <label class="ai-block-label">생성된 초안</label>
                             <button class="ai-copy-btn" onclick="copyGoalResult('${area.id}')">복사</button>
                         </div>
                         <textarea class="goal-result-textarea" id="goalResult-${area.id}"></textarea>

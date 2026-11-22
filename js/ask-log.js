@@ -151,7 +151,7 @@
             if (selectedDate) captureCurrentFormToRecords(); // 방금 입력 중이던 활동기록도 검색 대상에 포함
 
             resultBlock.style.display = 'none';
-            setAskLogBusy(true, '🔎 질문을 이해하는 중입니다...');
+            setAskLogBusy(true, '질문을 이해하는 중입니다...');
             const today = formatDate(new Date());
 
             try {
@@ -182,7 +182,7 @@
                     return;
                 }
 
-                setAskLogBusy(true, `📚 관련 기록 ${items.length}건을 읽고 답을 정리하는 중입니다...`);
+                setAskLogBusy(true, `관련 기록 ${items.length}건을 읽고 답을 정리하는 중입니다...`);
                 const res = await fetch(GOOGLE_APPS_SCRIPT_URL, {
                     method: 'POST',
                     body: JSON.stringify({ action: 'askLog', question, today, contextText: buildAskLogContextText(items), userApiKey: personalAiApiKey, ...getAuthFields() })
@@ -256,8 +256,8 @@
             sourcesDetails.style.display = items.length ? '' : 'none';
             sourcesDetails.open = false;
             document.getElementById('askLogSourcesSummary').textContent = showAll
-                ? `📚 검색된 기록 보기 (${items.length}건)`
-                : `📚 답변 근거 기록 보기 (${cited.size}건)`;
+                ? `검색된 기록 보기 (${items.length}건)`
+                : `답변 근거 기록 보기 (${cited.size}건)`;
 
             document.getElementById('askLogResultBlock').style.display = 'block';
         }
