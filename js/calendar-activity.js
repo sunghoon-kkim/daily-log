@@ -444,6 +444,9 @@
 
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 기존 onclick이 일정 수정 모달을 열도록 둠
 
+            // 전화 수신·시스템 제스처 등으로 터치가 취소된 경우는 '놓기'가 아니므로 옮기지 않음(뒤따르는 click도 없음)
+            if (e.type === 'pointercancel') return;
+
             // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 일정 수정 모달을 열지 않도록 한 번 막음.
             // moveEventToDate가 캘린더를 다시 그려서 원래 눌렀던 요소(state.originEl)가 사라져버릴 수
             // 있으므로, 재렌더링에도 그대로 남아있는 document에 걸어둠
