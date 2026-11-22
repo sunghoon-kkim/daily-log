@@ -311,6 +311,24 @@
             return first;
         }
 
+        // 드래그·스와이프에 딸려 오는 click만 막음. 그 click은 pointerup과 같은 작업에서 오지만, 다시 그려 원래
+        // 요소가 사라졌거나 터치로 많이 움직였으면 아예 안 오므로 { once: true }만으로는 다음 클릭까지 막게 됨.
+        // 그래서 click이 오거나, 이번 작업이 끝나거나, 새로 누르기 시작하면 바로 해제함
+        function suppressDragClick(target) {
+            const release = () => {
+                clearTimeout(timer);
+                target.removeEventListener('click', block, true);
+                document.removeEventListener('pointerdown', release, true);
+            };
+            const block = (ev) => {
+                ev.stopPropagation();
+                release();
+            };
+            target.addEventListener('click', block, true);
+            document.addEventListener('pointerdown', release, true);
+            const timer = setTimeout(release, 0);
+        }
+
         // 캘린더 영역을 좌우로 드래그(마우스)/스와이프(터치)하면 이전달·다음달로 이동
         function setupCalendarSwipe() {
             const calendarEl = document.querySelector('#calendar .calendar');
@@ -341,9 +359,7 @@
                 // 가로로 충분히 움직였고, 세로 움직임보다 가로 움직임이 뚜렷할 때만 스와이프로 인식
                 if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
                     // 스와이프 직후 이어지는 클릭이 날짜 선택으로 잘못 이어지지 않도록 한 번만 차단
-                    calendarEl.addEventListener('click', function suppressClick(ev) {
-                        ev.stopPropagation();
-                    }, { capture: true, once: true });
+                    suppressDragClick(calendarEl);
                     
                     if (dx > 0) {
                         previousMonth();
@@ -431,9 +447,7 @@
             // 실제로 드래그한 경우엔 뒤이어 발생하는 click이 일정 수정 모달을 열지 않도록 한 번 막음.
             // moveEventToDate가 캘린더를 다시 그려서 원래 눌렀던 요소(state.originEl)가 사라져버릴 수
             // 있으므로, 재렌더링에도 그대로 남아있는 document에 걸어둠
-            document.addEventListener('click', function suppressClick(ev) {
-                ev.stopPropagation();
-            }, { capture: true, once: true });
+            suppressDragClick(document);
 
             const under = document.elementFromPoint(e.clientX, e.clientY);
             const dayEl = under && under.closest('.day[data-date]');
