@@ -757,6 +757,8 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             }
 
             applyPersonalApiKeyGate();
+            if (typeof showAiSection === 'function') showAiSection();
+            updateTabBadges();
             if (typeof updateStickyMemoAvailability === 'function') updateStickyMemoAvailability();
         }
 
@@ -1725,9 +1727,52 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 const tabId = tabEl.dataset.tabId;
                 tabEl.addEventListener('click', () => switchTab(tabId));
             });
+            updateTabBadges();
             setupTabsOverflowHint();
             scrollActiveTabIntoView();
             if (typeof updateStickyMemoAvailability === 'function') updateStickyMemoAvailability(); // '할일 & 메모' 탭을 끄면 스티커 메모도 숨김
+        }
+
+        // 탭 옆 건수 배지. 탭 줄 전체를 다시 그리지 않고(가로 스크롤 유지) 배지만 고침
+        function setTabBadge(tabId, count, tone, description) {
+            const tab = document.querySelector(`#tabsContainer .tab[data-tab-id="${tabId}"]`);
+            if (!tab) return;
+            let badge = tab.querySelector('.tab-badge');
+            tab.setAttribute('aria-label', `${TAB_LABELS[tabId]}${count ? ', ' + description : ''} (화살표 키로 순서 변경, Enter로 이동)`);
+            if (!count) {
+                if (badge) badge.remove();
+                tab.removeAttribute('title');
+                return;
+            }
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.setAttribute('aria-hidden', 'true');
+                tab.appendChild(badge);
+            }
+            badge.className = `tab-badge tone-${tone}`;
+            badge.textContent = count > 99 ? '99+' : String(count);
+            tab.title = description;
+        }
+
+        // 정비: 연도와 무관한 지연+임박(보류 제외) / 재고: 오늘 요약 카드와 같은 부족+확보 필요+소진 임박
+        function updateTabBadges() {
+            if (typeof getMaintenanceUrgency === 'function') {
+                let overdue = 0, urgent = 0;
+                if (editUnlocked && !isFeatureDisabled('maintenanceSchedule')) {
+                    maintenanceSchedule.forEach(m => {
+                        if (m.status === '보류') return;
+                        const { level } = getMaintenanceUrgency(m);
+                        if (level === 'overdue') overdue++;
+                        else if (level === 'urgent') urgent++;
+                    });
+                }
+                setTabBadge('maintenance', overdue + urgent, overdue ? 'danger' : 'urgent', `지연 ${overdue}건 · 임박 ${urgent}건`);
+            }
+            if (typeof getInventoryAlertCounts === 'function') {
+                const { shortage, need, soon } = (editUnlocked && !isFeatureDisabled('inventoryManage')) ? getInventoryAlertCounts() : { shortage: 0, need: 0, soon: 0 };
+                setTabBadge('inventory', shortage + need + soon, shortage + need ? 'danger' : 'warning', `부족 ${shortage}건 · 확보 필요 ${need}건 · 소진 임박 ${soon}건`);
+            }
+            updateTabsOverflowHint();
         }
 
         // 휴대폰에서는 탭 줄이 가로 스크롤인데, 가려진 탭이 있는지 알 수 없어서 스크롤 가능한 쪽 가장자리를
@@ -1747,6 +1792,19 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
                 container.dataset.overflowHintBound = 'true';
                 container.addEventListener('scroll', updateTabsOverflowHint, { passive: true });
                 window.addEventListener('resize', updateTabsOverflowHint);
+                // 스크롤바를 숨긴 가로 스크롤이라, 마우스만 있는 PC에서는 세로 휠로 옆으로 넘김
+                container.addEventListener('wheel', (e) => {
+                    if (container.scrollWidth <= container.clientWidth || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+                    e.preventDefault();
+                    container.scrollLeft += e.deltaY;
+                }, { passive: false });
+                // 달력 고정 위치가 실제 탭 줄 높이를 따르게 함
+                if (typeof ResizeObserver === 'function') {
+                    new ResizeObserver(() => {
+                        if (container.offsetHeight) document.documentElement.style.setProperty('--tabs-height', container.offsetHeight + 'px');
+                        updateTabsOverflowHint();
+                    }).observe(container);
+                }
             }
             updateTabsOverflowHint();
         }
@@ -3065,6 +3123,7 @@ const GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlH6_fh
             });
 
             applyFormLockState();
+            updateTabBadges();
             if (typeof updateStickyMemoAvailability === 'function') updateStickyMemoAvailability();
         }
         

@@ -283,6 +283,7 @@
         }
 
         function renderInventory() {
+            updateTabBadges();
             const container = document.getElementById('inventoryList');
             const summaryEl = document.getElementById('inventorySummary');
             if (!container) return;

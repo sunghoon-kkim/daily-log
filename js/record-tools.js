@@ -63,6 +63,7 @@
         }
 
         function renderTodaySummary() {
+            updateTabBadges();
             const el = document.getElementById('todaySummary');
             if (!el) return;
             if (isFeatureDisabled('todaySummary') || !editUnlocked) { el.innerHTML = ''; return; }

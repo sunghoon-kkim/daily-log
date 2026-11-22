@@ -18,6 +18,34 @@
             });
         }
         // ===== AI 월별 피드백 요약 =====
+        // AI 도우미 화면 전환(검색 & 조회의 showQuerySection과 같은 방식). 숨기기만 하므로 입력·결과·진행 중인 생성은 유지됨.
+        // 묶음 안 기능이 모두 꺼져 있으면 그 버튼을 숨기고, 마지막으로 고른 화면은 이 기기에 기억
+        function showAiSection(name) {
+            const sections = Array.from(document.querySelectorAll('[data-ai-section]'));
+            const available = [...new Set(sections.filter(el => !isFeatureDisabled(el.dataset.feature)).map(el => el.dataset.aiSection))];
+            document.getElementById('aiSectionSwitcher').style.display = available.length ? '' : 'none';
+            if (!available.length) return;
+            let target = name;
+            if (!target) { try { target = localStorage.getItem('aiSection') || available[0]; } catch (e) { target = available[0]; } }
+            if (!available.includes(target)) target = available[0];
+            sections.forEach(el => {
+                const show = el.dataset.aiSection === target;
+                const wasHidden = el.classList.contains('query-section-hidden');
+                el.classList.toggle('query-section-hidden', !show);
+                if (name && show && wasHidden) playMotion(el, 'motion-fade-in');
+            });
+            document.querySelectorAll('#aiSectionSwitcher .quick-preset-btn').forEach(btn => {
+                const selected = btn.dataset.section === target;
+                btn.style.display = available.includes(btn.dataset.section) ? '' : 'none';
+                btn.classList.toggle('selected', selected);
+                btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+            });
+            // 둘 중 하나만 켜져 있으면(현재 주간 요약은 FORCE_DISABLED_FEATURES로 꺼짐) 실제로 있는 기능만 이름에 씀
+            const summaryBtn = document.querySelector('#aiSectionSwitcher [data-section="summary"]');
+            summaryBtn.textContent = isFeatureDisabled('weeklySummary') ? '일일 요약' : (isFeatureDisabled('dailySummary') ? '주간 요약' : '일일·주간 요약');
+            if (name) safeSetItem('aiSection', target);
+        }
+
         function applyAITemplate() {
             document.getElementById('aiTemplateTextarea').value = aiTemplateContent;
         }

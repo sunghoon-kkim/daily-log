@@ -31,6 +31,7 @@
     --color-success-strong: #047857;
     /* 겹침 순서: 내용 < 고정 탭 줄 < 떠 있는 메뉴 < 팝업 < 팝업 위 확인창 < 토스트 */
     --z-sticky: 50;
+    --tabs-height: 54px; /* 고정 탭 줄의 실제 높이 (js/main.js가 갱신) */
     --z-floating: 150; /* 스티커 메모: 고정 탭 줄 위, 페이지 드롭다운·팝업·토스트 아래 */
     --z-dropdown: 200;
     --z-modal: 1000;
@@ -7587,8 +7588,8 @@ body.admin-mode #adminPanel,
 /* 버튼 글자 뒤에 오는 아이콘(다음 해 등) */
 button > .icon-trailing > .ui-icon { margin-right: 0; margin-left: 6px; }
 
-/* 태블릿 폭까지 탭 줄을 한 줄 가로 스크롤로 (여러 줄로 쌓이지 않게) */
-@media (max-width: 1100px) {
+/* 노트북 폭(1439px)까지 탭 줄을 한 줄 가로 스크롤로 (건수 배지가 붙어도 여러 줄로 쌓이지 않게) */
+@media (max-width: 1439px) {
     .tabs-container {
         flex-wrap: nowrap;
         overflow-x: auto;
@@ -8721,3 +8722,44 @@ body.admin-mode .cmdk-trigger { display: none; }
 .record-save-badge[data-state="saving"] { --save-tone: var(--color-primary-muted); }
 .record-save-badge[data-state="saved"] { --save-tone: var(--color-success); }
 .record-save-badge[data-state="error"] { --save-tone: var(--color-danger); }
+
+/* ===== AI 도우미 화면 전환 ===== */
+#ai .ai-container { margin-top: 0; margin-bottom: var(--space-5); }
+
+/* ===== 탭 건수 배지 ===== */
+.tab-badge {
+    flex: 0 0 auto;
+    min-width: 20px;
+    padding: 0 var(--space-1);
+    border: 1px solid color-mix(in srgb, var(--tab-tone) var(--tint-border), transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--tab-tone) var(--tint-bg), transparent);
+    color: color-mix(in srgb, var(--tab-tone) var(--tint-text-mix), var(--color-text));
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: 16px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+.tab-badge.tone-danger { --tab-tone: var(--color-danger); }
+.tab-badge.tone-urgent { --tab-tone: var(--color-urgent); }
+.tab-badge.tone-warning { --tab-tone: var(--color-warning); }
+/* 1366px 노트북에서 배지까지 한눈에 들어오도록 탭 좌우 여백만 한 단계 좁힘 */
+@media (min-width: 1101px) and (max-width: 1439px) {
+    .tab { padding-left: var(--space-2); padding-right: var(--space-2); }
+}
+
+/* ===== 달력 고정 (2단 배치일 때만). 화면보다 크면 달력 안에서 스크롤 ===== */
+@media (min-width: 1101px) {
+    .calendar-box {
+        position: sticky;
+        top: calc(var(--tabs-height) + var(--space-4));
+        align-self: start;
+        max-height: calc(100vh - var(--tabs-height) - var(--space-6));
+        max-height: calc(100dvh - var(--tabs-height) - var(--space-6));
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+    .calendar-box .calendar-header { position: sticky; top: 0; z-index: 2; }
+}
