@@ -1506,6 +1506,24 @@ html {
             opacity: 0.35;
         }
 
+        /* 같은 칸 안에서 순서를 바꿀 때 들어갈 자리 표시 줄 */
+        .day-plan-item.drop-before,
+        .day-plan-item.drop-after {
+            position: relative;
+        }
+        .day-plan-item.drop-before::before,
+        .day-plan-item.drop-after::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--color-primary);
+            pointer-events: none;
+        }
+        .day-plan-item.drop-before::before { top: 0; }
+        .day-plan-item.drop-after::after { bottom: 0; }
+
         /* 일정을 드래그하는 동안 커서를 따라다니는 복제본 */
         .day-plan-item-ghost {
             position: fixed;

@@ -66,7 +66,7 @@
                 
                 // 이 날짜에 해당하는 이벤트 찾기
                 const dayEvents = calendarVisibleEvents.filter(ev => dateStr >= ev.start && dateStr <= ev.end)
-                    .sort((a, b) => a.start.localeCompare(b.start));
+                    .sort(compareEventsInDay(dateStr));
                 
                 let planHtml = '<div class="day-plan-list">';
                 
@@ -76,7 +76,7 @@
                 
                 const visibleEvents = dayEvents.slice(0, 5);
                 for (const ev of visibleEvents) {
-                    planHtml += `<div class="day-plan-item" style="--ev:${ev.color}" title="${escapeHtml(ev.title)}" onpointerdown="event.stopPropagation(); eventPillPointerDown(event, '${ev.id}')" onclick="event.stopPropagation(); openEventModal('${ev.id}')">${escapeHtml(ev.title)}</div>`;
+                    planHtml += `<div class="day-plan-item" data-event-id="${escapeHtml(ev.id)}" style="--ev:${ev.color}" title="${escapeHtml(ev.title)}" onpointerdown="event.stopPropagation(); eventPillPointerDown(event, '${ev.id}')" onclick="event.stopPropagation(); openEventModal('${ev.id}')">${escapeHtml(ev.title)}</div>`;
                 }
                 
                 if (dayEvents.length > 5) {
@@ -360,7 +360,45 @@
         // 네이티브 HTML5 드래그앤드롭은 터치 기기에서 동작하지 않아서, 조직도 카드 배정과 같은 방식으로
         // Pointer Events(마우스/터치 공용)로 직접 구현함 - 일정 칩을 따라다니는 고스트를 그려서 옮기고,
         // 손을 뗀 지점 아래에 있는 날짜 칸을 elementFromPoint로 찾아 그 날짜로 이동시킴
-        let eventDragState = null; // { eventId, originEl, pointerId, startX, startY, moved, ghostEl }
+        let eventDragState = null; // { eventId, originEl, originDate, pointerId, startX, startY, moved, ghostEl }
+
+        // 같은 날짜 칸 안의 일정 순서: 사용자가 드래그로 정한 순서(ev.dayOrder[날짜])가 있는 일정이 먼저,
+        // 나머지(순서를 정한 적 없는 일정·새로 추가한 일정)는 그 뒤에 예전처럼 시작일 순으로 놓음.
+        // dayOrder가 없거나 형식이 이상한 예전 데이터는 시작일 순으로 동작함
+        function getEventDayOrder(ev, dateStr) {
+            const map = ev.dayOrder;
+            if (!map || typeof map !== 'object') return null;
+            const v = map[dateStr];
+            return Number.isFinite(v) ? v : null;
+        }
+
+        function compareEventsInDay(dateStr) {
+            return (a, b) => {
+                const oa = getEventDayOrder(a, dateStr), ob = getEventDayOrder(b, dateStr);
+                if (oa !== null && ob !== null) return oa - ob;
+                if (oa !== null) return -1;
+                if (ob !== null) return 1;
+                return a.start.localeCompare(b.start);
+            };
+        }
+
+        function clearEventReorderMarks() {
+            document.querySelectorAll('.day-plan-item.drop-before, .day-plan-item.drop-after')
+                .forEach(el => el.classList.remove('drop-before', 'drop-after'));
+        }
+
+        // 드래그 중인 일정이 원래 칸 안에서 몇 번째 자리(보이는 일정들 사이, 끌고 있는 일정 제외)에 들어갈지 계산.
+        // 표시용으로 그 자리 앞/뒤 일정에 줄 표시 클래스를 붙이고, 들어갈 위치(0부터)를 돌려줌
+        function getEventReorderIndex(dayEl, clientY, draggedId) {
+            const pills = Array.from(dayEl.querySelectorAll('.day-plan-item[data-event-id]'))
+                .filter(el => el.dataset.eventId !== draggedId);
+            let index = pills.length;
+            for (let i = 0; i < pills.length; i++) {
+                const r = pills[i].getBoundingClientRect();
+                if (clientY < r.top + r.height / 2) { index = i; break; }
+            }
+            return { index, pills };
+        }
         const EVENT_DRAG_MOVE_THRESHOLD = 6; // 이보다 적게 움직이면 그냥 클릭(일정 수정)으로 취급
 
         function eventPillPointerDown(e, eventId) {
@@ -369,6 +407,7 @@
             eventDragState = {
                 eventId,
                 originEl: e.currentTarget,
+                originDate: e.currentTarget.closest('.day[data-date]')?.dataset.date || null,
                 pointerId: e.pointerId,
                 startX: e.clientX,
                 startY: e.clientY,
@@ -404,11 +443,20 @@
             eventDragState.ghostEl.style.top = e.clientY + 'px';
 
             document.querySelectorAll('.day.drag-over').forEach(el => el.classList.remove('drag-over'));
+            clearEventReorderMarks();
             eventDragState.ghostEl.style.display = 'none'; // elementFromPoint가 고스트 자신을 집지 않도록 잠깐 숨김
             const under = document.elementFromPoint(e.clientX, e.clientY);
             eventDragState.ghostEl.style.display = '';
             const dayEl = under && under.closest('.day[data-date]');
-            if (dayEl) dayEl.classList.add('drag-over');
+            if (!dayEl) return;
+            if (dayEl.dataset.date === eventDragState.originDate) {
+                // 같은 칸: 날짜 이동 대신 순서 변경이므로 칸 강조 없이 들어갈 자리에 줄만 표시
+                const { index, pills } = getEventReorderIndex(dayEl, e.clientY, eventDragState.eventId);
+                if (index < pills.length) pills[index].classList.add('drop-before');
+                else if (pills.length) pills[pills.length - 1].classList.add('drop-after');
+            } else {
+                dayEl.classList.add('drag-over');
+            }
         }
 
         function eventPillPointerUp(e) {
@@ -423,6 +471,7 @@
             state.originEl.classList.remove('dragging');
             if (state.ghostEl) state.ghostEl.remove();
             document.querySelectorAll('.day.drag-over').forEach(el => el.classList.remove('drag-over'));
+            clearEventReorderMarks();
 
             if (!state.moved) return; // 움직임 없이 눌렀다 뗀 경우(클릭)는 기존 onclick이 일정 수정 모달을 열도록 둠
 
@@ -438,7 +487,36 @@
             const dayEl = under && under.closest('.day[data-date]');
             if (!dayEl) return;
 
+            if (dayEl.dataset.date === state.originDate) {
+                const { index } = getEventReorderIndex(dayEl, e.clientY, state.eventId);
+                reorderEventInDay(state.eventId, state.originDate, index);
+                return;
+            }
             moveEventToDate(state.eventId, dayEl.dataset.date);
+        }
+
+        // 같은 날짜 칸 안에서 일정 순서를 바꿈. index는 끌고 있는 일정을 뺀 나머지 일정들 사이의 자리(0부터).
+        // 칸에 보이는 일정(앞 5개)은 정렬 목록의 맨 앞이므로, 숨겨진(+N개) 일정은 그대로 뒤에 남음.
+        // 그 날짜의 모든 일정에 dayOrder[날짜]를 다시 매겨서 정렬이 항상 일관되게 함
+        function reorderEventInDay(eventId, dateStr, index) {
+            const dayList = events.filter(isEventGroupVisible)
+                .filter(ev => dateStr >= ev.start && dateStr <= ev.end)
+                .sort(compareEventsInDay(dateStr));
+            const moving = dayList.find(ev => ev.id === eventId);
+            if (!moving) return;
+            const rest = dayList.filter(ev => ev !== moving);
+            rest.splice(Math.max(0, Math.min(index, rest.length)), 0, moving);
+            if (rest.every((ev, i) => ev === dayList[i])) return; // 제자리에 놓음
+
+            rest.forEach((ev, i) => {
+                if (!ev.dayOrder || typeof ev.dayOrder !== 'object' || Array.isArray(ev.dayOrder)) ev.dayOrder = {};
+                ev.dayOrder[dateStr] = i;
+            });
+
+            saveEventsToStorage();
+            renderCalendar();
+            if (selectedDate) renderRecordForm();
+            showStatus('일정 순서를 바꿨습니다', 'success');
         }
 
         // 일정을 다른 날짜로 옮김. 여러 날짜에 걸친 일정은 그 기간(며칠짜리인지)을 그대로 유지함
@@ -449,6 +527,7 @@
             const durationDays = daysBetweenDateStrs(ev.start, ev.end);
             ev.start = newStartDateStr;
             ev.end = addDaysToDateStr(newStartDateStr, durationDays);
+            delete ev.dayOrder; // 날짜가 바뀌었으니 예전 날짜들에서 정한 순서는 더 이상 의미 없음(새 칸에선 맨 아래에 붙음)
 
             saveEventsToStorage();
             renderCalendar();
